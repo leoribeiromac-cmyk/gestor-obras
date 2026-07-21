@@ -241,6 +241,114 @@ function getDiarios(obraId){try{return JSON.parse(localStorage.getItem('gestor:d
 function setDiarios(obraId,arr){localStorage.setItem('gestor:diario:'+obraId,JSON.stringify(arr));}
 function diarioDoDia(obraId,dataISO){return getDiarios(obraId).find(d=>d.dataISO===dataISO)||null;}
 
+/* ============================================================
+   BACKEND — Google Sheets (leitura via CSV publicado, gravação via
+   Apps Script/JSONP com fila offline). Enquanto CONFIG.appsScript
+   estiver vazio, tudo roda em modo LOCAL (localStorage), sem mudar nada.
+   Preencha o CONFIG após montar a planilha (ver SETUP-BACKEND.md).
+   ============================================================ */
+const CONFIG = {
+  appsScript: '',                        // URL /exec do Apps Script (vazio = modo local)
+  csv: { rdo: '', diario: '' },          // URLs CSV publicadas das abas RDO e Diario
+  usuarios: ['Leonardo', 'Wallace', 'Guilherme'],
+  exigirLogin: true
+};
+const BACKEND = !!CONFIG.appsScript;
+
+/* --- sessão/login --- */
+function getToken(){return localStorage.getItem('gestor:token')||'';}
+function usuarioAtual(){return localStorage.getItem('gestor:usuario')||'';}
+function setToken(t,u){if(t){localStorage.setItem('gestor:token',t);localStorage.setItem('gestor:usuario',u||'');}else{localStorage.removeItem('gestor:token');localStorage.removeItem('gestor:usuario');}}
+function authParams(){return getToken()?{token:getToken()}:{};}
+function sair(){setToken('',''); estado.obraId=null; estado.tela='home'; render();}
+
+/* --- JSONP com retry --- */
+function jsonp(url,params,retries=2,delay=2500){
+  return new Promise((resolve,reject)=>{
+    const cb='__cb'+Date.now()+Math.floor(Math.random()*1e6);
+    const qs=Object.keys(params).map(k=>encodeURIComponent(k)+'='+encodeURIComponent(params[k])).join('&');
+    const s=document.createElement('script'); let done=false;
+    const cleanup=()=>{try{delete window[cb];}catch(e){window[cb]=undefined;} if(s.parentNode)s.remove();};
+    const falha=()=>{if(done)return;done=true;cleanup();if(retries>0)setTimeout(()=>jsonp(url,params,retries-1,delay).then(resolve,reject),delay);else reject(new Error('rede'));};
+    window[cb]=(data)=>{if(done)return;done=true;cleanup();resolve(data);};
+    s.onerror=falha; setTimeout(falha,15000);
+    s.src=url+'?'+qs+'&callback='+cb; document.body.appendChild(s);
+  });
+}
+
+/* --- CSV --- */
+function parseCSV(text){
+  const rows=[];let row=[],cur='',q=false;
+  for(let i=0;i<text.length;i++){const c=text[i];
+    if(q){if(c==='"'){if(text[i+1]==='"'){cur+='"';i++;}else q=false;}else cur+=c;}
+    else if(c==='"')q=true; else if(c===','){row.push(cur);cur='';}
+    else if(c==='\n'){row.push(cur);rows.push(row);row=[];cur='';}
+    else if(c!=='\r')cur+=c;}
+  if(cur!==''||row.length){row.push(cur);rows.push(row);}
+  if(!rows.length)return[];
+  const head=rows[0].map(h=>h.trim().toLowerCase());
+  return rows.slice(1).filter(r=>r.some(x=>x!=='')).map(r=>{const o={};head.forEach((h,i)=>o[h]=r[i]!==undefined?r[i]:'');return o;});
+}
+async function fetchCSV(url){const res=await fetch(url+(url.indexOf('?')>-1?'&':'?')+'_='+Date.now(),{cache:'no-store'});if(!res.ok)throw new Error('CSV '+res.status);return parseCSV(await res.text());}
+function csvNum(v){if(typeof v==='number')return v;if(v==null||v==='')return 0;let s=String(v).trim();const lc=s.lastIndexOf(','),ld=s.lastIndexOf('.');if(lc>-1&&ld>-1){s=lc>ld?s.replace(/\./g,'').replace(',','.'):s.replace(/,/g,'');}else if(lc>-1)s=s.replace(',','.');const n=parseFloat(s);return isNaN(n)?0:n;}
+function csvISO(v){if(!v)return '';v=String(v).trim();if(/^\d{4}-\d{2}-\d{2}/.test(v))return v.slice(0,10);const m=v.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);if(m)return m[3]+'-'+('0'+m[2]).slice(-2)+'-'+('0'+m[1]).slice(-2);return v.slice(0,10);}
+function csvBool(v){return v===true||String(v).toLowerCase()==='true';}
+function jparse(s,def){try{return JSON.parse(s||'');}catch(e){return def;}}
+function rowToLanc(o){return {id:o.id,clientId:o.clientid||o.id,dataISO:csvISO(o.data),rua:o.rua,capId:o.capid===''?null:parseInt(csvNum(o.capid),10),servico:o.servico,un:o.un,qtd:csvNum(o.qtd),efetivo:csvNum(o.efetivo),estIni:o.estini||'',estFim:o.estfim||'',clima:o.clima,obs:o.obs,avulso:csvBool(o.avulso),criadoEm:csvNum(o.criadoem)||Date.now()};}
+function rowToDiario(o){return {id:o.id,dataISO:csvISO(o.data),climaManha:o.climamanha,climaTarde:o.climatarde,condicao:o.condicao,pessoal:jparse(o.pessoal,[]),equipamentos:jparse(o.equipamentos,[]),ocorrencias:o.ocorrencias,criadoEm:csvNum(o.criadoem)||Date.now()};}
+
+/* --- fila offline (outbox) --- */
+const OUTBOX_KEY='gestor:outbox';
+function outboxLer(){try{return JSON.parse(localStorage.getItem(OUTBOX_KEY)||'[]');}catch(e){return[];}}
+function outboxGravar(a){localStorage.setItem(OUTBOX_KEY,JSON.stringify(a));atualizaOutboxUI();}
+function outboxAdd(it){const a=outboxLer();a.push(it);outboxGravar(a);}
+function outboxRemove(id){outboxGravar(outboxLer().filter(x=>x.id!==id));}
+async function outboxFlush(){
+  if(!BACKEND||!navigator.onLine)return;
+  for(const it of outboxLer()){
+    try{const r=await jsonp(CONFIG.appsScript,{...it.params,...authParams()},1,2000);
+      if(r&&r.error&&/TOKEN/i.test(r.error)){toast('Sessão expirada — entre novamente');break;}
+      outboxRemove(it.id);
+    }catch(e){break;}
+  }
+}
+function atualizaOutboxUI(){
+  let elx=el('outboxInd'); const n=outboxLer().length;
+  if(!n){if(elx)elx.remove();return;}
+  if(!elx){elx=document.createElement('div');elx.id='outboxInd';
+    elx.style.cssText='position:fixed;bottom:20px;right:20px;z-index:150;background:var(--amarelo);color:#fff;padding:9px 14px;border-radius:20px;font-size:12.5px;font-weight:700;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.3)';
+    elx.onclick=()=>outboxFlush(); document.body.appendChild(elx);}
+  elx.textContent='⇅ '+n+' p/ enviar';
+}
+
+/* --- envio (enfileira + tenta enviar) --- */
+function enfileirarRDO(obraId,l){if(!BACKEND)return;
+  const item={obra:obraId,data:l.dataISO,rua:l.rua,capid:l.capId,servico:l.servico,un:l.un,qtd:l.qtd,efetivo:l.efetivo,estini:l.estIni,estfim:l.estFim,clima:l.clima,obs:l.obs,avulso:l.avulso,criadoem:l.criadoEm,id:l.id};
+  outboxAdd({id:'ob'+uid(),clientId:l.id,obra:obraId,tipo:'rdo',params:{action:'addBatchRDO',batch:JSON.stringify([item]),clientId:l.id}});outboxFlush();}
+function enfileirarDelRDO(obraId,id){if(!BACKEND)return;outboxAdd({id:'ob'+uid(),obra:obraId,tipo:'delRdo',params:{action:'deleteRDO',id:id}});outboxFlush();}
+function enfileirarDiario(obraId,d){if(!BACKEND)return;
+  const item={action:'addDiario',obra:obraId,data:d.dataISO,climamanha:d.climaManha,climatarde:d.climaTarde,condicao:d.condicao,pessoal:JSON.stringify(d.pessoal||[]),equipamentos:JSON.stringify(d.equipamentos||[]),ocorrencias:d.ocorrencias,criadoem:d.criadoEm,id:d.id||''};
+  outboxAdd({id:'ob'+uid(),obra:obraId,tipo:'diario',dados:d,params:item});outboxFlush();}
+function enfileirarDelDiario(obraId,id){if(!BACKEND)return;outboxAdd({id:'ob'+uid(),obra:obraId,tipo:'delDiario',params:{action:'deleteDiario',id:id}});outboxFlush();}
+
+/* --- leitura do servidor (CSV) e reconciliação com pendências --- */
+async function carregarObra(obraId){
+  if(!BACKEND||!CONFIG.csv.rdo)return;
+  try{
+    const [rdoRows,diaRows]=await Promise.all([fetchCSV(CONFIG.csv.rdo),CONFIG.csv.diario?fetchCSV(CONFIG.csv.diario):Promise.resolve([])]);
+    const srvLanc=rdoRows.filter(o=>String(o.obra).trim()===obraId).map(rowToLanc);
+    const srvDia =diaRows.filter(o=>String(o.obra).trim()===obraId).map(rowToDiario);
+    // mantém pendências ainda não confirmadas no servidor
+    const pendCli=new Set(outboxLer().filter(it=>it.tipo==='rdo').map(it=>it.clientId));
+    const naoConf=getLanc(obraId).filter(l=>pendCli.has(l.clientId||l.id)&&!srvLanc.some(s=>(s.clientId||s.id)===(l.clientId||l.id)));
+    const mrg={};[...srvLanc,...naoConf].forEach(l=>{mrg[l.clientId||l.id]=l;});
+    setLanc(obraId,Object.values(mrg));
+    let dias=srvDia;
+    outboxLer().filter(it=>it.tipo==='diario'&&it.obra===obraId).forEach(pd=>{dias=[...dias.filter(d=>d.dataISO!==pd.dados.dataISO),pd.dados];});
+    setDiarios(obraId,dias);
+  }catch(e){console.warn('sync: leitura falhou (mantendo local)',e);}
+}
+
 /* ---------- domínio (físico) ---------- */
 function obra(){return OBRAS[estado.obraId];}
 function frenteNome(o,id){const f=(o.frentes||[]).find(x=>x.id===id);return f?f.nome:('Frente '+id);}
@@ -303,6 +411,7 @@ const TITULOS={executivo:'Painel Executivo',servicos:'Serviços',medicao:'Mediç
 
 function render(){
   const app=el('app');
+  if(BACKEND&&CONFIG.exigirLogin&&!getToken()){app.innerHTML=viewLogin();bind();return;}
   if(estado.tela==='home'||!estado.obraId){app.innerHTML=viewHome();bind();return;}
   const o=obra();
   app.innerHTML=`<div class="app">${sidebar(o)}<div class="main">${topbar(o)}<div class="content">${viewTela(o)}</div></div></div>`;
@@ -318,7 +427,8 @@ function sidebar(o){
         <span class="nav-ic">${it.ic}</span><span class="nav-txt">${it.t}</span>${b?`<span class="nav-badge">${b}</span>`:''}</div>`;
     }).join('')}`).join('')}</nav>
     <div class="side-foot"><button class="btn btn-sm btn-ghost" onclick="irHome()">← Obras</button>
-      <button class="btn btn-sm btn-ghost" onclick="toggleTema()" title="Tema">◐</button></div></aside>`;
+      <button class="btn btn-sm btn-ghost" onclick="toggleTema()" title="Tema">◐</button>
+      ${BACKEND&&getToken()?`<button class="btn btn-sm btn-ghost" onclick="sair()" title="Sair (${esc(usuarioAtual())})">⇥ Sair</button>`:''}</div></aside>`;
 }
 function topbar(o){
   return `<header class="topbar"><div style="flex:1"><h1>${esc(TITULOS[estado.tela]||'')}</h1>
@@ -334,6 +444,33 @@ function viewTela(o){
     case 'historico':return viewHistorico(o);
     default:return viewExecutivo(o);
   }
+}
+
+/* ---------- LOGIN (backend) ---------- */
+function viewLogin(){
+  return `<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px">
+    <div class="card" style="max-width:360px;width:100%"><div class="card-b" style="padding:28px 26px">
+      <div style="text-align:center;margin-bottom:20px">
+        <img src="assets/logo_gestor.png" style="width:52px;height:52px;border-radius:11px;background:#fff;object-fit:contain">
+        <div style="font-weight:700;font-size:18px;margin-top:10px">Gestor — Controle de Obras</div>
+        <div class="kpi-s">Entre para acompanhar e lançar</div></div>
+      <div class="field"><label class="fl">Usuário</label><select id="loginUser">
+        ${CONFIG.usuarios.map(u=>`<option>${esc(u)}</option>`).join('')}</select></div>
+      <div class="field"><label class="fl">Senha</label>
+        <input type="password" id="loginPass" onkeyup="if(event.key==='Enter')fazerLogin()" placeholder="••••••••"></div>
+      <div id="loginErro" class="kpi-s" style="color:var(--vermelho);min-height:16px;margin:-6px 0 10px"></div>
+      <button class="btn btn-pri" style="width:100%;justify-content:center" onclick="fazerLogin()">Entrar</button>
+    </div></div></div>`;
+}
+async function fazerLogin(){
+  const u=el('loginUser').value, p=el('loginPass').value;
+  if(!p){el('loginErro').textContent='Informe a senha.';return;}
+  el('loginErro').textContent='Entrando...';
+  try{
+    const r=await jsonp(CONFIG.appsScript,{action:'login',usuario:u,senha:p},1,2000);
+    if(r&&r.ok&&r.token){setToken(r.token,r.usuario);outboxFlush();render();}
+    else el('loginErro').textContent=(r&&/CREDENC/i.test(r.error||''))?'Usuário ou senha incorretos.':((r&&r.error)||'Falha ao entrar.');
+  }catch(e){el('loginErro').textContent='Sem conexão com o servidor.';}
 }
 
 /* ---------- HOME ---------- */
@@ -781,12 +918,15 @@ function coletaDiario(){
 }
 function salvarDiario(){
   const o=obra();const dd=coletaDiario();
-  const arr=getDiarios(o.id).filter(x=>x.dataISO!==dd.dataISO);
-  arr.push({id:uid(),...dd,criadoEm:Date.now()});
-  setDiarios(o.id,arr);toast('Diário salvo ✓');render();
+  const anterior=diarioDoDia(o.id,dd.dataISO);
+  const novo={id:(anterior&&anterior.id)||uid(),...dd,criadoEm:Date.now()};
+  const arr=getDiarios(o.id).filter(x=>x.dataISO!==dd.dataISO);arr.push(novo);
+  setDiarios(o.id,arr);enfileirarDiario(o.id,novo);toast('Diário salvo ✓');render();
 }
 function delDiario(dataISO){const o=obra();if(!confirm('Excluir o diário de '+new Date(dataISO+'T00:00:00').toLocaleDateString('pt-BR')+'?'))return;
-  setDiarios(o.id,getDiarios(o.id).filter(x=>x.dataISO!==dataISO));render();toast('Diário excluído');}
+  const d=diarioDoDia(o.id,dataISO);
+  setDiarios(o.id,getDiarios(o.id).filter(x=>x.dataISO!==dataISO));
+  if(d&&d.id)enfileirarDelDiario(o.id,d.id);render();toast('Diário excluído');}
 function imprimirRDO(){
   const o=obra();const dd=coletaDiario();const servDia=getLanc(o.id).filter(l=>l.dataISO===dd.dataISO);
   const datas=[...new Set([...getDiarios(o.id).map(x=>x.dataISO),dd.dataISO])].sort();
@@ -826,7 +966,8 @@ function imprimirRDO(){
 }
 
 /* ============================================================ AÇÕES */
-function abrirObra(id){estado.obraId=id;estado.tela='executivo';estado.filtroRua='Todas';estado.mesMed='';estado.diarioData='';estado.projSel='';estado.painelFrente='Todas';estado.painelMes='Todos';_pdfDoc=null;_pdfUrl='';_pdfZoom=1;render();}
+function abrirObra(id){estado.obraId=id;estado.tela='executivo';estado.filtroRua='Todas';estado.mesMed='';estado.diarioData='';estado.projSel='';estado.painelFrente='Todas';estado.painelMes='Todos';_pdfDoc=null;_pdfUrl='';_pdfZoom=1;render();
+  if(BACKEND)carregarObra(id).then(()=>{if(estado.obraId===id&&estado.tela!=='home')render();});}
 function abrirExterno(url){window.open(url,'_blank','noopener');}
 function setPFrente(v){estado.painelFrente=v;render();}
 function setPMes(v){estado.painelMes=v;render();}
@@ -871,17 +1012,18 @@ function salvar(){
     if(!s){toast('Selecione um serviço');return;}
     lanc={rua:s.rua,capId:s.capId,servico:s.servico,un:s.un};
   }
-  const arr=getLanc(o.id);
-  arr.push({id:uid(),dataISO:el('fData').value||hoje(),...lanc,
+  const novo={id:uid(),dataISO:el('fData').value||hoje(),...lanc,
     qtd,efetivo:+el('fEfet').value||0,estIni:el('fEstIni').value.trim(),estFim:el('fEstFim').value.trim(),
-    clima:el('fClima').value,obs:el('fObs').value.trim(),criadoEm:Date.now()});
-  setLanc(o.id,arr);toast(lanc.avulso?'Serviço avulso registrado ✓':'Apontamento salvo ✓');
+    clima:el('fClima').value,obs:el('fObs').value.trim(),criadoEm:Date.now()};
+  const arr=getLanc(o.id);arr.push(novo);setLanc(o.id,arr);
+  enfileirarRDO(o.id,novo);
+  toast(lanc.avulso?'Serviço avulso registrado ✓':'Apontamento salvo ✓');
   el('fQtd').value='';el('fEfet').value='';el('fObs').value='';el('fEstIni').value='';el('fEstFim').value='';
   if(el('fAvDesc'))el('fAvDesc').value='';
   el('ultimos').innerHTML=listaUltimos(o);mostraSaldo();
 }
 function excluir(id){const o=obra();if(!confirm('Excluir este apontamento?'))return;
-  setLanc(o.id,getLanc(o.id).filter(l=>l.id!==id));render();toast('Apontamento excluído');}
+  setLanc(o.id,getLanc(o.id).filter(l=>l.id!==id));enfileirarDelRDO(o.id,id);render();toast('Apontamento excluído');}
 function exportaCSV(){
   const o=obra();const mes=estado.mesMed;const lanc=getLanc(o.id).filter(l=>l.dataISO.slice(0,7)===mes && !l.avulso);
   const agg={};lanc.forEach(l=>{const k=skey(l.rua,l.capId,l.servico);(agg[k]=agg[k]||{l,q:0}).q+=(+l.qtd||0);});
@@ -902,6 +1044,7 @@ if(window.pdfjsLib)window.pdfjsLib.GlobalWorkerOptions.workerSrc='vendor/pdfjs/p
 document.addEventListener('keydown',e=>{if(e.key==='Escape')fecharModal();});
 document.documentElement.setAttribute('data-theme',temaAtual());
 render();
+if(BACKEND){atualizaOutboxUI();outboxFlush();window.addEventListener('online',outboxFlush);}
 if('serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(()=>{});}
 </script>
 </body>

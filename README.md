@@ -96,10 +96,19 @@ repositório `teotonio-vilela` em nova aba.
 > orçamentárias e do cronograma físico-financeiro. Para novas obras, dá para repetir o
 > mesmo processo de extração.
 
-## O que fica para uma próxima versão (fora do escopo desta)
+## Backend opcional (Google Sheets) — como a Teotônio
 
-- **Backend compartilhado** (Google Sheets + Apps Script), como no sistema Teotônio, para
-  o RDO de campo sincronizar entre vários celulares.
+O app funciona local (dados no navegador) por padrão. Para **sincronizar RDOs e lançamentos
+entre vários celulares via Google Sheets** (leitura por CSV publicado, gravação por Apps
+Script/JSONP com fila offline e login por usuário), há o backend pronto:
+- `Code.gs` — cole no Apps Script da planilha.
+- `SETUP-BACKEND.md` — passo a passo para montar a planilha, publicar os CSVs, fazer o deploy
+  e colar as 3 URLs no `CONFIG` do `index.html`.
+
+Enquanto o `CONFIG.appsScript` estiver vazio, o backend fica desligado e nada muda.
+
+## O que fica para uma próxima versão
+
 - Análise com IA (Gemini).
 - Exportação de RDO/medição em PDF no modelo oficial.
 
