@@ -1,0 +1,908 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Gestor — Controle de Obras</title>
+<link rel="icon" href="assets/favicon.svg">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1a1712">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" media="print" onload="this.media='all'">
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap"></noscript>
+<style>
+:root{
+  --bg:#f5f3ef; --bg-2:#eeebe5; --surface:#fffdfa; --surface-2:#f3f0ea;
+  --border:#e4e0d8; --border-strong:#ccc8bf;
+  --text:#1a1712; --text-2:#3a3530; --muted:#8a8378;
+  --accent:#1f6f4a; --accent-2:#2a8c5f; --accent-soft:#e5f0ea;
+  --azul:#2b5f8c; --amarelo:#b8860b; --vermelho:#a8342a;
+  --r:14px; --r-sm:9px;
+  --shadow:0 1px 2px rgba(0,0,0,.04),0 8px 24px rgba(0,0,0,.05);
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#16130f; --bg-2:#1c1813; --surface:#211d17; --surface-2:#2a251e;
+    --border:#332d24; --border-strong:#463f33;
+    --text:#f2ede3; --text-2:#d8d1c4; --muted:#948b7c;
+    --accent:#3fae74; --accent-2:#4cc487; --accent-soft:#1c3328;
+    --azul:#6ba3d6; --amarelo:#d9a533; --vermelho:#d9645a;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.35);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#16130f; --bg-2:#1c1813; --surface:#211d17; --surface-2:#2a251e;
+  --border:#332d24; --border-strong:#463f33;
+  --text:#f2ede3; --text-2:#d8d1c4; --muted:#948b7c;
+  --accent:#3fae74; --accent-2:#4cc487; --accent-soft:#1c3328;
+  --azul:#6ba3d6; --amarelo:#d9a533; --vermelho:#d9645a;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.35);
+}
+:root[data-theme="light"]{
+  --bg:#f5f3ef; --bg-2:#eeebe5; --surface:#fffdfa; --surface-2:#f3f0ea;
+  --border:#e4e0d8; --border-strong:#ccc8bf;
+  --text:#1a1712; --text-2:#3a3530; --muted:#8a8378;
+  --accent:#1f6f4a; --accent-2:#2a8c5f; --accent-soft:#e5f0ea;
+  --azul:#2b5f8c; --amarelo:#b8860b; --vermelho:#a8342a;
+  --shadow:0 1px 2px rgba(0,0,0,.04),0 8px 24px rgba(0,0,0,.05);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{font-family:'Space Grotesk',system-ui,sans-serif;background:var(--bg);color:var(--text);
+  font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+.mono{font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums}
+a{color:var(--accent);text-decoration:none}
+button{font-family:inherit}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:var(--border-strong);border-radius:6px}
+
+.app{display:flex;min-height:100vh}
+.side{width:230px;flex-shrink:0;background:var(--surface);border-right:1px solid var(--border);
+  display:flex;flex-direction:column;position:sticky;top:0;height:100vh;overflow-y:auto}
+.brand{padding:18px 18px 14px;display:flex;align-items:center;gap:11px;border-bottom:1px solid var(--border);cursor:pointer}
+.brand img{width:34px;height:34px;border-radius:8px;object-fit:contain;background:#fff}
+.brand-t{font-weight:700;font-size:15px;letter-spacing:-.01em;line-height:1.15}
+.brand-s{font-size:11px;color:var(--muted);font-weight:500}
+.nav{padding:12px 10px;flex:1}
+.nav-label{font-size:10.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);padding:12px 10px 6px}
+.nav-item{display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:var(--r-sm);
+  cursor:pointer;color:var(--text-2);font-weight:500;font-size:14px;transition:all .15s;margin:1px 0}
+.nav-item:hover{background:var(--surface-2);color:var(--text)}
+.nav-item.active{background:var(--accent-soft);color:var(--accent);font-weight:600}
+.nav-ic{width:20px;text-align:center;font-size:16px}
+.nav-badge{margin-left:auto;background:var(--border);color:var(--text-2);font-size:11px;font-weight:700;
+  padding:1px 7px;border-radius:20px;min-width:20px;text-align:center}
+.side-foot{padding:12px;border-top:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+
+.main{flex:1;min-width:0;display:flex;flex-direction:column}
+.topbar{position:sticky;top:0;z-index:5;background:var(--bg);border-bottom:1px solid var(--border);
+  padding:16px 26px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.topbar h1{font-size:19px;font-weight:700;letter-spacing:-.02em}
+.topbar .sub{font-size:12.5px;color:var(--muted)}
+.content{padding:24px 26px 60px;max-width:1180px;width:100%}
+
+.btn{display:inline-flex;align-items:center;gap:7px;padding:9px 15px;border-radius:var(--r-sm);
+  border:1px solid var(--border-strong);background:var(--surface);color:var(--text);
+  font-weight:600;font-size:13.5px;cursor:pointer;transition:all .15s}
+.btn:hover{background:var(--surface-2);transform:translateY(-1px)}
+.btn-pri{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn-pri:hover{background:var(--accent-2);border-color:var(--accent-2)}
+.btn-sm{padding:6px 11px;font-size:12.5px}
+.btn-ghost{background:transparent;border-color:transparent;color:var(--text-2)}
+.btn-ghost:hover{background:var(--surface-2)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:20px;
+  font-size:12px;font-weight:600;background:var(--surface-2);color:var(--text-2);border:1px solid var(--border)}
+.chip.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+
+.grid{display:grid;gap:16px}
+.g2{grid-template-columns:repeat(2,1fr)}
+.g3{grid-template-columns:repeat(3,1fr)}
+.g4{grid-template-columns:repeat(4,1fr)}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--shadow)}
+.card-h{padding:15px 20px 12px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.card-t{font-size:14px;font-weight:700}
+.card-st{font-size:12px;color:var(--muted);font-weight:400;margin-top:2px}
+.card-b{padding:18px 20px}
+.kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:17px 19px;box-shadow:var(--shadow)}
+.kpi-l{font-size:11.5px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.kpi-v{font-size:30px;font-weight:700;letter-spacing:-.03em;font-family:'JetBrains Mono',monospace;margin-top:5px;line-height:1.05}
+.kpi-s{font-size:12px;color:var(--muted);margin-top:4px}
+.bar{height:6px;background:var(--border);border-radius:4px;margin-top:11px;overflow:hidden}
+.bar>i{display:block;height:100%;background:var(--accent);border-radius:4px;transition:width .5s}
+
+table.t{width:100%;border-collapse:collapse;font-size:13px}
+table.t th{text-align:left;padding:10px 12px;font-size:11px;font-weight:700;text-transform:uppercase;
+  letter-spacing:.04em;color:var(--muted);border-bottom:1px solid var(--border);background:var(--surface-2);position:sticky;top:0}
+table.t td{padding:9px 12px;border-bottom:1px solid var(--border);vertical-align:top}
+table.t tr:hover td{background:var(--surface-2)}
+.num{text-align:right;font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;white-space:nowrap}
+.tbl-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:var(--r);background:var(--surface)}
+.minibar{height:5px;width:120px;background:var(--border);border-radius:3px;overflow:hidden;display:inline-block;vertical-align:middle}
+.minibar>i{display:block;height:100%;background:var(--accent)}
+/* cena 3D da rua (avenida em perspectiva, barras por estaca) — estilo Teotônio */
+.scene-3d{position:relative;height:236px;border-radius:12px;overflow:hidden;perspective:1200px;perspective-origin:50% 32%;
+  background:radial-gradient(ellipse at 50% 24%, rgba(63,174,116,.12) 0%, transparent 60%),radial-gradient(ellipse at 50% 88%, rgba(0,0,0,.6) 0%, transparent 70%),linear-gradient(180deg,#0d0b08,#181410 55%,#0d0b08)}
+.scene-3d::after{content:'';position:absolute;left:0;right:0;top:30%;height:1px;background:linear-gradient(90deg,transparent,rgba(63,174,116,.4) 50%,transparent);box-shadow:0 0 22px rgba(63,174,116,.28);pointer-events:none}
+.scene-3d-stage{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;transform-style:preserve-3d;animation:stg 2.2s .1s cubic-bezier(.22,.7,.2,1) both}
+@keyframes stg{0%{transform:rotateX(0deg) translateY(52px) scale(.85);opacity:0}15%{opacity:1}60%{transform:rotateX(40deg) rotateZ(-4deg) scale(1)}100%{transform:rotateX(54deg) rotateZ(-7deg) scale(1);opacity:1}}
+.road-3d{position:relative;width:82%;height:124px;transform-style:preserve-3d;border-radius:2px;
+  background:repeating-linear-gradient(90deg,rgba(255,255,255,.26) 0 14px,transparent 14px 30px) 0 50%/100% 2px no-repeat,linear-gradient(180deg,#28241c,#15110d);
+  border-top:1px solid rgba(255,255,255,.16);border-bottom:1px solid rgba(255,255,255,.16);box-shadow:inset 0 0 60px rgba(0,0,0,.72),0 6px 26px rgba(0,0,0,.55)}
+.road-3d::before,.road-3d::after{content:'';position:absolute;top:0;bottom:0;width:54px;pointer-events:none;z-index:2}
+.road-3d::before{left:0;background:linear-gradient(90deg,#15110d,transparent)}
+.road-3d::after{right:0;background:linear-gradient(-90deg,#15110d,transparent)}
+.bar3d{position:absolute;bottom:50%;width:5px;margin-left:-2.5px;transform-origin:bottom center;transform:rotateX(-54deg);border-radius:1px 1px 0 0;
+  background:linear-gradient(180deg,#8ff0c0 0%,#3fae74 55%,#1c6644 100%);box-shadow:0 0 9px rgba(63,174,116,.55);animation:barG .8s cubic-bezier(.34,1.4,.64,1) backwards}
+.bar3d.dim{background:linear-gradient(180deg,rgba(255,255,255,.24),rgba(255,255,255,.04));box-shadow:none;width:3px;margin-left:-1.5px}
+.bar3d:hover{width:8px;margin-left:-4px;box-shadow:0 0 16px rgba(76,196,135,.9);z-index:6}
+@keyframes barG{from{transform:rotateX(-54deg) scaleY(0);opacity:0}to{transform:rotateX(-54deg) scaleY(1);opacity:1}}
+.est-tick{position:absolute;bottom:calc(50% - 16px);font:600 8px 'JetBrains Mono',monospace;color:rgba(255,255,255,.4);transform:translateX(-50%) rotateX(-54deg);transform-origin:bottom center;z-index:1}
+.scene-cap{position:absolute;left:16px;right:16px;bottom:12px;display:flex;justify-content:space-between;align-items:baseline;font-size:12.5px;font-weight:600;color:rgba(255,255,255,.9);z-index:4;animation:capF .6s 1.7s both}
+.scene-cap .mono{color:var(--accent-2)}
+.scene-lgd{position:absolute;top:12px;right:14px;display:flex;gap:12px;font:600 9px 'JetBrains Mono',monospace;color:rgba(255,255,255,.55);z-index:4;animation:capF .6s 1.9s both}
+.scene-lgd i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px;vertical-align:middle}
+@keyframes capF{from{opacity:0}to{opacity:1}}
+@media (prefers-reduced-motion:reduce){.scene-3d-stage,.bar3d{animation:none}.scene-3d-stage{transform:rotateX(54deg) rotateZ(-7deg)}}
+@media(max-width:700px){.scene-3d{height:200px}.road-3d{width:90%;height:96px}}
+/* mapa de estacas */
+.est-cells{display:flex;gap:2px}
+.est-cell{flex:1;height:24px;border-radius:3px;min-width:5px;transition:background .3s}
+
+input,select,textarea{font-family:inherit;font-size:14px;padding:9px 11px;border:1px solid var(--border-strong);
+  border-radius:var(--r-sm);background:var(--bg);color:var(--text);width:100%;outline:none;transition:border .15s}
+input:focus,select:focus,textarea:focus{border-color:var(--accent)}
+label.fl{font-size:12px;font-weight:600;color:var(--text-2);display:block;margin-bottom:5px}
+.field{margin-bottom:14px}
+.row{display:flex;gap:12px;flex-wrap:wrap}
+.row>.field{flex:1;min-width:150px}
+
+.obras-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:18px}
+.obra-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:22px;
+  cursor:pointer;transition:all .2s;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:14px}
+.obra-card:hover{transform:translateY(-3px);border-color:var(--accent)}
+.obra-card.add{border-style:dashed;align-items:center;justify-content:center;color:var(--muted);min-height:180px;text-align:center;cursor:default}
+.obra-tag{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--accent)}
+.obra-nome{font-size:18px;font-weight:700;letter-spacing:-.02em;line-height:1.25}
+.obra-meta{font-size:12.5px;color:var(--muted)}
+.obra-foot{display:flex;justify-content:space-between;align-items:flex-end;margin-top:auto;gap:12px}
+
+.empty{text-align:center;color:var(--muted);padding:40px 20px}
+.empty .ic{font-size:38px;opacity:.5;margin-bottom:10px}
+.hide{display:none!important}
+
+@media (max-width:860px){
+  .app{flex-direction:column}
+  .side{width:100%;height:auto;position:sticky;top:0;flex-direction:row;align-items:center;overflow-x:auto;overflow-y:hidden;border-right:none;border-bottom:1px solid var(--border);z-index:10}
+  .brand{border-bottom:none;border-right:1px solid var(--border);flex-shrink:0;padding:12px 14px}
+  .brand-txt{display:none}
+  .nav{display:flex;padding:6px;flex:1;gap:2px}
+  .nav-label{display:none}
+  .nav-item{flex-direction:column;gap:2px;padding:7px 12px;font-size:10.5px;white-space:nowrap;flex-shrink:0}
+  .nav-badge{position:absolute;margin:0;transform:translate(14px,-6px)}
+  .side-foot{border-top:none;border-left:1px solid var(--border);flex-shrink:0}
+  .content{padding:18px 15px 60px}
+  .topbar{padding:13px 15px}
+  .g2,.g3,.g4{grid-template-columns:1fr}
+  .g4{grid-template-columns:repeat(2,1fr)}
+  .proj-wrap{flex-direction:column}
+  .proj-list{width:100%!important}
+}
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:200;display:flex;align-items:center;justify-content:center;padding:20px;animation:capF .2s}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);max-width:540px;width:100%;max-height:82vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.45)}
+.modal-h{padding:15px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:12px;position:sticky;top:0;background:var(--surface);z-index:1}
+.toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--text);
+  color:var(--bg);padding:12px 22px;border-radius:30px;font-weight:600;font-size:13.5px;z-index:100;
+  box-shadow:0 10px 30px rgba(0,0,0,.25);transition:transform .3s;max-width:90vw}
+.toast.show{transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script src="vendor/pdfjs/pdf.min.js"></script>
+<script src="dados/ruas-de-terra.js"></script>
+<script src="dados/teotonio-vilela.js"></script>
+<script src="dados/_index.js"></script>
+<script>
+/* ============================================================
+   Gestor — Controle de Obras (estático, multi-obra, localStorage)
+   Modelo FÍSICO: serviços com quantidade/unidade. Sem valores (R$).
+   ============================================================ */
+'use strict';
+const OBRAS = window.OBRAS || {};
+const ORDEM = (window.OBRAS_ORDEM || Object.keys(OBRAS)).filter(id => OBRAS[id]);
+const MESES = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+const ICONE = {1:'▣',2:'▤',3:'▥',4:'✖',5:'◇',6:'✎',7:'≈',8:'⛰'};
+const FUNCOES = ['Encarregado','Pedreiro','Servente','Operador de máquina','Motorista','Carpinteiro','Armador','Sinalizador','Auxiliar geral','Topógrafo','Vigia','Ajudante'];
+const EQUIPS = ['Retroescavadeira','Escavadeira hidráulica','Pá-carregadeira','Motoniveladora','Rolo compactador','Placa vibratória','Caminhão basculante','Caminhão pipa','Vibroacabadora','Betoneira','Prancha/Guincho','Mini-carregadeira'];
+const CLIMA_OPC = ['Bom','Nublado','Chuva fraca','Chuva forte','Impraticável'];
+
+const estado = { obraId:null, tela:'home', filtroRua:'Todas', mesMed:'', diarioData:'', projSel:'', painelFrente:'Todas', painelMes:'Todos' };
+
+const el = id => document.getElementById(id);
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function fmtNum(n,d=2){return (n||0).toLocaleString('pt-BR',{minimumFractionDigits:d,maximumFractionDigits:d});}
+function fmtBRL(n){return 'R$ '+(n||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});}
+function fmtQtd(n){return (n||0).toLocaleString('pt-BR',{maximumFractionDigits:2});}
+function fmtPct(n,d=1){return (n||0).toLocaleString('pt-BR',{minimumFractionDigits:d,maximumFractionDigits:d})+'%';}
+function hoje(){return new Date().toISOString().slice(0,10);}
+function mesLabel(iso){const[a,m]=iso.split('-');return MESES[(+m)-1]+'/'+a.slice(2);}
+function addMeses(iso,n){const d=new Date(iso+'T00:00:00');d.setMonth(d.getMonth()+n);return d.toISOString().slice(0,10);}
+function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
+function clamp(n){return Math.max(0,Math.min(100,n));}
+
+/* ---------- storage ---------- */
+function keyL(obraId){return 'gestor:rdo:'+obraId;}
+function getLanc(obraId){try{return JSON.parse(localStorage.getItem(keyL(obraId))||'[]');}catch(e){return[];}}
+function setLanc(obraId,arr){localStorage.setItem(keyL(obraId),JSON.stringify(arr));}
+function getDiarios(obraId){try{return JSON.parse(localStorage.getItem('gestor:diario:'+obraId)||'[]');}catch(e){return[];}}
+function setDiarios(obraId,arr){localStorage.setItem('gestor:diario:'+obraId,JSON.stringify(arr));}
+function diarioDoDia(obraId,dataISO){return getDiarios(obraId).find(d=>d.dataISO===dataISO)||null;}
+
+/* ---------- domínio (físico) ---------- */
+function obra(){return OBRAS[estado.obraId];}
+function frenteNome(o,id){const f=(o.frentes||[]).find(x=>x.id===id);return f?f.nome:('Frente '+id);}
+function estacaTxt(l){const a=(l.estIni||'').trim(),b=(l.estFim||'').trim();if(!a&&!b)return '';return (b&&b!==a)?(a+' a '+b):(a||b);}
+function skey(rua,capId,servico){return rua+'§'+capId+'§'+servico;}
+function skeyS(s){return skey(s.rua,s.capId,s.servico);}
+// qtd acumulada por serviço
+function avancoServ(o){
+  const m={}; getLanc(o.id).forEach(l=>{if(l.avulso)return;const k=skey(l.rua,l.capId,l.servico);m[k]=(m[k]||0)+(+l.qtd||0);});
+  return m;
+}
+function pctServ(s,av){return s.qtdPrev? (av[skeyS(s)]||0)/s.qtdPrev*100 : 0;}
+// média simples de % (índice físico não-ponderado)
+function mediaPct(servicos,av){
+  if(!servicos.length)return 0;
+  return servicos.reduce((a,s)=>a+clamp(pctServ(s,av)),0)/servicos.length;
+}
+// malha de meses da obra
+function pontos(o){
+  const n=o.prazoMeses||(o.cronograma[0]?.pctMes.length||6); const p=[];
+  for(let m=0;m<n;m++){const iso=addMeses(o.inicioISO,m);p.push({idx:m,mes:iso.slice(0,7),label:mesLabel(iso)});}
+  return p;
+}
+// curva prevista (% acumulado, média simples das frentes) — usa % do cronograma
+function curvaPrev(o,pts){
+  const fr=o.cronograma||[]; if(!fr.length)return pts.map(()=>0);
+  return pts.map((_,m)=>{
+    const acc=fr.map(c=>clamp(c.pctMes.slice(0,m+1).reduce((a,b)=>a+b,0)));
+    return acc.reduce((a,b)=>a+b,0)/acc.length;
+  });
+}
+// curva realizada (% acumulado por mês, média simples dos serviços)
+function curvaReal(o,pts){
+  const serv=o.servicos||[]; const lanc=getLanc(o.id);
+  return pts.map(p=>{
+    const cum={};
+    lanc.forEach(l=>{if(l.dataISO.slice(0,7)<=p.mes){const k=skey(l.rua,l.capId,l.servico);cum[k]=(cum[k]||0)+(+l.qtd||0);}});
+    if(!serv.length)return 0;
+    return serv.reduce((a,s)=>a+clamp(s.qtdPrev?(cum[skeyS(s)]||0)/s.qtdPrev*100:0),0)/serv.length;
+  });
+}
+
+/* ============================================================ RENDER */
+const NAV=[
+  {grupo:'Análise',itens:[
+    {id:'executivo',ic:'◆',t:'Painel Executivo'},
+    {id:'servicos',ic:'▤',t:'Serviços'},
+    {id:'medicao',ic:'⌗',t:'Medição Física'},
+  ]},
+  {grupo:'Operação',itens:[
+    {id:'rdo',ic:'⊕',t:'Lançar serviços'},
+    {id:'diario',ic:'📋',t:'Diário de Obra',badge:o=>getDiarios(o.id).length},
+    {id:'historico',ic:'≡',t:'Histórico',badge:o=>getLanc(o.id).length},
+  ]},
+  {grupo:'Documentos',itens:[
+    {id:'projetos',ic:'📐',t:'Projetos',badge:o=>(o.projetos||[]).length},
+  ]},
+];
+const TITULOS={executivo:'Painel Executivo',servicos:'Serviços',medicao:'Medição Física',rdo:'Lançar serviços',diario:'Diário de Obra',historico:'Histórico',projetos:'Projetos'};
+
+function render(){
+  const app=el('app');
+  if(estado.tela==='home'||!estado.obraId){app.innerHTML=viewHome();bind();return;}
+  const o=obra();
+  app.innerHTML=`<div class="app">${sidebar(o)}<div class="main">${topbar(o)}<div class="content">${viewTela(o)}</div></div></div>`;
+  bind();
+}
+function sidebar(o){
+  return `<aside class="side">
+    <div class="brand" onclick="irHome()"><img src="assets/logo_gestor.png" alt="Gestor">
+      <div class="brand-txt"><div class="brand-t">Gestor</div><div class="brand-s">Controle de Obras</div></div></div>
+    <nav class="nav">${NAV.map(g=>`<div class="nav-label">${g.grupo}</div>${g.itens.map(it=>{
+      const b=it.badge?it.badge(o):0;
+      return `<div class="nav-item ${estado.tela===it.id?'active':''}" onclick="ir('${it.id}')">
+        <span class="nav-ic">${it.ic}</span><span class="nav-txt">${it.t}</span>${b?`<span class="nav-badge">${b}</span>`:''}</div>`;
+    }).join('')}`).join('')}</nav>
+    <div class="side-foot"><button class="btn btn-sm btn-ghost" onclick="irHome()">← Obras</button>
+      <button class="btn btn-sm btn-ghost" onclick="toggleTema()" title="Tema">◐</button></div></aside>`;
+}
+function topbar(o){
+  return `<header class="topbar"><div style="flex:1"><h1>${esc(TITULOS[estado.tela]||'')}</h1>
+    <div class="sub">${esc(o.nome)} · ${esc(o.contrato)}</div></div></header>`;
+}
+function viewTela(o){
+  switch(estado.tela){
+    case 'servicos':return viewServicos(o);
+    case 'medicao':return viewMedicao(o);
+    case 'rdo':return viewRDO(o);
+    case 'diario':return viewDiario(o);
+    case 'projetos':return viewProjetos(o);
+    case 'historico':return viewHistorico(o);
+    default:return viewExecutivo(o);
+  }
+}
+
+/* ---------- HOME ---------- */
+function viewHome(){
+  const cards=ORDEM.map(id=>{
+    const o=OBRAS[id];
+    if(o.externo){
+      return `<div class="obra-card" onclick="abrirExterno('${esc(o.url)}')" style="border-style:dashed">
+        <div><div class="obra-tag">${esc(o.contrato)}</div><div class="obra-nome">${esc(o.nome)} <span style="font-size:14px">↗</span></div>
+        <div class="obra-meta">${esc(o.local||'')}</div></div>
+        <div class="chip" style="align-self:flex-start;background:var(--accent-soft);color:var(--accent);border-color:transparent">Sistema próprio (outro repositório)</div>
+        ${o.valorGlobal?`<div style="display:flex;justify-content:space-between;align-items:baseline;border-top:1px solid var(--border);padding-top:11px">
+          <span class="obra-meta">Valor total</span><span class="mono" style="font-weight:700;font-size:15px">${fmtBRL(o.valorGlobal)}</span></div>`:''}
+        <div class="obra-foot"><span class="obra-meta">Controle Integrado (app dedicado)</span>
+        <span class="chip on">Abrir ↗</span></div></div>`;
+    }
+    const av=avancoServ(o); const pf=mediaPct(o.servicos||[],av);
+    return `<div class="obra-card" onclick="abrirObra('${id}')">
+      <div><div class="obra-tag">${esc(o.contrato)}</div><div class="obra-nome">${esc(o.nome)}</div>
+      <div class="obra-meta">${esc(o.local||'')}</div></div>
+      <div><div class="kpi-l">Avanço físico médio</div>
+      <div class="mono" style="font-size:26px;font-weight:700;letter-spacing:-.03em">${fmtPct(pf)}</div></div>
+      <div class="bar"><i style="width:${clamp(pf).toFixed(1)}%"></i></div>
+      ${o.valorGlobal?`<div style="display:flex;justify-content:space-between;align-items:baseline;border-top:1px solid var(--border);padding-top:11px">
+        <span class="obra-meta">Valor total</span><span class="mono" style="font-weight:700;font-size:15px">${fmtBRL(o.valorGlobal)}</span></div>`:''}
+      <div class="obra-foot"><span class="obra-meta">Prazo ${o.prazoMeses} meses · ${(o.servicos||[]).length} serviços</span>
+      <span class="chip">${(o.frentes||[]).length} frentes</span></div></div>`;
+  }).join('');
+  return `<div class="app"><div class="main" style="width:100%">
+    <header class="topbar">
+      <img src="assets/logo_gestor.png" style="width:40px;height:40px;border-radius:9px;background:#fff;object-fit:contain">
+      <div style="flex:1"><h1>Gestor — Controle de Obras</h1><div class="sub">Selecione uma obra para acompanhar</div></div>
+      <button class="btn btn-sm btn-ghost" onclick="toggleTema()" title="Tema">◐</button></header>
+    <div class="content"><div class="obras-grid">${cards}
+      <div class="obra-card add"><div style="font-size:30px;margin-bottom:8px">＋</div>
+        <div style="font-weight:600;color:var(--text-2)">Adicionar nova obra</div>
+        <div class="obra-meta" style="margin-top:6px">Crie um arquivo em <b>dados/</b> e registre em <b>_index.js</b>.<br>Passo a passo no README.</div></div>
+    </div></div></div></div>`;
+}
+
+/* ---------- PAINEL EXECUTIVO ---------- */
+function viewExecutivo(o){
+  const serv=o.servicos||[]; const av=avancoServ(o);
+  const pf=mediaPct(serv,av);
+  const concl=serv.filter(s=>pctServ(s,av)>=99.95).length;
+  const inic=serv.filter(s=>pctServ(s,av)>0).length;
+  const fimISO=addMeses(o.inicioISO,o.prazoMeses);
+  const tot=new Date(fimISO)-new Date(o.inicioISO);
+  const pctPrazo=clamp(tot?(new Date()-new Date(o.inicioISO))/tot*100:0);
+  const pts=pontos(o); const prev=curvaPrev(o,pts); const real=curvaReal(o,pts);
+  const idxHoje=pts.filter(p=>p.mes<=hoje().slice(0,7)).length-1;
+  const desvio=idxHoje>=0?real[idxHoje]-prev[idxHoje]:0;
+  const kpis=[
+    {l:'Avanço físico médio',v:fmtPct(pf),s:'média dos '+serv.length+' serviços',bar:pf},
+    {l:'Prazo decorrido',v:Math.round(pctPrazo)+'%',s:mesLabel(o.inicioISO)+' → '+mesLabel(fimISO),bar:pctPrazo},
+    {l:'Serviços iniciados',v:inic+'/'+serv.length,s:concl+' concluídos'},
+    {l:'Desvio vs previsto',v:(desvio>=0?'+':'')+fmtPct(desvio),s:desvio>=0?'adiantado/no prazo':'atrasado'},
+  ];
+  const linhasFrente=(o.frentes||[]).map(f=>{
+    const sf=serv.filter(s=>s.capId===f.id); if(!sf.length)return '';
+    const p=mediaPct(sf,av); const ci=sf.filter(s=>pctServ(s,av)>=99.95).length;
+    return `<tr><td>${ICONE[f.id]||'•'} ${esc(f.nome)}</td><td class="num">${sf.length}</td>
+      <td class="num">${ci}</td><td><span class="minibar"><i style="width:${clamp(p).toFixed(1)}%"></i></span></td>
+      <td class="num">${fmtPct(p)}</td></tr>`;
+  }).join('');
+  return `
+  <div class="grid g4" style="margin-bottom:18px">
+    ${kpis.map(k=>`<div class="kpi"><div class="kpi-l">${k.l}</div><div class="kpi-v">${k.v}</div>
+      <div class="kpi-s">${k.s}</div>${k.bar!=null?`<div class="bar"><i style="width:${clamp(k.bar).toFixed(1)}%"></i></div>`:''}</div>`).join('')}
+  </div>
+  <div class="grid g2" style="grid-template-columns:1.3fr 1fr;margin-bottom:18px">
+    <div class="card"><div class="card-h"><div><div class="card-t">Curva S — Avanço físico</div>
+      <div class="card-st">Previsto (cronograma) × Realizado (RDO) — % médio acumulado</div></div>
+      <div style="display:flex;gap:14px;font-size:11.5px;font-weight:600">
+        <span style="color:var(--azul)">■ Previsto</span><span style="color:var(--accent)">■ Realizado</span></div></div>
+      <div class="card-b">${curvaSVG(pts,prev,real)}</div></div>
+    <div class="card"><div class="card-h"><div class="card-t">Avanço por rua</div></div><div class="card-b">
+      ${o.ruas.map(ru=>{const sr=serv.filter(s=>s.rua===ru);const p=mediaPct(sr,av);
+        return `<div style="margin-bottom:16px"><div style="display:flex;justify-content:space-between;font-size:13.5px;font-weight:600;margin-bottom:6px">
+          <span>${esc(ru)}</span><span class="mono">${fmtPct(p)}</span></div>
+          <div class="bar" style="margin:0"><i style="width:${clamp(p).toFixed(1)}%"></i></div>
+          <div class="kpi-s" style="margin-top:5px">${sr.length} serviços</div></div>`;}).join('')}
+      ${getLanc(o.id).length===0?`<div class="empty" style="padding:14px"><div class="ic">◔</div>Nenhum apontamento ainda. Registre no <b>Lançar serviços</b>.</div>`:''}
+    </div></div>
+  </div>
+  <div class="card"><div class="card-h"><div class="card-t">Avanço por frente de serviço</div>
+    <div class="card-st">${(o.frentes||[]).length} frentes · % físico médio</div></div>
+    <div class="tbl-wrap" style="border:none"><table class="t">
+      <thead><tr><th>Frente</th><th class="num">Serviços</th><th class="num">Concluídos</th><th>Avanço</th><th class="num">%</th></tr></thead>
+      <tbody>${linhasFrente}</tbody></table></div></div>
+  ${ruasAnim(o)}
+  ${mapaEstacas(o)}`;
+}
+/* cenas 3D das ruas (avenida em perspectiva, barras por estaca) */
+function nEstacas(o,rua){return (o.estacas&&o.estacas[rua])||12;}
+function ativPorEstaca(o,rua,lf){
+  const n=nEstacas(o,rua); const ls=lf.filter(l=>l.rua===rua); const v=[];
+  for(let i=1;i<=n;i++){let c=0;ls.forEach(l=>{let a=parseEst(l.estIni),b=parseEst(l.estFim);if(a==null&&b==null)return;if(a==null)a=b;if(b==null)b=a;if(i>=Math.min(a,b)&&i<=Math.max(a,b))c++;});v.push(c);}
+  return v;
+}
+function cena3D(o,rua,ri,lf,maxG){
+  const n=nEstacas(o,rua); const val=ativPorEstaca(o,rua,lf);
+  const bars=val.map((v,idx)=>{
+    const left=n<=1?50:(idx/(n-1))*100;
+    const h=v===0?9:Math.round(18+(v/maxG)*80);
+    const tick=(idx===0||idx===n-1||(idx+1)%5===0)?`<div class="est-tick" style="left:${left}%">E${idx+1}</div>`:'';
+    return `<div class="bar3d ${v===0?'dim':''}" onclick="detalheEstaca(${ri},${idx+1})" style="left:${left}%;height:${h}px;animation-delay:${(idx*0.045+0.3).toFixed(2)}s;cursor:pointer" title="Estaca E${idx+1}: ${v} serviço(s) — clique p/ detalhar"></div>${tick}`;
+  }).join('');
+  const ativas=val.filter(v=>v>0).length;
+  return `<div><div class="scene-3d">
+    <div class="scene-lgd"><span><i style="background:linear-gradient(180deg,#8ff0c0,#1c6644)"></i>com avanço</span><span><i style="background:rgba(255,255,255,.24)"></i>sem avanço</span></div>
+    <div class="scene-3d-stage"><div class="road-3d">${bars}</div></div>
+    <div class="scene-cap"><span>${esc(rua)}</span><span class="mono">${ativas}/${n} estacas com avanço</span></div>
+  </div></div>`;
+}
+function ruasAnim(o){
+  const lf=lancPainel(o);
+  const maxG=Math.max(1,...o.ruas.map(r=>Math.max(0,...ativPorEstaca(o,r,lf))));
+  return `<div class="card" style="margin-top:18px"><div class="card-h"><div><div class="card-t">Ruas — avanço físico por estaca</div>
+    <div class="card-st">altura da barra = serviços executados no trecho de cada estaca · clique numa estaca para detalhar</div></div></div>
+    <div class="card-b"><div class="grid g2">${o.ruas.map((rua,ri)=>cena3D(o,rua,ri,lf,maxG)).join('')}</div></div></div>`;
+}
+function detalheEstaca(ri,i){
+  const o=obra(); const rua=o.ruas[ri]; if(!rua)return;
+  const ls=lancPainel(o).filter(l=>{if(l.rua!==rua)return false;let a=parseEst(l.estIni),b=parseEst(l.estFim);if(a==null&&b==null)return false;if(a==null)a=b;if(b==null)b=a;return i>=Math.min(a,b)&&i<=Math.max(a,b);});
+  const body=ls.length?ls.sort((a,b)=>a.capId-b.capId).map(l=>`<div style="padding:11px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;gap:12px">
+      <div><div style="font-weight:600;font-size:14px">${esc(l.servico)} ${l.avulso?'<span class="chip" style="padding:0 6px;font-size:10px">avulso</span>':''}</div>
+      <div class="kpi-s">${esc(frenteNome(o,l.capId))} · ${new Date(l.dataISO+'T00:00:00').toLocaleDateString('pt-BR')} · trecho ${esc(estacaTxt(l))}</div></div>
+      <div class="num" style="font-weight:700">${fmtQtd(l.qtd)} ${esc(l.un)}</div></div>`).join('')
+    :`<div class="empty" style="padding:30px"><div class="ic">◔</div>Nenhum serviço lançado nesta estaca${(estado.painelFrente!=='Todas'||estado.painelMes!=='Todos')?' com os filtros atuais':''}.</div>`;
+  abrirModal(`Estaca E${i} — ${esc(rua)}`,`<div class="kpi-s" style="margin-bottom:4px">${ls.length} serviço(s) executado(s) no trecho da estaca</div>${body}`);
+}
+function abrirModal(titulo,html){
+  fecharModal();
+  const bg=document.createElement('div');bg.className='modal-bg';bg.id='modalBg';
+  bg.onclick=e=>{if(e.target===bg)fecharModal();};
+  bg.innerHTML=`<div class="modal"><div class="modal-h"><div class="card-t">${titulo}</div>
+    <button class="btn btn-sm btn-ghost" onclick="fecharModal()">✕</button></div>
+    <div style="padding:14px 20px 20px">${html}</div></div>`;
+  document.body.appendChild(bg);
+}
+function fecharModal(){const m=el('modalBg');if(m)m.remove();}
+/* mapa de avanço por estaca e rua (heatmap do RDO) + filtros */
+function parseEst(s){const m=String(s||'').match(/\d+/);return m?parseInt(m[0],10):null;}
+function lancPainel(o){
+  return getLanc(o.id).filter(l=>{
+    if(estado.painelFrente!=='Todas'&&String(l.capId)!==String(estado.painelFrente))return false;
+    if(estado.painelMes!=='Todos'&&l.dataISO.slice(0,7)!==estado.painelMes)return false;
+    return true;
+  });
+}
+function estacasRua(o,rua,lf){
+  const n=nEstacas(o,rua); const ls=lf.filter(l=>l.rua===rua); const segs=[];
+  for(let i=1;i<=n;i++){let c=0; ls.forEach(l=>{let a=parseEst(l.estIni),b=parseEst(l.estFim); if(a==null&&b==null)return; if(a==null)a=b; if(b==null)b=a; if(i>=Math.min(a,b)&&i<=Math.max(a,b))c++;}); segs.push({i,c});}
+  return {n,segs,total:ls.length};
+}
+function mapaEstacas(o){
+  const lf=lancPainel(o);
+  const meses=[...new Set(getLanc(o.id).map(l=>l.dataISO.slice(0,7)))].sort();
+  const filtros=`<div class="row" style="gap:10px;margin:0">
+    <div class="field" style="margin:0;max-width:240px"><label class="fl">Frente / serviço</label>
+      <select onchange="setPFrente(this.value)"><option value="Todas" ${estado.painelFrente==='Todas'?'selected':''}>Todas as frentes</option>
+      ${(o.frentes||[]).map(f=>`<option value="${f.id}" ${String(estado.painelFrente)===String(f.id)?'selected':''}>${f.id}. ${esc(f.nome)}</option>`).join('')}</select></div>
+    <div class="field" style="margin:0;max-width:180px"><label class="fl">Mês</label>
+      <select onchange="setPMes(this.value)"><option value="Todos" ${estado.painelMes==='Todos'?'selected':''}>Todos os meses</option>
+      ${meses.map(m=>`<option value="${m}" ${estado.painelMes===m?'selected':''}>${mesLabel(m+'-01')}</option>`).join('')}</select></div></div>`;
+  const rows=o.ruas.map((rua,ri)=>{
+    const em=estacasRua(o,rua,lf);
+    const cells=em.segs.map(s=>`<div class="est-cell" onclick="detalheEstaca(${ri},${s.i})" title="E${s.i}: ${s.c} serviço(s) — clique p/ detalhar" style="cursor:pointer;background:${s.c?`rgba(31,140,95,${(0.26+Math.min(s.c,4)*0.18).toFixed(2)})`:'var(--border)'}"></div>`).join('');
+    return `<div style="margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;font-size:13px;font-weight:600;margin-bottom:5px"><span>${esc(rua)}</span><span class="kpi-s">${em.total} lançamento(s)</span></div>
+      <div class="est-cells">${cells}</div>
+      <div style="display:flex;justify-content:space-between;font-size:10.5px;color:var(--muted);margin-top:3px"><span>E1</span><span>E${em.n}</span></div></div>`;
+  }).join('');
+  return `<div class="card" style="margin-top:18px"><div class="card-h"><div><div class="card-t">Mapa de avanço por estaca</div>
+    <div class="card-st">atividade por estaca em cada rua, a partir dos trechos lançados no RDO</div></div></div>
+    <div class="card-b">${filtros}<div style="margin-top:14px">${rows}</div>
+    <div class="kpi-s" style="margin-top:4px">Cor mais forte = mais serviços lançados naquela estaca (respeita os filtros).</div></div></div>`;
+}
+function curvaSVG(pts,prev,real){
+  const W=560,H=230,pad=34,pw=W-pad*2,ph=H-pad*2,n=pts.length;
+  if(!n)return '<div class="empty">Sem cronograma</div>';
+  const x=i=>pad+(n<=1?pw/2:pw*i/(n-1)), y=v=>pad+ph*(1-clamp(v)/100);
+  const gy=[0,25,50,75,100].map(g=>`<line x1="${pad}" y1="${y(g)}" x2="${W-pad}" y2="${y(g)}" stroke="var(--border)"/>
+    <text x="${pad-6}" y="${y(g)+4}" text-anchor="end" font-size="10" fill="var(--muted)">${g}%</text>`).join('');
+  const gx=pts.map((p,i)=>`<text x="${x(i)}" y="${H-pad+16}" text-anchor="middle" font-size="10" fill="var(--muted)">${p.label}</text>`).join('');
+  const lp=prev.map((v,i)=>`${x(i)},${y(v)}`).join(' '), lr=real.map((v,i)=>`${x(i)},${y(v)}`).join(' ');
+  const dp=prev.map((v,i)=>`<circle cx="${x(i)}" cy="${y(v)}" r="3" fill="var(--azul)"/>`).join('');
+  const dr=real.map((v,i)=>`<circle cx="${x(i)}" cy="${y(v)}" r="3" fill="var(--accent)"/>`).join('');
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto">${gy}${gx}
+    <polyline points="${lp}" fill="none" stroke="var(--azul)" stroke-width="2.2" stroke-dasharray="5 4"/>
+    <polyline points="${lr}" fill="none" stroke="var(--accent)" stroke-width="2.6"/>${dp}${dr}</svg>`;
+}
+
+/* ---------- SERVIÇOS ---------- */
+function viewServicos(o){
+  const ruas=['Todas',...o.ruas]; const av=avancoServ(o);
+  const filtro=(o.servicos||[]).filter(s=>estado.filtroRua==='Todas'||s.rua===estado.filtroRua);
+  const porCap={}; filtro.forEach(s=>{(porCap[s.capId]=porCap[s.capId]||[]).push(s);});
+  const blocos=(o.frentes||[]).filter(f=>porCap[f.id]).map(f=>{
+    const sf=porCap[f.id];
+    const linhas=sf.map(s=>{const q=av[skeyS(s)]||0;const p=pctServ(s,av);
+      return `<tr><td>${esc(s.servico)}${estado.filtroRua==='Todas'?`<div class="kpi-s">${esc(s.rua)}</div>`:''}</td>
+        <td class="num">${esc(s.un)}</td><td class="num">${fmtQtd(s.qtdPrev)}</td><td class="num">${fmtQtd(q)}</td>
+        <td><span class="minibar"><i style="width:${clamp(p).toFixed(1)}%"></i></span></td>
+        <td class="num" style="color:${p>=99.95?'var(--accent)':p>0?'var(--text)':'var(--muted)'}">${fmtPct(p)}</td></tr>`;}).join('');
+    return `<div class="card" style="margin-bottom:16px"><div class="card-h">
+      <div class="card-t">${ICONE[f.id]||'•'} ${f.id}. ${esc(f.nome)}</div>
+      <span class="chip">${sf.length} serviços · ${fmtPct(mediaPct(sf,av))}</span></div>
+      <div class="tbl-wrap" style="border:none"><table class="t">
+      <thead><tr><th>Serviço</th><th class="num">Un</th><th class="num">Prevista</th><th class="num">Executada</th><th>Avanço</th><th class="num">%</th></tr></thead>
+      <tbody>${linhas}</tbody></table></div></div>`;
+  }).join('');
+  return `<div class="row" style="margin-bottom:16px;align-items:center">
+    <div style="display:flex;gap:7px;flex-wrap:wrap">${ruas.map(r=>`<span class="chip ${estado.filtroRua===r?'on':''}" onclick="setRua('${esc(r)}')" style="cursor:pointer">${esc(r)}</span>`).join('')}</div>
+    <div style="margin-left:auto" class="chip">${filtro.length} serviços</div></div>
+    ${blocos||'<div class="empty">Sem serviços.</div>'}`;
+}
+
+/* ---------- CAMPO / RDO ---------- */
+function viewRDO(o){
+  return `<div class="grid g2" style="grid-template-columns:1fr 1fr;align-items:start">
+    <div class="card"><div class="card-h"><div class="card-t">⊕ Novo apontamento</div>
+      <div class="card-st">Produção física do dia por serviço</div></div><div class="card-b">
+      <div class="row"><div class="field"><label class="fl">Data</label><input type="date" id="fData" value="${hoje()}"></div>
+        <div class="field"><label class="fl">Rua</label><select id="fRua" onchange="atualizaServ()">
+          ${o.ruas.map(r=>`<option>${esc(r)}</option>`).join('')}</select></div></div>
+      <div class="field"><label class="fl">Frente</label><select id="fFrente" onchange="atualizaServ()">
+        <option value="">Todas as frentes</option>
+        ${(o.frentes||[]).map(f=>`<option value="${f.id}">${f.id}. ${esc(f.nome)}</option>`).join('')}
+        <option value="OUTRO">➕ Outro serviço (avulso)</option></select></div>
+      <div class="field" id="servBox"><label class="fl">Serviço</label><select id="fServ" onchange="mostraSaldo()"></select></div>
+      <div id="avulsoBox" style="display:none">
+        <div class="field"><label class="fl">Descrição do serviço avulso</label>
+          <input id="fAvDesc" placeholder="Ex.: apoio, remoção pontual, serviço não previsto..."></div>
+        <div class="field" style="max-width:140px"><label class="fl">Unidade</label>
+          <input id="fAvUn" placeholder="un, m², vb..."></div>
+        <div class="kpi-s" style="margin:-4px 0 12px;color:var(--amarelo)">⚠ Serviço avulso: fica registrado no histórico, mas <b>não conta no avanço nem na medição</b>.</div>
+      </div>
+      <div class="row"><div class="field"><label class="fl">Quantidade executada</label><input type="number" step="any" id="fQtd" placeholder="0,00" oninput="mostraSaldo()"></div>
+        <div class="field"><label class="fl">Efetivo (pessoas)</label><input type="number" step="1" id="fEfet" placeholder="0"></div></div>
+      <div id="saldoBox" class="kpi-s" style="margin:-6px 0 12px"></div>
+      <div class="row"><div class="field"><label class="fl">Estaca inicial</label><input id="fEstIni" placeholder="Ex.: E0"></div>
+        <div class="field"><label class="fl">Estaca final</label><input id="fEstFim" placeholder="Ex.: E12"></div></div>
+      <div class="field"><label class="fl">Clima</label><select id="fClima">
+        <option>Bom</option><option>Nublado</option><option>Chuva fraca</option><option>Chuva forte</option><option>Impraticável</option></select></div>
+      <div class="field"><label class="fl">Observações</label><textarea id="fObs" rows="2" placeholder="Trecho, estaca, ocorrências..."></textarea></div>
+      <button class="btn btn-pri" style="width:100%;justify-content:center" onclick="salvar()">Salvar apontamento</button>
+    </div></div>
+    <div class="card"><div class="card-h"><div class="card-t">Últimos apontamentos</div>
+      <div class="card-st">${getLanc(o.id).length} no total</div></div>
+      <div class="card-b" id="ultimos">${listaUltimos(o)}</div></div></div>`;
+}
+function listaUltimos(o){
+  const arr=getLanc(o.id).slice().sort((a,b)=>b.criadoEm-a.criadoEm).slice(0,8);
+  if(!arr.length)return `<div class="empty"><div class="ic">◔</div>Nada apontado ainda.</div>`;
+  return arr.map(l=>`<div style="padding:10px 0;border-bottom:1px solid var(--border);display:flex;gap:12px;align-items:flex-start">
+    <div style="flex:1"><div style="font-weight:600;font-size:13.5px">${esc(l.servico)} ${l.avulso?'<span class="chip" style="padding:1px 7px;font-size:10px;background:var(--surface-2)">avulso</span>':''}</div>
+    <div class="kpi-s">${new Date(l.dataISO+'T00:00:00').toLocaleDateString('pt-BR')} · ${esc(l.rua)}${estacaTxt(l)?' · '+esc(estacaTxt(l)):''} · ${esc(l.clima||'')}</div></div>
+    <div class="num" style="font-weight:700">${fmtQtd(l.qtd)} ${esc(l.un)}</div></div>`).join('');
+}
+
+/* ---------- MEDIÇÃO FÍSICA (produção do mês) ---------- */
+function viewMedicao(o){
+  const lanc=getLanc(o.id);
+  const meses=[...new Set(lanc.map(l=>l.dataISO.slice(0,7)))].sort();
+  if(!estado.mesMed&&meses.length)estado.mesMed=meses[meses.length-1];
+  const mes=estado.mesMed;
+  const doMes=lanc.filter(l=>l.dataISO.slice(0,7)===mes && !l.avulso);
+  const agg={};
+  doMes.forEach(l=>{const s=(o.servicos||[]).find(x=>x.rua===l.rua&&x.capId===l.capId&&x.servico===l.servico);
+    const k=skey(l.rua,l.capId,l.servico);(agg[k]=agg[k]||{s:s||{servico:l.servico,rua:l.rua,capId:l.capId,un:l.un,qtdPrev:0},q:0}).q+=(+l.qtd||0);});
+  const av=avancoServ(o);
+  const linhas=Object.values(agg).sort((a,b)=>a.s.capId-b.s.capId||a.s.servico.localeCompare(b.s.servico));
+  return `<div class="row" style="margin-bottom:16px;align-items:center">
+    <div class="field" style="max-width:220px;margin:0"><label class="fl">Mês</label>
+      <select onchange="setMes(this.value)">${meses.length?meses.map(m=>`<option value="${m}" ${m===mes?'selected':''}>${mesLabel(m+'-01')}</option>`).join(''):'<option>—</option>'}</select></div>
+    <div style="margin-left:auto;text-align:right"><div class="kpi-l">Serviços com produção</div>
+      <div class="mono" style="font-size:26px;font-weight:700">${linhas.length}</div></div>
+    <button class="btn btn-sm" onclick="exportaCSV()" ${linhas.length?'':'disabled'}>⬇ Exportar CSV</button></div>
+  ${linhas.length?`<div class="tbl-wrap"><table class="t">
+    <thead><tr><th>Serviço</th><th>Frente / Rua</th><th class="num">Un</th><th class="num">Qtd no mês</th><th class="num">Acum.</th><th class="num">% acum.</th></tr></thead>
+    <tbody>${linhas.map(r=>{const qa=av[skeyS(r.s)]||0;const p=r.s.qtdPrev?qa/r.s.qtdPrev*100:0;
+      return `<tr><td>${esc(r.s.servico)}</td><td class="kpi-s">${frenteNome(o,r.s.capId)}<br>${esc(r.s.rua)}</td>
+      <td class="num">${esc(r.s.un)}</td><td class="num" style="font-weight:700">${fmtQtd(r.q)}</td>
+      <td class="num">${fmtQtd(qa)}</td><td class="num">${fmtPct(p)}</td></tr>`;}).join('')}
+    </tbody></table></div>`:`<div class="empty"><div class="ic">⌗</div>Sem apontamentos neste mês. Registre no <b>Lançar serviços</b>.</div>`}`;
+}
+
+/* ---------- HISTÓRICO ---------- */
+function viewHistorico(o){
+  const arr=getLanc(o.id).slice().sort((a,b)=>b.dataISO.localeCompare(a.dataISO)||b.criadoEm-a.criadoEm);
+  if(!arr.length)return `<div class="empty"><div class="ic">≡</div>Nenhum apontamento. Comece no <b>Lançar serviços</b>.</div>`;
+  return `<div class="tbl-wrap"><table class="t">
+    <thead><tr><th>Data</th><th>Rua</th><th>Frente</th><th>Serviço</th><th>Trecho</th><th class="num">Qtd</th><th>Clima</th><th></th></tr></thead>
+    <tbody>${arr.map(l=>`<tr><td class="mono">${new Date(l.dataISO+'T00:00:00').toLocaleDateString('pt-BR')}</td>
+      <td>${esc(l.rua)}</td><td class="kpi-s">${l.avulso?'<span class="chip" style="background:var(--surface-2)">avulso</span>':esc(frenteNome(o,l.capId))}</td><td>${esc(l.servico)}</td>
+      <td class="mono">${esc(estacaTxt(l))||'—'}</td><td class="num">${fmtQtd(l.qtd)} ${esc(l.un)}</td><td>${esc(l.clima||'')}</td>
+      <td class="num"><button class="btn btn-sm btn-ghost" onclick="excluir('${l.id}')" title="Excluir">✕</button></td></tr>`).join('')}
+    </tbody></table></div>`;
+}
+
+/* ---------- PROJETOS (PDFs) ---------- */
+function viewProjetos(o){
+  const projs=o.projetos||[];
+  if(!projs.length)return `<div class="empty"><div class="ic">📐</div>Nenhum projeto cadastrado para esta obra.</div>`;
+  if(!estado.projSel||!projs.some(p=>p.arquivo===estado.projSel))estado.projSel=projs[0].arquivo;
+  const sel=projs.find(p=>p.arquivo===estado.projSel);
+  const porRua={};projs.forEach(p=>{(porRua[p.rua]=porRua[p.rua]||[]).push(p);});
+  const lista=Object.entries(porRua).map(([rua,ps])=>`
+    <div class="kpi-l" style="padding:12px 6px 4px">${esc(rua)}</div>
+    ${ps.map(p=>{const on=p.arquivo===estado.projSel;
+      return `<div onclick="setProj('${esc(p.arquivo)}')" style="display:flex;gap:10px;align-items:center;padding:9px 11px;border-radius:var(--r-sm);cursor:pointer;margin:2px 0;${on?'background:var(--accent-soft);color:var(--accent)':'color:var(--text-2)'}">
+        <span style="font-size:16px">📄</span><div style="flex:1;min-width:0">
+        <div style="font-weight:600;font-size:13.5px">${esc(p.disciplina)}</div>${p.cod?`<div class="kpi-s">${esc(p.cod)}</div>`:''}</div></div>`;}).join('')}`).join('');
+  return `<div class="proj-wrap" style="display:flex;gap:16px;align-items:flex-start">
+    <div class="card proj-list" style="width:290px;flex-shrink:0"><div class="card-b" style="padding:6px 10px 12px">${lista}</div></div>
+    <div class="card" style="flex:1;min-width:0"><div class="card-h">
+      <div><div class="card-t">${esc(sel.disciplina)} — ${esc(sel.rua)}</div>${sel.cod?`<div class="card-st">Prancha ${esc(sel.cod)}</div>`:''}</div>
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+        <button class="btn btn-sm" onclick="pdfZoom(-0.2)" title="Reduzir">−</button>
+        <span id="pdfZoomLbl" class="mono" style="min-width:46px;text-align:center;font-size:12.5px">${Math.round(_pdfZoom*100)}%</span>
+        <button class="btn btn-sm" onclick="pdfZoom(0.2)" title="Ampliar">+</button>
+        <button class="btn btn-sm" onclick="pdfZoomReset()" title="Ajustar à largura">⤢ Ajustar</button>
+        <a class="btn btn-sm btn-pri" href="${esc(sel.arquivo)}" target="_blank" rel="noopener">Abrir ⬈</a>
+        <a class="btn btn-sm" href="${esc(sel.arquivo)}" download>Baixar ⬇</a></div></div>
+      <div id="pdfViewer" style="height:78vh;overflow:auto;background:var(--surface-2);border-radius:0 0 var(--r) var(--r);padding:14px;text-align:center">
+        <div class="empty" style="padding:40px"><div class="ic">⏳</div>Carregando projeto…</div>
+      </div>
+    </div></div>`;
+}
+function setProj(a){estado.projSel=a;_pdfZoom=1;render();}
+let _pdfToken=0,_pdfDoc=null,_pdfUrl='',_pdfZoom=1;
+function fallbackPDF(url){return `<div class="empty" style="padding:44px 20px"><div class="ic">📄</div>Não foi possível renderizar o PDF.<br><a class="btn btn-pri" style="margin-top:14px" href="${esc(url)}" target="_blank" rel="noopener">Abrir projeto ⬈</a></div>`;}
+function renderPdfDoc(url){
+  const box=el('pdfViewer');if(!box||!url)return;
+  if(_pdfDoc&&_pdfUrl===url){drawPdf();return;}          // já carregado: só desenha
+  const tok=++_pdfToken;
+  if(!window.pdfjsLib){box.innerHTML=fallbackPDF(url);return;}
+  box.innerHTML='<div class="empty" style="padding:40px"><div class="ic">⏳</div>Carregando projeto…</div>';
+  window.pdfjsLib.getDocument(url).promise.then(pdf=>{
+    if(tok!==_pdfToken)return;
+    _pdfDoc=pdf;_pdfUrl=url;drawPdf();
+  }).catch(()=>{if(tok===_pdfToken)box.innerHTML=fallbackPDF(url);});
+}
+async function drawPdf(){
+  const box=el('pdfViewer');if(!box||!_pdfDoc)return;
+  const tok=++_pdfToken;box.innerHTML='';
+  const dpr=Math.min(2,window.devicePixelRatio||1);
+  const w1=(await _pdfDoc.getPage(1)).getViewport({scale:1}).width;
+  const fit=Math.max(280,box.clientWidth-28)/w1;          // zoom=1 => ajustado à largura
+  const scale=fit*_pdfZoom;
+  for(let n=1;n<=_pdfDoc.numPages;n++){
+    if(tok!==_pdfToken)return;
+    const page=await _pdfDoc.getPage(n);
+    const vp=page.getViewport({scale});
+    const canvas=document.createElement('canvas');
+    canvas.width=Math.floor(vp.width*dpr);canvas.height=Math.floor(vp.height*dpr);
+    canvas.style.cssText='width:'+Math.floor(vp.width)+'px;height:'+Math.floor(vp.height)+'px;max-width:none;display:block;margin:0 auto 14px;background:#fff;box-shadow:0 2px 12px rgba(0,0,0,.18);border-radius:2px';
+    box.appendChild(canvas);
+    await page.render({canvasContext:canvas.getContext('2d'),viewport:vp,transform:dpr!==1?[dpr,0,0,dpr,0,0]:undefined}).promise;
+  }
+  const lbl=el('pdfZoomLbl');if(lbl)lbl.textContent=Math.round(_pdfZoom*100)+'%';
+}
+function pdfZoomLbl(){const l=el('pdfZoomLbl');if(l)l.textContent=Math.round(_pdfZoom*100)+'%';}
+function pdfZoom(d){_pdfZoom=Math.min(4,Math.max(0.4,+(_pdfZoom+d).toFixed(2)));pdfZoomLbl();drawPdf();}
+function pdfZoomReset(){_pdfZoom=1;pdfZoomLbl();drawPdf();}
+
+/* ---------- DIÁRIO DE OBRA (RDO interno) ---------- */
+function rowPessoal(p){p=p||{funcao:'',qtd:''};
+  return `<div class="drow pessoal-row" style="display:flex;gap:8px;margin-bottom:6px">
+    <input list="dlFuncoes" class="p-func" placeholder="Função" value="${esc(p.funcao||'')}" style="flex:1">
+    <input type="number" min="0" class="p-qtd" placeholder="Qtd" value="${p.qtd||''}" style="width:80px">
+    <button class="btn btn-sm btn-ghost" onclick="delRow(this)" title="Remover">✕</button></div>`;}
+function rowEquip(e){e=e||{nome:'',qtd:''};
+  return `<div class="drow equip-row" style="display:flex;gap:8px;margin-bottom:6px">
+    <input list="dlEquip" class="e-nome" placeholder="Equipamento" value="${esc(e.nome||'')}" style="flex:1">
+    <input type="number" min="0" class="e-qtd" placeholder="Qtd" value="${e.qtd||''}" style="width:80px">
+    <button class="btn btn-sm btn-ghost" onclick="delRow(this)" title="Remover">✕</button></div>`;}
+function lerPessoal(){return [...document.querySelectorAll('#pessoalBox .pessoal-row')].map(r=>({funcao:r.querySelector('.p-func').value.trim(),qtd:+r.querySelector('.p-qtd').value||0})).filter(p=>p.funcao||p.qtd);}
+function lerEquip(){return [...document.querySelectorAll('#equipBox .equip-row')].map(r=>({nome:r.querySelector('.e-nome').value.trim(),qtd:+r.querySelector('.e-qtd').value||0})).filter(e=>e.nome||e.qtd);}
+function addPessoal(){el('pessoalBox').insertAdjacentHTML('beforeend',rowPessoal());}
+function addEquip(){el('equipBox').insertAdjacentHTML('beforeend',rowEquip());}
+function delRow(btn){btn.closest('.drow').remove();}
+function setDiaData(v){estado.diarioData=v;render();}
+function totalPessoal(arr){return (arr||[]).reduce((a,p)=>a+(+p.qtd||0),0);}
+
+function viewDiario(o){
+  if(!estado.diarioData)estado.diarioData=hoje();
+  const d=estado.diarioData;
+  const sv=diarioDoDia(o.id,d)||{};
+  const servDia=getLanc(o.id).filter(l=>l.dataISO===d);
+  const pessoal=(sv.pessoal&&sv.pessoal.length)?sv.pessoal:[{funcao:'',qtd:''}];
+  const equip=(sv.equipamentos&&sv.equipamentos.length)?sv.equipamentos:[{nome:'',qtd:''}];
+  const diarios=getDiarios(o.id).slice().sort((a,b)=>b.dataISO.localeCompare(a.dataISO));
+  const climaSel=(id,val)=>`<select id="${id}">${CLIMA_OPC.map(c=>`<option ${c===val?'selected':''}>${c}</option>`).join('')}</select>`;
+  return `
+  <datalist id="dlFuncoes">${FUNCOES.map(f=>`<option value="${esc(f)}">`).join('')}</datalist>
+  <datalist id="dlEquip">${EQUIPS.map(e=>`<option value="${esc(e)}">`).join('')}</datalist>
+  <div class="grid g2" style="grid-template-columns:1.4fr 1fr;align-items:start">
+    <div class="card"><div class="card-h">
+      <div><div class="card-t">📋 Relatório Diário de Obra</div><div class="card-st">Efetivo, equipamentos e ocorrências do dia</div></div>
+      ${sv.criadoEm?'<span class="chip on">salvo</span>':'<span class="chip">novo</span>'}</div>
+      <div class="card-b">
+        <div class="row">
+          <div class="field"><label class="fl">Data</label><input type="date" value="${d}" onchange="setDiaData(this.value)"></div>
+          <div class="field"><label class="fl">Clima manhã</label>${climaSel('dManha',sv.climaManha||'Bom')}</div>
+          <div class="field"><label class="fl">Clima tarde</label>${climaSel('dTarde',sv.climaTarde||'Bom')}</div>
+          <div class="field"><label class="fl">Condição</label><select id="dCond">
+            ${['Normal','Parcialmente paralisado','Paralisado'].map(c=>`<option ${c===(sv.condicao||'Normal')?'selected':''}>${c}</option>`).join('')}</select></div>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin:6px 0 8px">
+          <label class="fl" style="margin:0">Mão de obra (efetivo)</label>
+          <button class="btn btn-sm" onclick="addPessoal()">+ Pessoa</button></div>
+        <div id="pessoalBox">${pessoal.map(rowPessoal).join('')}</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin:14px 0 8px">
+          <label class="fl" style="margin:0">Equipamentos</label>
+          <button class="btn btn-sm" onclick="addEquip()">+ Equipamento</button></div>
+        <div id="equipBox">${equip.map(rowEquip).join('')}</div>
+        <div class="field" style="margin-top:14px"><label class="fl">Ocorrências / observações</label>
+          <textarea id="dOcor" rows="3" placeholder="Atrasos, imprevistos, visitas, interferências, medições, etc.">${esc(sv.ocorrencias||'')}</textarea></div>
+        <div class="row"><button class="btn btn-pri" style="flex:1;justify-content:center" onclick="salvarDiario()">Salvar diário</button>
+          <button class="btn" onclick="imprimirRDO()">🖨 Imprimir RDO</button></div>
+      </div></div>
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <div class="card"><div class="card-h"><div class="card-t">Serviços lançados neste dia</div>
+        <div class="card-st">vêm do Lançar serviços</div></div><div class="card-b">
+        ${servDia.length?servDia.map(l=>`<div style="padding:8px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;gap:10px">
+          <div style="font-size:13px">${esc(l.servico)} ${l.avulso?'<span class="chip" style="padding:0 6px;font-size:10px">avulso</span>':''}<div class="kpi-s">${esc(l.rua)}${estacaTxt(l)?' · '+esc(estacaTxt(l)):''}</div></div>
+          <div class="num" style="font-weight:700;font-size:13px">${fmtQtd(l.qtd)} ${esc(l.un)}</div></div>`).join(''):`<div class="empty" style="padding:14px"><div class="ic">⊕</div>Nenhum serviço lançado em ${new Date(d+'T00:00:00').toLocaleDateString('pt-BR')}.</div>`}
+      </div></div>
+      <div class="card"><div class="card-h"><div class="card-t">Diários salvos</div><span class="chip">${diarios.length}</span></div>
+        <div class="card-b" style="padding:8px 12px">
+        ${diarios.length?diarios.map(x=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 6px;border-bottom:1px solid var(--border);cursor:pointer" onclick="setDiaData('${x.dataISO}')">
+          <div><b>${new Date(x.dataISO+'T00:00:00').toLocaleDateString('pt-BR')}</b>
+          <div class="kpi-s">${totalPessoal(x.pessoal)} pessoas · ${(x.equipamentos||[]).length} equip.</div></div>
+          <button class="btn btn-sm btn-ghost" onclick="event.stopPropagation();delDiario('${x.dataISO}')" title="Excluir">✕</button></div>`).join(''):`<div class="empty" style="padding:14px">Nenhum diário salvo.</div>`}
+      </div></div>
+    </div>
+  </div>`;
+}
+function coletaDiario(){
+  return {dataISO:estado.diarioData,climaManha:el('dManha').value,climaTarde:el('dTarde').value,
+    condicao:el('dCond').value,pessoal:lerPessoal(),equipamentos:lerEquip(),ocorrencias:el('dOcor').value.trim()};
+}
+function salvarDiario(){
+  const o=obra();const dd=coletaDiario();
+  const arr=getDiarios(o.id).filter(x=>x.dataISO!==dd.dataISO);
+  arr.push({id:uid(),...dd,criadoEm:Date.now()});
+  setDiarios(o.id,arr);toast('Diário salvo ✓');render();
+}
+function delDiario(dataISO){const o=obra();if(!confirm('Excluir o diário de '+new Date(dataISO+'T00:00:00').toLocaleDateString('pt-BR')+'?'))return;
+  setDiarios(o.id,getDiarios(o.id).filter(x=>x.dataISO!==dataISO));render();toast('Diário excluído');}
+function imprimirRDO(){
+  const o=obra();const dd=coletaDiario();const servDia=getLanc(o.id).filter(l=>l.dataISO===dd.dataISO);
+  const datas=[...new Set([...getDiarios(o.id).map(x=>x.dataISO),dd.dataISO])].sort();
+  const numero=datas.indexOf(dd.dataISO)+1;
+  const dataBR=new Date(dd.dataISO+'T00:00:00').toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit',year:'numeric'});
+  const linhasP=(dd.pessoal.length?dd.pessoal:[{funcao:'—',qtd:''}]).map(p=>`<tr><td>${esc(p.funcao)}</td><td style="text-align:right">${p.qtd||''}</td></tr>`).join('');
+  const linhasE=(dd.equipamentos.length?dd.equipamentos:[{nome:'—',qtd:''}]).map(e=>`<tr><td>${esc(e.nome)}</td><td style="text-align:right">${e.qtd||''}</td></tr>`).join('');
+  const linhasS=servDia.length?servDia.map(l=>`<tr><td>${esc(l.servico)}${l.avulso?' (avulso)':''}</td><td>${esc(l.rua)}</td><td>${esc(estacaTxt(l))||'—'}</td><td style="text-align:right">${fmtQtd(l.qtd)} ${esc(l.un)}</td></tr>`).join(''):`<tr><td colspan="4" style="text-align:center;color:#888">Sem serviços lançados</td></tr>`;
+  const html=`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>RDO ${numero} — ${dd.dataISO}</title>
+  <style>@page{size:A4;margin:16mm} *{font-family:Arial,Helvetica,sans-serif;box-sizing:border-box}
+  body{color:#111;font-size:12px;margin:0} h1{font-size:16px;margin:0} .hd{display:flex;align-items:center;gap:14px;border-bottom:2px solid #1f6f4a;padding-bottom:10px;margin-bottom:14px}
+  .hd img{height:46px} .meta{font-size:11px;color:#444} .num{margin-left:auto;text-align:right}
+  .num b{font-size:22px;color:#1f6f4a} h2{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:#1f6f4a;border-bottom:1px solid #ccc;padding-bottom:3px;margin:16px 0 8px}
+  table{width:100%;border-collapse:collapse;margin-bottom:6px} td,th{border:1px solid #ccc;padding:5px 8px;text-align:left;font-size:11.5px}
+  th{background:#f0efe9} .grid2{display:flex;gap:16px} .grid2>div{flex:1} .box{border:1px solid #ccc;padding:8px 10px;border-radius:6px}
+  .sign{display:flex;gap:40px;margin-top:40px} .sign>div{flex:1;border-top:1px solid #333;padding-top:5px;text-align:center;font-size:11px}
+  .clima span{display:inline-block;background:#f0efe9;border:1px solid #ccc;border-radius:4px;padding:2px 8px;margin-right:6px}</style></head>
+  <body onload="window.print()">
+    <div class="hd"><img src="assets/logo_gestor.png" alt="">
+      <div><h1>Relatório Diário de Obra</h1><div class="meta">${esc(o.contratada||'Gestor Engenharia')} · ${esc(o.contrato||'')}</div>
+      <div class="meta">${esc(o.nome)} — ${esc(o.local||'')}</div></div>
+      <div class="num"><div class="meta">RDO Nº</div><b>${numero}</b></div></div>
+    <div class="box clima"><b>Data:</b> ${dataBR} &nbsp;&nbsp; <b>Condição:</b> ${esc(dd.condicao)}<br>
+      <div style="margin-top:6px"><b>Clima:</b> <span>Manhã: ${esc(dd.climaManha)}</span><span>Tarde: ${esc(dd.climaTarde)}</span></div></div>
+    <div class="grid2">
+      <div><h2>Mão de obra</h2><table><tr><th>Função</th><th style="text-align:right;width:60px">Qtd</th></tr>${linhasP}
+        <tr><th>Total</th><th style="text-align:right">${totalPessoal(dd.pessoal)}</th></tr></table></div>
+      <div><h2>Equipamentos</h2><table><tr><th>Equipamento</th><th style="text-align:right;width:60px">Qtd</th></tr>${linhasE}</table></div>
+    </div>
+    <h2>Serviços executados</h2><table><tr><th>Serviço</th><th>Rua</th><th>Trecho (estacas)</th><th style="text-align:right;width:110px">Quantidade</th></tr>${linhasS}</table>
+    <h2>Ocorrências / observações</h2><div class="box" style="min-height:60px;white-space:pre-wrap">${esc(dd.ocorrencias||'—')}</div>
+    <div class="sign"><div>Responsável técnico</div><div>Fiscalização</div></div>
+  </body></html>`;
+  const w=window.open('','_blank');
+  if(!w){toast('Permita pop-ups para imprimir o RDO');return;}
+  w.document.write(html);w.document.close();
+}
+
+/* ============================================================ AÇÕES */
+function abrirObra(id){estado.obraId=id;estado.tela='executivo';estado.filtroRua='Todas';estado.mesMed='';estado.diarioData='';estado.projSel='';estado.painelFrente='Todas';estado.painelMes='Todos';_pdfDoc=null;_pdfUrl='';_pdfZoom=1;render();}
+function abrirExterno(url){window.open(url,'_blank','noopener');}
+function setPFrente(v){estado.painelFrente=v;render();}
+function setPMes(v){estado.painelMes=v;render();}
+function irHome(){estado.tela='home';estado.obraId=null;render();}
+function ir(t){estado.tela=t;render();}
+function setRua(r){estado.filtroRua=r;render();}
+function setMes(m){estado.mesMed=m;render();}
+
+function servFiltrados(){
+  const o=obra();const rua=el('fRua').value;const fr=el('fFrente').value;
+  return (o.servicos||[]).filter(s=>s.rua===rua&&(!fr||s.capId==fr));
+}
+function isAvulso(){return el('fFrente') && el('fFrente').value==='OUTRO';}
+function atualizaServ(){
+  const av=isAvulso();
+  if(el('servBox'))el('servBox').style.display=av?'none':'';
+  if(el('avulsoBox'))el('avulsoBox').style.display=av?'':'none';
+  if(!av){
+    const its=servFiltrados();
+    el('fServ').innerHTML=its.length?its.map((s,i)=>`<option value="${i}">${esc(s.servico)} (${esc(s.un)})</option>`).join(''):'<option value="">Sem serviços</option>';
+  }
+  mostraSaldo();
+}
+function servSelecionado(){const its=servFiltrados();const i=+el('fServ').value;return its[i]||null;}
+function mostraSaldo(){
+  if(isAvulso()){el('saldoBox').textContent='';return;}
+  const s=servSelecionado();if(!s){el('saldoBox').textContent='';return;}
+  const o=obra();const av=avancoServ(o);const jaf=av[skeyS(s)]||0;const nova=+el('fQtd').value||0;
+  const saldo=s.qtdPrev-jaf-nova;const cor=saldo<0?'var(--vermelho)':'var(--muted)';
+  el('saldoBox').innerHTML=`Previsto <b>${fmtQtd(s.qtdPrev)} ${esc(s.un)}</b> · executado ${fmtQtd(jaf)} · <span style="color:${cor}">saldo ${fmtQtd(saldo)}</span>`+(saldo<0?' ⚠ acima do previsto':'');
+}
+function salvar(){
+  const o=obra();const qtd=+el('fQtd').value;
+  if(!qtd||qtd<=0){toast('Informe a quantidade');return;}
+  let lanc;
+  if(isAvulso()){
+    const desc=el('fAvDesc').value.trim();
+    if(!desc){toast('Descreva o serviço avulso');return;}
+    lanc={rua:el('fRua').value,capId:null,servico:desc,un:el('fAvUn').value.trim()||'un',avulso:true};
+  }else{
+    const s=servSelecionado();
+    if(!s){toast('Selecione um serviço');return;}
+    lanc={rua:s.rua,capId:s.capId,servico:s.servico,un:s.un};
+  }
+  const arr=getLanc(o.id);
+  arr.push({id:uid(),dataISO:el('fData').value||hoje(),...lanc,
+    qtd,efetivo:+el('fEfet').value||0,estIni:el('fEstIni').value.trim(),estFim:el('fEstFim').value.trim(),
+    clima:el('fClima').value,obs:el('fObs').value.trim(),criadoEm:Date.now()});
+  setLanc(o.id,arr);toast(lanc.avulso?'Serviço avulso registrado ✓':'Apontamento salvo ✓');
+  el('fQtd').value='';el('fEfet').value='';el('fObs').value='';el('fEstIni').value='';el('fEstFim').value='';
+  if(el('fAvDesc'))el('fAvDesc').value='';
+  el('ultimos').innerHTML=listaUltimos(o);mostraSaldo();
+}
+function excluir(id){const o=obra();if(!confirm('Excluir este apontamento?'))return;
+  setLanc(o.id,getLanc(o.id).filter(l=>l.id!==id));render();toast('Apontamento excluído');}
+function exportaCSV(){
+  const o=obra();const mes=estado.mesMed;const lanc=getLanc(o.id).filter(l=>l.dataISO.slice(0,7)===mes && !l.avulso);
+  const agg={};lanc.forEach(l=>{const k=skey(l.rua,l.capId,l.servico);(agg[k]=agg[k]||{l,q:0}).q+=(+l.qtd||0);});
+  const rows=[['Rua','Frente','Servico','Un','QtdMes']];
+  Object.values(agg).forEach(r=>rows.push([r.l.rua,frenteNome(o,r.l.capId),r.l.servico,r.l.un,fmtNum(r.q,3)]));
+  const csv='﻿'+rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(';')).join('\r\n');
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
+  a.download=`medicao_fisica_${o.id}_${mes}.csv`;a.click();toast('CSV exportado ✓');
+}
+
+function temaAtual(){return localStorage.getItem('gestor:tema')||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');}
+function toggleTema(){const t=temaAtual()==='dark'?'light':'dark';localStorage.setItem('gestor:tema',t);document.documentElement.setAttribute('data-theme',t);}
+function toast(m){let t=el('toast');if(!t){t=document.createElement('div');t.id='toast';t.className='toast';document.body.appendChild(t);}
+  t.textContent=m;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),2200);}
+function bind(){if(estado.tela==='rdo')atualizaServ();if(estado.tela==='projetos')renderPdfDoc(estado.projSel);}
+
+if(window.pdfjsLib)window.pdfjsLib.GlobalWorkerOptions.workerSrc='vendor/pdfjs/pdf.worker.min.js';
+document.addEventListener('keydown',e=>{if(e.key==='Escape')fecharModal();});
+document.documentElement.setAttribute('data-theme',temaAtual());
+render();
+if('serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(()=>{});}
+</script>
+</body>
+</html>
