@@ -90,12 +90,14 @@
         '<input type="password" id="loginPass" placeholder="••••••••" autocomplete="current-password" ' +
           'onkeyup="if(event.key===\'Enter\')fazerLogin()">' +
         '<div class="il-erro" id="loginErro"></div>' +
-        '<button type="button" onclick="fazerLogin()">Entrar</button></div>' +
+        '<button type="button" onclick="fazerLogin()">Entrar</button>' +
+        '<div class="il-credits">Criado e desenvolvido por <b>Leonardo Maciel</b></div></div>' +
       '<div class="intro-ui">' +
         '<div class="intro-progress"><i></i></div>' +
         '<div class="intro-logo"><img src="assets/logo_gestor.png" alt=""><b>Gestor</b></div>' +
         '<button class="intro-skip" type="button">Pular apresentação →</button>' +
         '<div class="intro-cap"></div><div class="intro-count"></div>' +
+        '<div class="intro-credits">Criado e desenvolvido por <b>Leonardo Maciel</b></div>' +
         '<div class="intro-hint"><div class="wheel"></div><span>Role para conhecer</span></div></div>' +
       '<div class="intro-loader"><img src="assets/logo_gestor.png" alt="">' +
         '<div class="lt">Gestor — Controle de Obras</div><div class="lb"><i></i></div></div>';

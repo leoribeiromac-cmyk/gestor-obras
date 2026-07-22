@@ -420,7 +420,7 @@ function render(){
   if(BACKEND&&CONFIG.exigirLogin&&!getToken()){app.innerHTML=viewLogin();bind();return;}
   if(estado.tela==='home'||!estado.obraId){app.innerHTML=viewHome();bind();return;}
   const o=obra();
-  app.innerHTML=`<div class="app">${sidebar(o)}<div class="main">${topbar(o)}<div class="content">${viewTela(o)}</div></div></div>`;
+  app.innerHTML=`<div class="app">${sidebar(o)}<div class="main">${topbar(o)}<div class="content">${viewTela(o)}<footer style="margin-top:40px;padding-top:20px;border-top:1px solid var(--border);text-align:center;font-size:12.5px;color:var(--muted)">Gestor — Controle de Obras · Criado e desenvolvido por <b style="color:var(--text)">Leonardo Maciel</b></footer></div></div></div>`;
   bind();
 }
 function sidebar(o){
@@ -434,7 +434,8 @@ function sidebar(o){
     }).join('')}`).join('')}</nav>
     <div class="side-foot"><button class="btn btn-sm btn-ghost" onclick="irHome()">← Obras</button>
       <button class="btn btn-sm btn-ghost" onclick="toggleTema()" title="Tema">◐</button>
-      ${BACKEND&&getToken()?`<button class="btn btn-sm btn-ghost" onclick="sair()" title="Sair (${esc(usuarioAtual())})">⇥ Sair</button>`:''}</div></aside>`;
+      ${BACKEND&&getToken()?`<button class="btn btn-sm btn-ghost" onclick="sair()" title="Sair (${esc(usuarioAtual())})">⇥ Sair</button>`:''}
+      <div style="width:100%;font-size:11px;color:var(--muted);margin-top:6px;padding-top:6px;border-top:1px solid var(--border);text-align:center">Criado e desenvolvido por <b>Leonardo Maciel</b></div></div></aside>`;
 }
 function topbar(o){
   return `<header class="topbar"><div style="flex:1"><h1>${esc(TITULOS[estado.tela]||'')}</h1>
@@ -467,6 +468,7 @@ function viewLogin(){
         <input type="password" id="loginPass" onkeyup="if(event.key==='Enter')fazerLogin()" placeholder="••••••••"></div>
       <div id="loginErro" class="kpi-s" style="color:var(--vermelho);min-height:16px;margin:-6px 0 10px"></div>
       <button class="btn btn-pri" style="width:100%;justify-content:center" onclick="fazerLogin()">Entrar</button>
+      <div style="text-align:center;margin-top:16px;font-size:12px;color:var(--muted)">Criado e desenvolvido por <b style="color:var(--text)">Leonardo Maciel</b></div>
     </div></div></div>`;
 }
 async function fazerLogin(){
@@ -515,7 +517,9 @@ function viewHome(){
       <div class="obra-card add"><div style="font-size:30px;margin-bottom:8px">＋</div>
         <div style="font-weight:600;color:var(--text-2)">Adicionar nova obra</div>
         <div class="obra-meta" style="margin-top:6px">Crie um arquivo em <b>dados/</b> e registre em <b>_index.js</b>.<br>Passo a passo no README.</div></div>
-    </div></div></div></div>`;
+    </div>
+    <footer style="margin-top:40px;padding-top:20px;border-top:1px solid var(--border);text-align:center;font-size:12.5px;color:var(--muted)">Gestor — Controle de Obras · Criado e desenvolvido por <b style="color:var(--text)">Leonardo Maciel</b></footer>
+    </div></div></div>`;
 }
 
 /* ---------- PAINEL EXECUTIVO ---------- */
