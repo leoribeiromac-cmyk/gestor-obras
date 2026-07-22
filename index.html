@@ -7,6 +7,10 @@
 <link rel="icon" href="assets/favicon.svg">
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1a1712">
+<link rel="stylesheet" href="intro/intro.css">
+<script>/* abertura: evita flash do login enquanto a intro decide se ativa (failsafe 3s) */
+try{if(!localStorage.getItem('gestor:token')){document.documentElement.classList.add('intro-pending');
+setTimeout(function(){document.documentElement.classList.remove('intro-pending')},3000);}}catch(e){}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" media="print" onload="this.media='all'">
@@ -1317,5 +1321,11 @@ render();
 if(BACKEND){atualizaOutboxUI();outboxFlush();window.addEventListener('online',outboxFlush);}
 if('serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(()=>{});}
 </script>
+<!-- Abertura cinematográfica (camada anterior ao login; sem assets em intro/frames/, o app segue como sempre) -->
+<script src="vendor/gsap/gsap.min.js"></script>
+<script src="vendor/gsap/ScrollTrigger.min.js"></script>
+<script src="vendor/lenis/lenis.min.js"></script>
+<script src="intro/scenes.js"></script>
+<script src="intro/intro.js"></script>
 </body>
 </html>
