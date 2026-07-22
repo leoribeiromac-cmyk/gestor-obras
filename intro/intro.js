@@ -64,10 +64,12 @@
     overlay.id = 'intro';
     var texts = SCENES.map(function (s, i) {
       if (s.pos === 'login') return '';
+      var featsHtml = (s.features && s.features.length) ? '<div class="intro-feats">' + s.features.map(function (f) {
+        return '<div class="intro-feat-item"><span class="intro-feat-icon">' + f.icon + '</span><div class="intro-feat-text"><b>' + f.title + '</b><span> — ' + f.desc + '</span></div></div>';
+      }).join('') + '</div>' : '';
       return '<div class="intro-text pos-' + s.pos + '" data-scene="' + i + '">' +
         '<div class="kicker">' + s.kicker + '</div><h2>' + s.h + '</h2>' +
-        (s.p ? '<p>' + s.p + '</p>' : '') +
-        (s.chips && s.chips.length ? '<div class="intro-chips">' + s.chips.map(function (c) { return '<span>' + c + '</span>'; }).join('') + '</div>' : '') +
+        (s.p ? '<p>' + s.p + '</p>' : '') + featsHtml +
         '</div>';
     }).join('');
     var usuarios = (CONFIG.usuarios || []).map(function (u) { return '<option>' + u + '</option>'; }).join('');

@@ -4,7 +4,7 @@
    ============================================================ */
 .intro-pending #app{visibility:hidden}
 
-#intro{position:fixed;inset:0;z-index:500;background:#0d0b08;color:#f2ede3;
+#intro{position:fixed;inset:0;z-index:500;background:#0b0a08;color:#f2ede3;
   font-family:'Space Grotesk',system-ui,sans-serif;overscroll-behavior:contain}
 #intro,#intro *{box-sizing:border-box}
 #intro.intro-hidden{display:none}
@@ -20,37 +20,55 @@
 .intro-stage{position:fixed;inset:0;pointer-events:none}
 #introCanvas{position:absolute;inset:0;width:100%;height:100%;display:block}
 
-/* vídeos-fonte: nunca aparecem por si — só fornecem quadros ao canvas via scroll */
+/* vídeos-fonte */
 .intro-videos{position:absolute;left:0;top:0;width:2px;height:2px;overflow:hidden;opacity:0;pointer-events:none;z-index:-1}
 .intro-videos video{width:100%;height:100%;object-fit:cover}
+
+/* Vignette aprimorada com alto contraste nos cantos e fundo escurecido */
 .intro-vignette{position:absolute;inset:0;pointer-events:none;
-  background:radial-gradient(ellipse at 50% 42%,transparent 52%,rgba(6,5,3,.55) 100%),
-             linear-gradient(180deg,rgba(6,5,3,.35) 0%,transparent 18%,transparent 78%,rgba(6,5,3,.6) 100%)}
-.intro-grain{position:absolute;inset:0;pointer-events:none;opacity:.05;mix-blend-mode:overlay;
+  background:radial-gradient(ellipse at 50% 45%,rgba(6,5,3,.25) 20%,rgba(6,5,3,.75) 100%),
+             linear-gradient(180deg,rgba(4,3,2,.65) 0%,transparent 25%,transparent 70%,rgba(4,3,2,.85) 100%)}
+.intro-grain{position:absolute;inset:0;pointer-events:none;opacity:.04;mix-blend-mode:overlay;
   background-image:repeating-conic-gradient(rgba(255,255,255,.6) 0 .0001%,transparent 0 .0002%);
   background-size:220px 220px}
 
-/* textos HTML sincronizados */
+/* textos HTML sincronizados — design em glassmorphism escuro de alta definição */
 .intro-texts{position:fixed;inset:0;pointer-events:none}
-.intro-text{position:absolute;max-width:min(560px,86vw);opacity:0;will-change:transform,opacity;
-  padding:28px 32px;border-radius:22px;
-  background:linear-gradient(180deg,rgba(8,7,5,.1),rgba(8,7,5,.62) 55%,rgba(8,7,5,.72));
-  box-shadow:0 20px 60px rgba(0,0,0,.35)}
-.intro-text .kicker{font-size:11.5px;font-weight:700;letter-spacing:.22em;text-transform:uppercase;
-  color:#8ff0c0;margin-bottom:14px;text-shadow:0 1px 14px rgba(0,0,0,.85)}
-.intro-text h2{font-size:clamp(30px,4.6vw,58px);font-weight:700;letter-spacing:-.03em;color:#fff;
-  line-height:1.04;margin:0 0 16px;text-shadow:0 2px 28px rgba(0,0,0,.8),0 1px 2px rgba(0,0,0,.9)}
-.intro-text p{font-size:clamp(14.5px,1.35vw,17.5px);line-height:1.6;color:rgba(255,255,255,.94);
-  margin:0 0 18px;text-shadow:0 1px 12px rgba(0,0,0,.85)}
-.intro-chips{display:flex;flex-wrap:wrap;gap:8px}
-.intro-chips span{font-size:12px;font-weight:600;padding:6px 13px;border-radius:20px;
-  color:rgba(242,237,227,.92);background:rgba(20,17,12,.42);border:1px solid rgba(255,255,255,.16);
-  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+.intro-text{position:absolute;max-width:min(600px,88vw);opacity:0;will-change:transform,opacity;
+  padding:32px 36px;border-radius:24px;
+  background:rgba(12,10,8,.82);
+  border:1px solid rgba(255,255,255,.16);
+  border-top:2px solid rgba(63,174,116,.7);
+  backdrop-filter:blur(28px) saturate(1.4);
+  -webkit-backdrop-filter:blur(28px) saturate(1.4);
+  box-shadow:0 30px 90px rgba(0,0,0,.75),inset 0 1px 0 rgba(255,255,255,.15),0 0 35px rgba(42,140,95,.15)}
+
+.intro-text .kicker{display:inline-flex;align-items:center;gap:7px;font-size:11px;font-weight:700;
+  letter-spacing:.22em;text-transform:uppercase;color:#8ff0c0;
+  background:rgba(31,111,74,.3);border:1px solid rgba(143,240,192,.35);
+  padding:5px 13px;border-radius:20px;margin-bottom:16px;
+  box-shadow:0 2px 10px rgba(0,0,0,.4)}
+
+.intro-text h2{font-size:clamp(26px,3.8vw,44px);font-weight:700;letter-spacing:-.03em;color:#ffffff;
+  line-height:1.12;margin:0 0 14px;text-shadow:0 2px 20px rgba(0,0,0,.9),0 1px 2px rgba(0,0,0,1)}
+
+.intro-text p{font-size:clamp(14px,1.25vw,16px);line-height:1.6;color:rgba(245,242,235,.94);
+  margin:0 0 18px;text-shadow:0 1px 10px rgba(0,0,0,.9)}
+
+/* Lista de funcionalidades dentro do card */
+.intro-feats{display:flex;flex-direction:column;gap:10px;margin-top:20px;text-align:left}
+.intro-feat-item{display:flex;align-items:flex-start;gap:12px;padding:11px 14px;border-radius:14px;
+  background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.09);
+  transition:all .2s ease}
+.intro-feat-item:hover{background:rgba(255,255,255,.08);border-color:rgba(143,240,192,.3)}
+.intro-feat-icon{font-size:17px;line-height:1.2;flex-shrink:0;margin-top:1px}
+.intro-feat-text{font-size:13px;line-height:1.45;color:rgba(242,237,227,.88)}
+.intro-feat-text b{color:#ffffff;font-weight:700}
+.intro-feat-text span{color:rgba(242,237,227,.75)}
+
 .intro-text.pos-center{left:50%;top:50%;transform:translate(-50%,-46%);text-align:center}
-.intro-text.pos-center .intro-chips{justify-content:center}
 .intro-text.pos-left{left:clamp(22px,7vw,110px);top:50%;transform:translateY(-46%)}
 .intro-text.pos-right{right:clamp(22px,7vw,110px);top:50%;transform:translateY(-46%);text-align:right}
-.intro-text.pos-right .intro-chips{justify-content:flex-end}
 
 /* UI fixa: progresso, capítulo, dica de rolagem, pular */
 .intro-ui{position:fixed;inset:0;pointer-events:none;z-index:3}
@@ -69,34 +87,34 @@
 @keyframes introWheel{0%{transform:translateY(0);opacity:1}70%{transform:translateY(12px);opacity:0}100%{opacity:0}}
 .intro-skip{position:absolute;top:20px;right:clamp(18px,4vw,44px);pointer-events:auto;cursor:pointer;
   font:600 12.5px 'Space Grotesk',system-ui,sans-serif;color:rgba(242,237,227,.85);
-  background:rgba(20,17,12,.4);border:1px solid rgba(255,255,255,.18);border-radius:20px;
-  padding:8px 16px;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);transition:all .2s}
-.intro-skip:hover{background:rgba(63,174,116,.25);border-color:rgba(143,240,192,.5)}
+  background:rgba(20,17,12,.5);border:1px solid rgba(255,255,255,.2);border-radius:20px;
+  padding:8px 16px;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);transition:all .2s}
+.intro-skip:hover{background:rgba(63,174,116,.28);border-color:rgba(143,240,192,.5)}
 .intro-logo{position:absolute;top:18px;left:clamp(18px,4vw,44px);display:flex;align-items:center;gap:10px;opacity:.92}
 .intro-logo img{width:30px;height:30px;border-radius:7px;background:#fff;object-fit:contain}
 .intro-logo b{font-size:13.5px;letter-spacing:-.01em}
 
-/* painel de login em glassmorphism (formulário HTML real do app) */
+/* painel de login em glassmorphism */
 .intro-login{position:fixed;left:50%;top:50%;transform:translate(-50%,-46%) scale(.97);
-  width:min(400px,92vw);opacity:0;pointer-events:none;z-index:4;
-  background:rgba(22,19,15,.5);border:1px solid rgba(255,255,255,.16);border-radius:20px;
-  backdrop-filter:blur(22px) saturate(1.25);-webkit-backdrop-filter:blur(22px) saturate(1.25);
-  box-shadow:0 30px 80px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.12);
-  padding:30px 28px;will-change:transform,opacity}
+  width:min(410px,92vw);opacity:0;pointer-events:none;z-index:4;
+  background:rgba(14,12,9,.85);border:1px solid rgba(255,255,255,.18);border-radius:22px;
+  backdrop-filter:blur(28px) saturate(1.4);-webkit-backdrop-filter:blur(28px) saturate(1.4);
+  box-shadow:0 35px 100px rgba(0,0,0,.8),inset 0 1px 0 rgba(255,255,255,.2);
+  padding:32px 30px;will-change:transform,opacity}
 .intro-login.on{pointer-events:auto}
 .intro-login .il-head{text-align:center;margin-bottom:20px}
-.intro-login .il-head img{width:52px;height:52px;border-radius:12px;background:#fff;object-fit:contain}
-.intro-login .il-head .t{font-weight:700;font-size:17.5px;margin-top:10px;letter-spacing:-.01em}
-.intro-login .il-head .s{font-size:12.5px;color:rgba(242,237,227,.62);margin-top:3px}
-.intro-login label{display:block;font-size:12px;font-weight:600;color:rgba(242,237,227,.8);margin:0 0 5px}
-.intro-login select,.intro-login input{width:100%;font-family:inherit;font-size:14px;padding:10px 12px;
-  border-radius:10px;border:1px solid rgba(255,255,255,.2);background:rgba(13,11,8,.55);
-  color:#f2ede3;outline:none;margin-bottom:13px;transition:border .15s}
+.intro-login .il-head img{width:54px;height:54px;border-radius:12px;background:#fff;object-fit:contain}
+.intro-login .il-head .t{font-weight:700;font-size:18px;margin-top:10px;letter-spacing:-.01em;color:#fff}
+.intro-login .il-head .s{font-size:13px;color:rgba(242,237,227,.7);margin-top:3px}
+.intro-login label{display:block;font-size:12px;font-weight:600;color:rgba(242,237,227,.85);margin:0 0 5px}
+.intro-login select,.intro-login input{width:100%;font-family:inherit;font-size:14px;padding:11px 13px;
+  border-radius:10px;border:1px solid rgba(255,255,255,.22);background:rgba(10,8,6,.65);
+  color:#f2ede3;outline:none;margin-bottom:14px;transition:border .15s}
 .intro-login select:focus,.intro-login input:focus{border-color:#3fae74}
 .intro-login select option{background:#16130f;color:#f2ede3}
 .intro-login .il-erro{font-size:12px;color:#ff8d84;min-height:16px;margin:-6px 0 8px}
-.intro-login button{width:100%;font-family:inherit;cursor:pointer;font-weight:700;font-size:14px;
-  padding:12px;border-radius:11px;border:1px solid #2a8c5f;color:#fff;
+.intro-login button{width:100%;font-family:inherit;cursor:pointer;font-weight:700;font-size:14.5px;
+  padding:12.5px;border-radius:11px;border:1px solid #2a8c5f;color:#fff;
   background:linear-gradient(180deg,#2a8c5f,#1f6f4a);transition:filter .15s}
 .intro-login button:hover{filter:brightness(1.12)}
 
@@ -108,24 +126,23 @@
 .intro-loader .lb{width:min(240px,60vw);height:2px;background:rgba(255,255,255,.1);border-radius:2px;overflow:hidden}
 .intro-loader .lb i{display:block;height:100%;width:0;background:linear-gradient(90deg,#3fae74,#8ff0c0);transition:width .25s}
 
-/* modo estático (prefers-reduced-motion): sem rolagem, direto ao ponto */
+/* modo estático */
 #intro.intro-static .intro-hint,#intro.intro-static .intro-count{display:none}
-#intro.intro-static .intro-text.pos-static{position:fixed;left:50%;top:clamp(56px,12vh,120px);
+#intro.intro-static .intro-text.pos-static{position:fixed;left:50%;top:clamp(40px,8vh,80px);
   transform:translateX(-50%);text-align:center;opacity:1;max-width:min(680px,90vw)}
-#intro.intro-static .intro-text.pos-static .intro-chips{justify-content:center}
 #intro.intro-static .intro-login{opacity:1;pointer-events:auto;transform:translate(-50%,-34%)}
 
 /* tablet / mobile */
 @media (max-width:1024px){
-  .intro-text.pos-left,.intro-text.pos-right{max-width:min(480px,80vw)}
+  .intro-text.pos-left,.intro-text.pos-right{max-width:min(500px,82vw)}
 }
 @media (max-width:700px){
-  .intro-text.pos-left,.intro-text.pos-right{left:20px;right:20px;top:auto;bottom:110px;
-    transform:none;text-align:left;max-width:none}
-  .intro-text.pos-right .intro-chips{justify-content:flex-start}
-  .intro-text.pos-center{top:auto;bottom:110px;transform:translateX(-50%)}
-  .intro-text h2{font-size:clamp(26px,7.8vw,34px)}
-  .intro-text p{font-size:14px}
+  .intro-text.pos-left,.intro-text.pos-right,.intro-text.pos-center{left:16px;right:16px;top:auto;bottom:95px;
+    transform:none;text-align:left;max-width:none;padding:22px 20px}
+  .intro-text h2{font-size:clamp(22px,6.8vw,30px)}
+  .intro-text p{font-size:13.5px}
+  .intro-feat-item{padding:9px 11px;gap:10px}
+  .intro-feat-text{font-size:12px}
   .intro-cap{display:none}
   .intro-login{padding:24px 20px}
 }
