@@ -402,13 +402,14 @@ const NAV=[
   {grupo:'Operação',itens:[
     {id:'rdo',ic:'⊕',t:'Lançar serviços'},
     {id:'diario',ic:'📋',t:'Diário de Obra',badge:o=>getDiarios(o.id).length},
+    {id:'equip',ic:'🚜',t:'Equipamentos'},
     {id:'historico',ic:'≡',t:'Histórico',badge:o=>getLanc(o.id).length},
   ]},
   {grupo:'Documentos',itens:[
     {id:'projetos',ic:'📐',t:'Projetos',badge:o=>(o.projetos||[]).length},
   ]},
 ];
-const TITULOS={executivo:'Painel Executivo',servicos:'Serviços',medicao:'Medição Física',rdo:'Lançar serviços',diario:'Diário de Obra',historico:'Histórico',projetos:'Projetos'};
+const TITULOS={executivo:'Painel Executivo',servicos:'Serviços',medicao:'Medição Física',rdo:'Lançar serviços',diario:'Diário de Obra',equip:'Equipamentos',historico:'Histórico',projetos:'Projetos'};
 
 function render(){
   const app=el('app');
@@ -441,6 +442,7 @@ function viewTela(o){
     case 'medicao':return viewMedicao(o);
     case 'rdo':return viewRDO(o);
     case 'diario':return viewDiario(o);
+    case 'equip':return viewEquip(o);
     case 'projetos':return viewProjetos(o);
     case 'historico':return viewHistorico(o);
     default:return viewExecutivo(o);
@@ -788,6 +790,165 @@ function viewHistorico(o){
   return topo+cards;
 }
 
+/* ============================================================ EQUIPAMENTOS */
+let EQUIP={equipamentos:[],locadoras:[],apontamentos:[],carregado:false};
+const SITUACOES=['Operando normalmente','Operando com restrição','Parado — manutenção','Parado — sem operador','Parado — sem frente','Parado — chuva'];
+const MOTIVOS_PARADA=['Almoço','Refeição','Manutenção / Quebra','Chuva','Abastecimento','Sem operador','Sem frente de serviço','Outro'];
+const TIPOS_EQUIP=['Escavadeira hidráulica','Retroescavadeira','Pá-carregadeira','Motoniveladora','Rolo compactador','Caminhão basculante','Caminhão pipa','Vibroacabadora','Trator','Mini-carregadeira','Outros'];
+
+function postAcao(params){
+  const fd=new FormData();Object.keys(params).forEach(k=>fd.append(k,params[k]==null?'':params[k]));
+  if(getToken())fd.append('token',getToken());
+  return fetch(CONFIG.appsScript,{method:'POST',body:fd}).then(r=>r.json());
+}
+function carregarEquip(){
+  if(!BACKEND)return Promise.resolve();const o=obra();if(!o)return Promise.resolve();
+  return Promise.all([
+    jsonp(CONFIG.appsScript,{action:'equipListar',obra:o.id,...authParams()},1),
+    jsonp(CONFIG.appsScript,{action:'equipApontamentos',obra:o.id,...authParams()},1)
+  ]).then(function(res){
+    const a=res[0]||{},b=res[1]||{};
+    EQUIP.equipamentos=a.equipamentos||[];EQUIP.locadoras=a.locadoras||[];EQUIP.apontamentos=b.apontamentos||[];EQUIP.carregado=true;
+    if(estado.tela==='equip')render();
+  }).catch(function(e){console.warn('equip load',e);EQUIP.carregado=true;if(estado.tela==='equip')render();});
+}
+function viewEquip(o){
+  if(!BACKEND)return `<div class="empty"><div class="ic">🚜</div>O módulo de Equipamentos usa o backend (Google Sheets).<br>Configure o CONFIG do app para ativar.</div>`;
+  const eqOpts=EQUIP.equipamentos.map(e=>`<option value="${esc(e.nome)}">${esc(e.nome)}${e.tipo?' · '+esc(e.tipo):''}${e.locadora?' · '+esc(e.locadora):''}</option>`).join('');
+  return `
+  <div class="row" style="margin-bottom:16px;align-items:center;gap:8px">
+    <div class="chip">${EQUIP.equipamentos.length} equipamentos${EQUIP.locadoras.length?' · '+EQUIP.locadoras.length+' locadoras':''}</div>
+    <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-sm" onclick="cadEquipModal()">+ Equipamento</button>
+      <button class="btn btn-sm" onclick="cadLocadoraModal()">+ Locadora</button>
+      <button class="btn btn-sm" onclick="medicaoEquipExcel()" ${EQUIP.apontamentos.length?'':'disabled'}>⬇ Medição (Excel)</button></div></div>
+  <div class="grid g2" style="grid-template-columns:1.3fr 1fr;align-items:start">
+    <div class="card"><div class="card-h"><div class="card-t">🚜 Apontamento de equipamento</div><div class="card-st">produção do dia: horas, paradas, horímetro, combustível</div></div>
+      <div class="card-b">
+        <div class="row"><div class="field"><label class="fl">Data</label><input type="date" id="eqData" value="${hoje()}"></div>
+          <div class="field"><label class="fl">Turno</label><select id="eqTurno" onchange="eqAplicarTurno()">
+            <option value="Diurno" data-ini="07:00" data-fim="17:00">☀ Diurno (07–17)</option>
+            <option value="Noturno" data-ini="19:00" data-fim="05:00">🌙 Noturno (19–05)</option></select></div></div>
+        <div class="field"><label class="fl">Equipamento</label><select id="eqEquip">${eqOpts||'<option value="">— cadastre um equipamento —</option>'}</select></div>
+        <div class="field"><label class="fl">Operador</label><input id="eqOper" placeholder="Nome do operador"></div>
+        <div class="row"><div class="field"><label class="fl">Início</label><input type="time" id="eqIni" value="07:00" onchange="eqCalcHoras()"></div>
+          <div class="field"><label class="fl">Fim</label><input type="time" id="eqFim" value="17:00" onchange="eqCalcHoras()"></div>
+          <div class="field"><label class="fl">Horas</label><input id="eqHoras" readonly value="10.00" class="mono" style="font-weight:700"></div></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin:2px 0 6px"><label class="fl" style="margin:0">Paradas</label><button class="btn btn-sm" onclick="eqAddParada()">+ Parada</button></div>
+        <div id="eqParadas"></div>
+        <div class="row"><div class="field"><label class="fl">Horímetro inicial</label><input type="number" step="any" id="eqHi" placeholder="h ou km"></div>
+          <div class="field"><label class="fl">Horímetro final</label><input type="number" step="any" id="eqHf" placeholder="h ou km"></div>
+          <div class="field"><label class="fl">Combustível (L)</label><input type="number" step="any" id="eqComb" placeholder="litros"></div></div>
+        <div class="field"><label class="fl">Situação</label><select id="eqSit">${SITUACOES.map(s=>`<option>${s}</option>`).join('')}</select></div>
+        <div class="field"><label class="fl">Observações</label><textarea id="eqObs" rows="2" placeholder="Detalhes, frente, ocorrências..."></textarea></div>
+        <div class="field"><label class="fl">Assinatura do operador (opcional)</label>
+          <canvas id="eqSign" width="520" height="120" style="width:100%;height:110px;background:#fff;border:1px solid var(--border-strong);border-radius:var(--r-sm);touch-action:none;cursor:crosshair"></canvas>
+          <button class="btn btn-sm btn-ghost" onclick="eqLimparSign()" style="margin-top:4px">Limpar assinatura</button></div>
+        <button class="btn btn-pri" style="width:100%;justify-content:center" onclick="eqEnviar()">Enviar apontamento</button>
+      </div></div>
+    <div class="card"><div class="card-h"><div class="card-t">Últimos apontamentos</div><div class="card-st">${EQUIP.apontamentos.length} no total</div></div>
+      <div class="card-b" id="eqUltimos">${eqListaUltimos()}</div></div>
+  </div>`;
+}
+function eqListaUltimos(){
+  if(!EQUIP.carregado)return `<div class="empty" style="padding:20px"><div class="ic">⏳</div>Carregando…</div>`;
+  const ult=EQUIP.apontamentos.slice(0,15);
+  if(!ult.length)return `<div class="empty" style="padding:14px"><div class="ic">◔</div>Nenhum apontamento ainda.</div>`;
+  return ult.map(a=>`<div style="padding:10px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;gap:10px">
+    <div style="flex:1;min-width:0"><div style="font-weight:600;font-size:13.5px">${esc(a.equipamento)} <span class="kpi-s">· ${esc(String(a.horas))}h</span></div>
+    <div class="kpi-s">${esc(String(a.data).slice(0,10))} · ${esc(a.turno||'')} · ${esc(a.operador||'')} · ${esc(a.situacao||'')}</div>
+    ${a.assinatura&&String(a.assinatura).indexOf('http')===0?`<a href="${esc(a.assinatura)}" target="_blank" rel="noopener" class="kpi-s" style="color:var(--accent)">✍ assinatura</a>`:''}</div>
+    <button class="btn btn-sm btn-ghost" onclick="eqApagar('${esc(String(a.carimbo))}')" title="Apagar">✕</button></div>`).join('');
+}
+/* horas e paradas */
+function hm(t){if(!t)return 0;const p=String(t).split(':');return (+p[0]||0)*60+(+p[1]||0);}
+function eqAplicarTurno(){const s=el('eqTurno');const o=s.options[s.selectedIndex];el('eqIni').value=o.getAttribute('data-ini');el('eqFim').value=o.getAttribute('data-fim');eqCalcHoras();}
+function eqParadasRows(){return [...document.querySelectorAll('#eqParadas .par-row')];}
+function eqAddParada(mot,ini,fim){
+  const box=el('eqParadas');if(!box)return;
+  const row=document.createElement('div');row.className='par-row row';row.style.cssText='gap:6px;margin-bottom:6px;align-items:flex-end';
+  row.innerHTML=`<div class="field" style="margin:0;flex:1.4"><select class="par-mot">${MOTIVOS_PARADA.map(m=>`<option>${m}</option>`).join('')}</select></div>
+    <div class="field" style="margin:0"><input type="time" class="par-ini" onchange="eqCalcHoras()"></div>
+    <div class="field" style="margin:0"><input type="time" class="par-fim" onchange="eqCalcHoras()"></div>
+    <button class="btn btn-sm btn-ghost" onclick="this.closest('.par-row').remove();eqCalcHoras()">✕</button>`;
+  box.appendChild(row);
+  if(mot)row.querySelector('.par-mot').value=mot;if(ini)row.querySelector('.par-ini').value=ini;if(fim)row.querySelector('.par-fim').value=fim;
+}
+function eqParadasMin(){let s=0;eqParadasRows().forEach(r=>{const i=r.querySelector('.par-ini').value,f=r.querySelector('.par-fim').value;if(i&&f){let m=hm(f)-hm(i);if(m<0)m+=1440;s+=m;}});return s;}
+function eqParadasTxt(){const a=[];eqParadasRows().forEach(r=>{const m=r.querySelector('.par-mot').value,i=r.querySelector('.par-ini').value,f=r.querySelector('.par-fim').value;if(i&&f)a.push(`${m} ${i}-${f}`);});return a.join('; ');}
+function eqCalcHoras(){const b=el('eqHoras');if(!b)return;let w=hm(el('eqFim').value)-hm(el('eqIni').value);if(w<0)w+=1440;let t=w-eqParadasMin();if(t<0)t=0;b.value=(t/60).toFixed(2);}
+/* assinatura (canvas) */
+function eqInitSign(){const c=el('eqSign');if(!c||c._init)return;c._init=true;const ctx=c.getContext('2d');ctx.lineWidth=2;ctx.lineCap='round';ctx.strokeStyle='#111';let draw=false,px,py;
+  const pos=e=>{const r=c.getBoundingClientRect();const x=(e.touches?e.touches[0].clientX:e.clientX)-r.left,y=(e.touches?e.touches[0].clientY:e.clientY)-r.top;return [x*(c.width/r.width),y*(c.height/r.height)];};
+  const start=e=>{draw=true;[px,py]=pos(e);c._has=true;e.preventDefault();};
+  const move=e=>{if(!draw)return;const [x,y]=pos(e);ctx.beginPath();ctx.moveTo(px,py);ctx.lineTo(x,y);ctx.stroke();px=x;py=y;e.preventDefault();};
+  const end=()=>{draw=false;};
+  c.addEventListener('mousedown',start);c.addEventListener('mousemove',move);window.addEventListener('mouseup',end);
+  c.addEventListener('touchstart',start,{passive:false});c.addEventListener('touchmove',move,{passive:false});c.addEventListener('touchend',end);
+}
+function eqLimparSign(){const c=el('eqSign');if(c){c.getContext('2d').clearRect(0,0,c.width,c.height);c._has=false;}}
+function eqAssinaturaData(){const c=el('eqSign');return (c&&c._has)?c.toDataURL('image/png'):'';}
+/* envio */
+function eqEnviar(){
+  const o=obra();const equip=el('eqEquip').value;
+  if(!equip){toast('Selecione um equipamento');return;}
+  const horas=+el('eqHoras').value;if(!horas){toast('Horas zeradas — confira os horários');return;}
+  const hi=parseFloat(el('eqHi').value),hf=parseFloat(el('eqHf').value);
+  if(!isNaN(hi)&&!isNaN(hf)&&hf<hi){toast('Horímetro final < inicial');return;}
+  const carimbo=Date.now()+'_'+Math.floor(Math.random()*9000+1000);
+  const p={action:'equipApontar',obra:o.id,carimbo:carimbo,clientId:carimbo,data:el('eqData').value||hoje(),turno:el('eqTurno').value,
+    equipamento:equip,operador:el('eqOper').value.trim(),inicio:el('eqIni').value,fim:el('eqFim').value,horas:el('eqHoras').value,
+    paradas:eqParadasTxt()||'Sem paradas',horimIni:el('eqHi').value,horimFim:el('eqHf').value,combustivel:el('eqComb').value,
+    situacao:el('eqSit').value,observacoes:el('eqObs').value.trim(),assinatura:eqAssinaturaData()};
+  toast('Enviando…');
+  postAcao(p).then(r=>{if(r&&r.ok){toast('Apontamento enviado ✓');['eqOper','eqHi','eqHf','eqComb','eqObs'].forEach(id=>el(id).value='');el('eqParadas').innerHTML='';eqLimparSign();eqCalcHoras();carregarEquip();}
+    else toast((r&&r.error)||'Falha ao enviar');}).catch(()=>toast('Sem conexão — tente de novo'));
+}
+function eqApagar(carimbo){if(!confirm('Apagar este apontamento?'))return;postAcao({action:'equipApagar',carimbo:carimbo}).then(r=>{if(r&&r.ok){toast('Apagado');carregarEquip();}else toast('Falha ao apagar');});}
+/* cadastros */
+function cadEquipModal(){
+  const locOpts=EQUIP.locadoras.map(l=>`<option>${esc(l.nome)}</option>`).join('');
+  abrirModal('Cadastrar equipamento',`
+    <div class="field"><label class="fl">Nome *</label><input id="ceNome" placeholder="Ex.: Escavadeira 01"></div>
+    <div class="row"><div class="field"><label class="fl">Tipo</label><select id="ceTipo">${TIPOS_EQUIP.map(t=>`<option>${t}</option>`).join('')}</select></div>
+      <div class="field"><label class="fl">Vínculo</label><select id="ceVinc" onchange="el('ceLocWrap').style.display=this.value==='Próprio'?'none':''"><option>Próprio</option><option>Locado</option></select></div></div>
+    <div class="field" id="ceLocWrap" style="display:none"><label class="fl">Locadora</label><select id="ceLoc"><option value="">—</option>${locOpts}</select></div>
+    <button class="btn btn-pri" style="width:100%;justify-content:center" onclick="cadEquipSalvar()">Cadastrar</button>`);
+}
+function cadEquipSalvar(){const o=obra();const nome=el('ceNome').value.trim();if(!nome){toast('Informe o nome');return;}
+  postAcao({action:'equipCadastrar',obra:o.id,nome:nome,tipo:el('ceTipo').value,vinculo:el('ceVinc').value,locadora:el('ceVinc').value==='Próprio'?'':el('ceLoc').value}).then(r=>{
+    if(r&&r.equipamentos){EQUIP.equipamentos=r.equipamentos;EQUIP.locadoras=r.locadoras||EQUIP.locadoras;fecharModal();render();toast('Equipamento cadastrado ✓');}else toast((r&&r.error)||'Falha');});}
+function cadLocadoraModal(){abrirModal('Cadastrar locadora',`
+    <div class="field"><label class="fl">Nome *</label><input id="clNome" placeholder="Empresa locadora"></div>
+    <div class="field"><label class="fl">Observações</label><textarea id="clObs" rows="2"></textarea></div>
+    <button class="btn btn-pri" style="width:100%;justify-content:center" onclick="cadLocadoraSalvar()">Cadastrar</button>`);}
+function cadLocadoraSalvar(){const o=obra();const nome=el('clNome').value.trim();if(!nome){toast('Informe o nome');return;}
+  postAcao({action:'locadoraCadastrar',obra:o.id,nome:nome,observacoes:el('clObs').value.trim()}).then(r=>{if(r&&r.locadoras){EQUIP.locadoras=r.locadoras;fecharModal();toast('Locadora cadastrada ✓');}else toast((r&&r.error)||'Falha');});}
+/* medição em Excel (uma aba por equipamento) */
+function medicaoEquipExcel(){
+  const o=obra();const porEq={};EQUIP.apontamentos.forEach(a=>{(porEq[a.equipamento]=porEq[a.equipamento]||[]).push(a);});
+  const nomes=Object.keys(porEq);if(!nomes.length){toast('Sem apontamentos');return;}
+  const green={font:{bold:true,color:{rgb:'FFFFFF'}},fill:{fgColor:{rgb:'1F6F4A'}}},hdr={font:{bold:true},fill:{fgColor:{rgb:'F0EFE9'}},border:_brd()},cel={border:_brd()},celR={border:_brd(),alignment:{horizontal:'right'}};
+  const wb=XLSX.utils.book_new();
+  nomes.forEach(nome=>{
+    const aps=porEq[nome].slice().sort((a,b)=>String(a.data).localeCompare(String(b.data)));
+    const eq=EQUIP.equipamentos.find(e=>e.nome===nome)||{};
+    const aoa=[],merges=[],st={};const put=(r,c,v,s)=>{while(aoa.length<=r)aoa.push([]);const row=aoa[r];while(row.length<=c)row.push('');row[c]=v;if(s)st[r+','+c]=s;};
+    let r=0;put(r,0,'MEDIÇÃO DE EQUIPAMENTO — '+nome,{font:{bold:true,sz:13,color:{rgb:'1F6F4A'}}});merges.push({s:{r,c:0},e:{r,c:8}});r++;
+    put(r,0,(o.nome)+'  ·  Tipo: '+(eq.tipo||'—')+'  ·  '+(eq.vinculo||'')+(eq.locadora?' ('+eq.locadora+')':''));merges.push({s:{r,c:0},e:{r,c:8}});r+=2;
+    const cols=['Data','Turno','Operador','Horas','Paradas','Horím. ini','Horím. fim','Combustível','Situação'];
+    cols.forEach((h,c)=>put(r,c,h,hdr));r++;
+    let totH=0,totC=0;
+    aps.forEach(a=>{totH+=(+a.horas||0);totC+=(+a.combustivel||0);
+      [String(a.data).slice(0,10),a.turno||'',a.operador||'',(+a.horas||0),a.paradas||'',a.horimIni||'',a.horimFim||'',a.combustivel||'',a.situacao||''].forEach((v,c)=>put(r,c,v,c===3||c===7?celR:cel));r++;});
+    put(r,0,'TOTAL',hdr);put(r,1,'',hdr);put(r,2,'',hdr);put(r,3,+totH.toFixed(2),{...hdr,alignment:{horizontal:'right'}});put(r,4,aps.length+' apont.',hdr);put(r,5,'',hdr);put(r,6,'',hdr);put(r,7,+totC.toFixed(2),{...hdr,alignment:{horizontal:'right'}});put(r,8,'',hdr);
+    const ws=XLSX.utils.aoa_to_sheet(aoa);ws['!merges']=merges;ws['!cols']=[{wch:12},{wch:9},{wch:18},{wch:8},{wch:28},{wch:11},{wch:11},{wch:12},{wch:22}];
+    Object.keys(st).forEach(k=>{const [rr,cc]=k.split(',').map(Number);const ref=XLSX.utils.encode_cell({r:rr,c:cc});if(!ws[ref])ws[ref]={t:'s',v:''};ws[ref].s=st[k];});
+    XLSX.utils.book_append_sheet(wb,ws,nome.slice(0,28).replace(/[\\/?*:\[\]]/g,' '));
+  });
+  XLSX.writeFile(wb,'Medicao_Equipamentos_'+o.id+'_'+hoje()+'.xlsx');toast('Medição gerada ✓');
+}
+
 /* ---------- PROJETOS (PDFs) ---------- */
 function viewProjetos(o){
   const projs=o.projetos||[];
@@ -1058,7 +1219,7 @@ function enfileirarUpdateRDO(obraId,l){if(!BACKEND)return;
   outboxAdd({id:'ob'+uid(),obra:obraId,tipo:'updRdo',params:{action:'updateRDO',payload:JSON.stringify(payload)}});outboxFlush();}
 
 /* ============================================================ AÇÕES */
-function abrirObra(id){estado.obraId=id;estado.tela='executivo';estado.filtroRua='Todas';estado.mesMed='';estado.diarioData='';estado.projSel='';estado.painelFrente='Todas';estado.painelMes='Todos';_pdfDoc=null;_pdfUrl='';_pdfZoom=1;render();
+function abrirObra(id){estado.obraId=id;estado.tela='executivo';estado.filtroRua='Todas';estado.mesMed='';estado.diarioData='';estado.projSel='';estado.painelFrente='Todas';estado.painelMes='Todos';_pdfDoc=null;_pdfUrl='';_pdfZoom=1;EQUIP={equipamentos:[],locadoras:[],apontamentos:[],carregado:false};render();
   if(BACKEND)carregarObra(id).then(()=>{if(estado.obraId===id&&estado.tela!=='home')render();});}
 function abrirExterno(url){window.open(url,'_blank','noopener');}
 function setPFrente(v){estado.painelFrente=v;render();}
@@ -1130,7 +1291,8 @@ function temaAtual(){return localStorage.getItem('gestor:tema')||(matchMedia('(p
 function toggleTema(){const t=temaAtual()==='dark'?'light':'dark';localStorage.setItem('gestor:tema',t);document.documentElement.setAttribute('data-theme',t);}
 function toast(m){let t=el('toast');if(!t){t=document.createElement('div');t.id='toast';t.className='toast';document.body.appendChild(t);}
   t.textContent=m;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),2200);}
-function bind(){if(estado.tela==='rdo')atualizaServ();if(estado.tela==='projetos')renderPdfDoc(estado.projSel);}
+function bind(){if(estado.tela==='rdo')atualizaServ();if(estado.tela==='projetos')renderPdfDoc(estado.projSel);
+  if(estado.tela==='equip'){if(BACKEND&&!EQUIP.carregado)carregarEquip();eqInitSign();eqCalcHoras();}}
 
 if(window.pdfjsLib)window.pdfjsLib.GlobalWorkerOptions.workerSrc='vendor/pdfjs/pdf.worker.min.js';
 document.addEventListener('keydown',e=>{if(e.key==='Escape')fecharModal();});

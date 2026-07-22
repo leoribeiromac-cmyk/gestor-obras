@@ -18,8 +18,17 @@
 //        EXIGIR_TOKEN = true
 // ============================================================
 
-var ABA_RDO    = 'RDO';
-var ABA_DIARIO = 'Diario';
+var ABA_RDO      = 'RDO';
+var ABA_DIARIO   = 'Diario';
+var ABA_EQUIP    = 'Equipamentos';
+var ABA_LOCADORA = 'Locadoras';
+var ABA_APONT    = 'ApontEquip';
+// abas de equipamentos são criadas automaticamente com estes cabeçalhos se faltarem
+var HEADERS = {
+  'Equipamentos': ['nome','tipo','vinculo','locadora','obra','ativo'],
+  'Locadoras':    ['nome','observacoes','obra'],
+  'ApontEquip':   ['carimbo','obra','data','turno','equipamento','operador','inicio','fim','horas','paradas','horimIni','horimFim','combustivel','situacao','observacoes','assinatura','clientId']
+};
 
 function doGet(e)  { return rotear(e); }
 function doPost(e) { return rotear(e); }
@@ -30,7 +39,8 @@ function rotear(e) {
   var resp;
   try {
     var PROTEGIDAS = ['addBatchRDO', 'deleteRDO', 'updateRDO',
-                      'addDiario', 'updateDiario', 'deleteDiario'];
+                      'addDiario', 'updateDiario', 'deleteDiario',
+                      'equipCadastrar', 'equipDesativar', 'locadoraCadastrar', 'equipApontar', 'equipApagar'];
     if (PROTEGIDAS.indexOf(action) !== -1) {
       var falha = exigirTokenSeAtivo(p.token);
       if (falha) return responder(falha, p.callback);
@@ -44,6 +54,13 @@ function rotear(e) {
       case 'addDiario':    resp = upsertDiario(p, false); break;
       case 'updateDiario': resp = upsertDiario(p, true); break;
       case 'deleteDiario': resp = deleteLinhaPorId(ABA_DIARIO, p.id); break;
+      case 'equipListar':      resp = equipListar(p.obra); break;
+      case 'equipCadastrar':   resp = equipCadastrar(p); break;
+      case 'equipDesativar':   resp = equipDesativar(p.obra, p.nome); break;
+      case 'locadoraCadastrar':resp = locadoraCadastrar(p.obra, p.nome, p.observacoes); break;
+      case 'equipApontar':     resp = equipApontar(p); break;
+      case 'equipApagar':      resp = deleteLinhaPorId(ABA_APONT, p.carimbo, 'carimbo'); break;
+      case 'equipApontamentos':resp = equipApontamentos(p.obra, p.mes); break;
       default:
         resp = { ok: false, error: 'Ação desconhecida: "' + action + '"' };
     }
@@ -216,7 +233,7 @@ function gerarIdDiario(dados, iId) {
 }
 
 // -------------------- Apagar / atualizar por ID --------------------
-function deleteLinhaPorId(nomeAba, id) {
+function deleteLinhaPorId(nomeAba, id, colName) {
   if (!id) return { ok: false, error: 'ID não informado' };
   var a = aba(nomeAba);
   var lock = LockService.getScriptLock();
@@ -224,8 +241,8 @@ function deleteLinhaPorId(nomeAba, id) {
   try {
     var dados = a.getDataRange().getValues();
     var cab = dados[0].map(function (h) { return String(h).trim().toLowerCase(); });
-    var iId = idxCol(cab, 'id');
-    if (iId === -1) return { ok: false, error: 'Coluna ID não encontrada' };
+    var iId = idxCol(cab, colName || 'id');
+    if (iId === -1) return { ok: false, error: 'Coluna ' + (colName || 'ID') + ' não encontrada' };
     for (var i = 1; i < dados.length; i++) {
       if (String(dados[i][iId]).trim() === String(id).trim()) {
         a.deleteRow(i + 1);
@@ -260,6 +277,113 @@ function updateLinha(nomeAba, payloadJson) {
     }
     return { ok: false, error: 'ID não encontrado: ' + id };
   } finally { lock.releaseLock(); }
+}
+
+// ==================== EQUIPAMENTOS ====================
+function getOrCreate(nomeAba) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var a = ss.getSheetByName(nomeAba);
+  if (!a) {
+    a = ss.insertSheet(nomeAba);
+    var h = HEADERS[nomeAba];
+    if (h) a.getRange(1, 1, 1, h.length).setValues([h]);
+  }
+  return a;
+}
+function linhasObj(nomeAba, obra) {
+  var a = getOrCreate(nomeAba);
+  var dados = a.getDataRange().getValues();
+  if (dados.length <= 1) return [];
+  var cab = dados[0].map(function (h) { return String(h).trim(); });
+  var out = [];
+  for (var i = 1; i < dados.length; i++) {
+    var o = {}; for (var c = 0; c < cab.length; c++) o[cab[c]] = dados[i][c];
+    if (obra && String(o.obra).trim() !== String(obra).trim()) continue;
+    out.push(o);
+  }
+  return out;
+}
+function appendObj(nomeAba, obj) {
+  var a = getOrCreate(nomeAba);
+  var cab = cabecalho(a);
+  var reg = {}; Object.keys(obj).forEach(function (k) { reg[k.toLowerCase()] = obj[k]; });
+  var linha = cab.map(function (nc) { return reg.hasOwnProperty(nc) ? reg[nc] : ''; });
+  a.getRange(a.getLastRow() + 1, 1, 1, cab.length).setValues([linha]);
+}
+
+function equipListar(obra) {
+  var eqs = linhasObj(ABA_EQUIP, obra).filter(function (e) { return String(e.ativo).toLowerCase() !== 'false'; });
+  var locs = linhasObj(ABA_LOCADORA, obra);
+  return { ok: true, equipamentos: eqs, locadoras: locs };
+}
+function equipCadastrar(p) {
+  var nome = String(p.nome || '').trim(); if (!nome) return { ok: false, error: 'Nome vazio' };
+  var lock = LockService.getScriptLock(); lock.waitLock(30000);
+  try {
+    var jaTem = linhasObj(ABA_EQUIP, p.obra).some(function (e) { return String(e.nome).trim().toLowerCase() === nome.toLowerCase() && String(e.ativo).toLowerCase() !== 'false'; });
+    if (!jaTem) appendObj(ABA_EQUIP, { nome: nome, tipo: p.tipo || 'Outros', vinculo: p.vinculo || 'Próprio', locadora: p.locadora || '', obra: p.obra || '', ativo: 'true' });
+    return equipListar(p.obra);
+  } finally { lock.releaseLock(); }
+}
+function equipDesativar(obra, nome) {
+  var a = getOrCreate(ABA_EQUIP);
+  var dados = a.getDataRange().getValues();
+  var cab = dados[0].map(function (h) { return String(h).trim().toLowerCase(); });
+  var iN = idxCol(cab, 'nome'), iO = idxCol(cab, 'obra'), iA = idxCol(cab, 'ativo');
+  for (var i = 1; i < dados.length; i++) {
+    if (String(dados[i][iN]).trim().toLowerCase() === String(nome).trim().toLowerCase() &&
+        (iO === -1 || String(dados[i][iO]).trim() === String(obra).trim())) {
+      if (iA !== -1) a.getRange(i + 1, iA + 1).setValue('false');
+    }
+  }
+  return equipListar(obra);
+}
+function locadoraCadastrar(obra, nome, obs) {
+  nome = String(nome || '').trim(); if (!nome) return { ok: false, error: 'Nome vazio' };
+  var lock = LockService.getScriptLock(); lock.waitLock(30000);
+  try {
+    var jaTem = linhasObj(ABA_LOCADORA, obra).some(function (l) { return String(l.nome).trim().toLowerCase() === nome.toLowerCase(); });
+    if (!jaTem) appendObj(ABA_LOCADORA, { nome: nome, observacoes: obs || '', obra: obra || '' });
+    return { ok: true, locadoras: linhasObj(ABA_LOCADORA, obra) };
+  } finally { lock.releaseLock(); }
+}
+function equipApontar(p) {
+  var lock = LockService.getScriptLock(); lock.waitLock(30000);
+  try {
+    var a = getOrCreate(ABA_APONT);
+    var cab = cabecalho(a);
+    var iCli = idxCol(cab, 'clientid');
+    if (p.clientId && iCli !== -1) {
+      var d = a.getDataRange().getValues();
+      for (var r = 1; r < d.length; r++) if (String(d[r][iCli]).trim() === String(p.clientId).trim()) return { ok: true, duplicate: true };
+    }
+    // assinatura em base64 (data:image/png;base64,...) -> salva no Drive e guarda a URL
+    var assin = String(p.assinatura || '');
+    if (assin.indexOf('data:image') === 0) {
+      try {
+        var b64 = assin.split(',')[1];
+        var blob = Utilities.newBlob(Utilities.base64Decode(b64), 'image/png', 'assinatura_' + (p.carimbo || Date.now()) + '.png');
+        var pasta = DriveApp.getFoldersByName('Assinaturas Gestor Obras');
+        pasta = pasta.hasNext() ? pasta.next() : DriveApp.createFolder('Assinaturas Gestor Obras');
+        var f = pasta.createFile(blob); f.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+        assin = 'https://drive.google.com/uc?id=' + f.getId();
+      } catch (e) { assin = ''; }
+    }
+    appendObj(ABA_APONT, {
+      carimbo: p.carimbo || String(Date.now()), obra: p.obra || '', data: p.data || '', turno: p.turno || '',
+      equipamento: p.equipamento || '', operador: p.operador || '', inicio: p.inicio || '', fim: p.fim || '',
+      horas: p.horas || '', paradas: p.paradas || '', horimIni: p.horimIni || '', horimFim: p.horimFim || '',
+      combustivel: p.combustivel || '', situacao: p.situacao || '', observacoes: p.observacoes || '',
+      assinatura: assin, clientId: p.clientId || ''
+    });
+    return { ok: true };
+  } finally { lock.releaseLock(); }
+}
+function equipApontamentos(obra, mes) {
+  var arr = linhasObj(ABA_APONT, obra);
+  if (mes) arr = arr.filter(function (x) { return normData(x.data).slice(0, 7) === mes; });
+  arr.sort(function (x, y) { return String(y.data).localeCompare(String(x.data)); });
+  return { ok: true, apontamentos: arr };
 }
 
 // -------------------- BACKUP DIÁRIO (opcional) --------------------
