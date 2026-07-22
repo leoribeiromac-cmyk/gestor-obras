@@ -815,13 +815,21 @@ function carregarEquip(){
 function viewEquip(o){
   if(!BACKEND)return `<div class="empty"><div class="ic">🚜</div>O módulo de Equipamentos usa o backend (Google Sheets).<br>Configure o CONFIG do app para ativar.</div>`;
   const eqOpts=EQUIP.equipamentos.map(e=>`<option value="${esc(e.nome)}">${esc(e.nome)}${e.tipo?' · '+esc(e.tipo):''}${e.locadora?' · '+esc(e.locadora):''}</option>`).join('');
+  const meses=[...new Set(EQUIP.apontamentos.map(a=>String(a.data).slice(0,7)).filter(m=>/^\d{4}-\d{2}$/.test(m)))].sort().reverse();
+  const equipNomes=[...new Set(EQUIP.apontamentos.map(a=>a.equipamento))];
   return `
-  <div class="row" style="margin-bottom:16px;align-items:center;gap:8px">
+  <div class="row" style="margin-bottom:14px;align-items:center;gap:8px">
     <div class="chip">${EQUIP.equipamentos.length} equipamentos${EQUIP.locadoras.length?' · '+EQUIP.locadoras.length+' locadoras':''}</div>
     <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn btn-sm" onclick="cadEquipModal()">+ Equipamento</button>
-      <button class="btn btn-sm" onclick="cadLocadoraModal()">+ Locadora</button>
-      <button class="btn btn-sm" onclick="medicaoEquipExcel()" ${EQUIP.apontamentos.length?'':'disabled'}>⬇ Medição (Excel)</button></div></div>
+      <button class="btn btn-sm" onclick="cadLocadoraModal()">+ Locadora</button></div></div>
+  <div class="card" style="margin-bottom:16px"><div class="card-b" style="padding:12px 16px;display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+    <div class="field" style="margin:0;max-width:180px"><label class="fl">Medição — período</label>
+      <select id="eqFilMes"><option value="Todos">Todos os meses</option>${meses.map(m=>`<option value="${m}">${mesLabel(m+'-01')}</option>`).join('')}</select></div>
+    <div class="field" style="margin:0;max-width:240px"><label class="fl">Equipamento</label>
+      <select id="eqFilEquip"><option value="Todos">Todos os equipamentos</option>${equipNomes.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('')}</select></div>
+    <button class="btn btn-pri" onclick="medicaoEquipExcel()" ${EQUIP.apontamentos.length?'':'disabled'} style="margin-left:auto">⬇ Gerar medição (Excel)</button>
+    <div class="kpi-s" style="flex-basis:100%">O Excel sai no layout de medição (uma aba por equipamento), respeitando os filtros acima.</div></div></div>
   <div class="grid g2" style="grid-template-columns:1.3fr 1fr;align-items:start">
     <div class="card"><div class="card-h"><div class="card-t">🚜 Apontamento de equipamento</div><div class="card-st">produção do dia: horas, paradas, horímetro, combustível</div></div>
       <div class="card-b">
@@ -926,8 +934,15 @@ function cadLocadoraSalvar(){const o=obra();const nome=el('clNome').value.trim()
   postAcao({action:'locadoraCadastrar',obra:o.id,nome:nome,observacoes:el('clObs').value.trim()}).then(r=>{if(r&&r.locadoras){EQUIP.locadoras=r.locadoras;fecharModal();toast('Locadora cadastrada ✓');}else toast((r&&r.error)||'Falha');});}
 /* medição em Excel (uma aba por equipamento) */
 function medicaoEquipExcel(){
-  const o=obra();const porEq={};EQUIP.apontamentos.forEach(a=>{(porEq[a.equipamento]=porEq[a.equipamento]||[]).push(a);});
-  const nomes=Object.keys(porEq);if(!nomes.length){toast('Sem apontamentos');return;}
+  const o=obra();
+  const fMes=(el('eqFilMes')&&el('eqFilMes').value)||'Todos';
+  const fEq=(el('eqFilEquip')&&el('eqFilEquip').value)||'Todos';
+  const filtrados=EQUIP.apontamentos.filter(a=>
+    (fMes==='Todos'||String(a.data).slice(0,7)===fMes)&&(fEq==='Todos'||a.equipamento===fEq));
+  if(!filtrados.length){toast('Nenhum apontamento para os filtros escolhidos');return;}
+  const porEq={};filtrados.forEach(a=>{(porEq[a.equipamento]=porEq[a.equipamento]||[]).push(a);});
+  const nomes=Object.keys(porEq);
+  const sufMes=fMes==='Todos'?'todos':fMes;
   const green={font:{bold:true,color:{rgb:'FFFFFF'}},fill:{fgColor:{rgb:'1F6F4A'}}},hdr={font:{bold:true},fill:{fgColor:{rgb:'F0EFE9'}},border:_brd()},cel={border:_brd()},celR={border:_brd(),alignment:{horizontal:'right'}};
   const wb=XLSX.utils.book_new();
   nomes.forEach(nome=>{
@@ -946,7 +961,8 @@ function medicaoEquipExcel(){
     Object.keys(st).forEach(k=>{const [rr,cc]=k.split(',').map(Number);const ref=XLSX.utils.encode_cell({r:rr,c:cc});if(!ws[ref])ws[ref]={t:'s',v:''};ws[ref].s=st[k];});
     XLSX.utils.book_append_sheet(wb,ws,nome.slice(0,28).replace(/[\\/?*:\[\]]/g,' '));
   });
-  XLSX.writeFile(wb,'Medicao_Equipamentos_'+o.id+'_'+hoje()+'.xlsx');toast('Medição gerada ✓');
+  const sufEq=fEq==='Todos'?'':'_'+fEq.replace(/[^\w]+/g,'-');
+  XLSX.writeFile(wb,'Medicao_Equip_'+o.id+'_'+sufMes+sufEq+'.xlsx');toast('Medição gerada ✓ ('+nomes.length+' equip.)');
 }
 
 /* ---------- PROJETOS (PDFs) ---------- */
