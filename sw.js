@@ -1,5 +1,5 @@
 /* Service worker do Gestor Obras — cache do app; dados sempre de localStorage. */
-const CACHE = 'gestor-obras-v12';
+const CACHE = 'gestor-obras-v13';
 const ASSETS = [
   './', './index.html', './manifest.json',
   './dados/_index.js', './dados/ruas-de-terra.js', './dados/teotonio-vilela.js',

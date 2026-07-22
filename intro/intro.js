@@ -67,7 +67,7 @@
       return '<div class="intro-text pos-' + s.pos + '" data-scene="' + i + '">' +
         '<div class="kicker">' + s.kicker + '</div><h2>' + s.h + '</h2>' +
         (s.p ? '<p>' + s.p + '</p>' : '') +
-        (s.chips.length ? '<div class="intro-chips">' + s.chips.map(function (c) { return '<span>' + c + '</span>'; }).join('') + '</div>' : '') +
+        (s.chips && s.chips.length ? '<div class="intro-chips">' + s.chips.map(function (c) { return '<span>' + c + '</span>'; }).join('') + '</div>' : '') +
         '</div>';
     }).join('');
     var usuarios = (CONFIG.usuarios || []).map(function (u) { return '<option>' + u + '</option>'; }).join('');
@@ -400,8 +400,7 @@
     var s0 = SCENES[0];
     var st = document.createElement('div');
     st.className = 'intro-text pos-static';
-    st.innerHTML = '<div class="kicker">' + s0.kicker + '</div><h2>' + s0.h + '</h2><p>' + s0.p + '</p>' +
-      '<div class="intro-chips">' + SCENES.slice(1, SCENES.length - 1).map(function (s) { return '<span>' + s.h + '</span>'; }).join('') + '</div>';
+    st.innerHTML = '<div class="kicker">' + s0.kicker + '</div><h2>' + s0.h + '</h2><p>' + s0.p + '</p>';
     overlay.querySelector('.intro-texts').appendChild(st);
     var v = videos[0] && videos[0].el;
     if (v) { v.addEventListener('seeked', function () { drawMedia(v); }, { once: true }); try { v.currentTime = 0; } catch (e) {} drawMedia(v); }
