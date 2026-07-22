@@ -107,13 +107,23 @@
     loader = overlay.querySelector('.intro-loader');
     loaderBar = loader.querySelector('.lb i');
     videoBox = overlay.querySelector('.intro-videos');
-    videos = [].slice.call(videoBox.querySelectorAll('video')).map(function (el) { return { el: el, ready: false, seeking: false, pendingT: null }; });
+    videos = [].slice.call(videoBox.querySelectorAll('video')).map(function (el) {
+      return { el: el, ready: false, seeking: false, seekTimer: null, pendingT: null };
+    });
     videos.forEach(function (v) {
       v.el.addEventListener('seeked', function () {
+        if (v.seekTimer) { clearTimeout(v.seekTimer); v.seekTimer = null; }
         v.seeking = false;
         drawMedia(v.el);
-        if (v.pendingT != null) { var t = v.pendingT; v.pendingT = null; doSeek(v, t); }
+        if (v.pendingT != null) {
+          var t = v.pendingT;
+          v.pendingT = null;
+          doSeek(v, t);
+        }
       });
+      v.el.addEventListener('loadedmetadata', function () { v.ready = true; });
+      v.el.addEventListener('canplay', function () { v.ready = true; });
+      v.el.addEventListener('loadeddata', function () { v.ready = true; });
     });
     textEls = [].slice.call(overlay.querySelectorAll('.intro-text'));
     capEl = overlay.querySelector('.intro-cap');
@@ -127,30 +137,14 @@
     window.addEventListener('resize', resize);
   }
 
-  /* ---------- vídeos (3 cenas curtas — pré-carregadas por completo) ---------- */
-  function preloadAll() {
-    var iv = setInterval(function () {
-      var done = 0; videos.forEach(function (v) { if (v.ready) done++; });
-      if (loaderBar) loaderBar.style.width = Math.round(done / videos.length * 100) + '%';
-    }, 120);
-    var jobs = videos.map(function (v) {
-      return new Promise(function (res) {
-        var settled = false;
-        var finish = function (ok) { if (settled) return; settled = true; v.ready = ok; res(ok); };
-        v.el.addEventListener('loadeddata', function () { finish(true); }, { once: true });
-        v.el.addEventListener('error', function () { finish(false); }, { once: true });
-        setTimeout(function () { finish(v.el.readyState >= 2); }, 20000);
-      });
-    });
-    return Promise.all(jobs).then(function (oks) {
-      clearInterval(iv);
-      var ok = oks.filter(Boolean).length;
-      if (ok < videos.length) throw new Error('vídeos ausentes (' + ok + '/' + videos.length + ')');
-    });
-  }
-
   /* ---------- desenho (canvas <- imagem ou vídeo, sempre "cover") ---------- */
-  function mediaSize(m) { return m.videoWidth != null ? [m.videoWidth, m.videoHeight] : [m.naturalWidth, m.naturalHeight]; }
+  function mediaSize(m) {
+    if (!m) return [0, 0];
+    if (m.videoWidth) return [m.videoWidth, m.videoHeight];
+    if (m.width) return [m.width, m.height];
+    if (m.naturalWidth) return [m.naturalWidth, m.naturalHeight];
+    return [0, 0];
+  }
   function resize() {
     if (!canvas) return;
     var dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -158,24 +152,132 @@
     canvas.height = Math.floor(innerHeight * dpr);
     if (lastFrameDrawn) drawMedia(lastFrameDrawn);
   }
-  function drawMedia(m) {
+  function drawMedia(m, alpha) {
     if (!m) return;
     var sz = mediaSize(m); if (!sz[0]) return;
     lastFrameDrawn = m;
     var cw = canvas.width, ch = canvas.height;
     var s = Math.max(cw / sz[0], ch / sz[1]);
     var w = sz[0] * s, h = sz[1] * s;
-    ctx.drawImage(m, (cw - w) / 2, (ch - h) / 2, w, h);
+    if (alpha != null) {
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+      ctx.drawImage(m, (cw - w) / 2, (ch - h) / 2, w, h);
+      ctx.restore();
+    } else {
+      ctx.drawImage(m, (cw - w) / 2, (ch - h) / 2, w, h);
+    }
   }
-  // fila de seek: nunca dispara um novo currentTime enquanto o anterior não
-  // resolveu (evita "engavetar" seeks durante scroll rápido, que travava o quadro)
+
+  /* ---------- pré-carregamento e extração de quadros em fila (sequencial) ---------- */
+  function extractFrames(vObj, count) {
+    count = count || 36;
+    var el = vObj.el;
+    if (!el || !el.duration || el.duration <= 0) return Promise.resolve();
+    vObj.frames = [];
+    var dur = el.duration;
+    var step = dur / count;
+    var tmpC = document.createElement('canvas');
+    tmpC.width = Math.min(1280, el.videoWidth || 1280);
+    tmpC.height = Math.min(720, el.videoHeight || 720);
+    var tmpCtx = tmpC.getContext('2d');
+
+    var p = Promise.resolve();
+    for (var i = 0; i < count; i++) {
+      (function(idx) {
+        p = p.then(function() {
+          return new Promise(function(resolve) {
+            var targetT = Math.min(dur - 0.04, idx * step);
+            var onSeeked = function() {
+              try {
+                tmpCtx.drawImage(el, 0, 0, tmpC.width, tmpC.height);
+                if (window.createImageBitmap) {
+                  createImageBitmap(tmpC).then(function(bmp) {
+                    vObj.frames[idx] = bmp;
+                    resolve();
+                  }).catch(function() { resolve(); });
+                } else {
+                  resolve();
+                }
+              } catch(e) { resolve(); }
+            };
+            el.addEventListener('seeked', onSeeked, { once: true });
+            setTimeout(onSeeked, 80);
+            try { el.currentTime = targetT; } catch(e) { resolve(); }
+          });
+        });
+      })(i);
+    }
+    return p;
+  }
+
+  function preloadAll() {
+    var total = videos.length;
+    var iv = setInterval(function () {
+      var done = 0;
+      videos.forEach(function (v) {
+        if (v.frames && v.frames.length > 0) done += v.frames.length / 36;
+        else if (v.ready || v.el.readyState >= 1) done += 0.3;
+      });
+      if (loaderBar) loaderBar.style.width = Math.min(100, Math.round((done / total) * 100)) + '%';
+    }, 60);
+
+    var chain = Promise.resolve();
+    videos.forEach(function (v, idx) {
+      chain = chain.then(function () {
+        return new Promise(function (res) {
+          var startExtract = function () {
+            v.ready = true;
+            extractFrames(v, 36).then(function () { res(); });
+          };
+          if (v.el.readyState >= 1) {
+            startExtract();
+          } else {
+            v.el.addEventListener('loadedmetadata', startExtract, { once: true });
+            v.el.addEventListener('error', function () { res(); }, { once: true });
+            setTimeout(function () { startExtract(); }, idx === 0 ? 3000 : 1500);
+          }
+        });
+      });
+    });
+
+    return chain.then(function () {
+      clearInterval(iv);
+      if (loaderBar) loaderBar.style.width = '100%';
+    });
+  }
+
   function doSeek(v, t) {
-    if (Math.abs(v.el.currentTime - t) < 0.02) { drawMedia(v.el); return; }
+    if (!v.el || !v.el.duration) return;
+    if (Math.abs(v.el.currentTime - t) < 0.015) {
+      drawMedia(v.el);
+      return;
+    }
     v.seeking = true;
-    try { v.el.currentTime = t; } catch (e) { v.seeking = false; }
+    if (v.seekTimer) clearTimeout(v.seekTimer);
+    v.seekTimer = setTimeout(function () {
+      v.seeking = false;
+      v.seekTimer = null;
+      if (v.pendingT != null) {
+        var pt = v.pendingT;
+        v.pendingT = null;
+        doSeek(v, pt);
+      }
+    }, 120);
+    try {
+      v.el.currentTime = t;
+    } catch (e) {
+      v.seeking = false;
+    }
   }
+
   function seekTo(v, t) {
-    if (v.seeking) { v.pendingT = t; return; }
+    if (!v.el || !v.el.duration) return;
+    t = Math.max(0, Math.min(v.el.duration - 0.04, t));
+    if (v.seeking) {
+      v.pendingT = t;
+      return;
+    }
     doSeek(v, t);
   }
 
@@ -185,10 +287,28 @@
     var si = Math.min(N - 1, Math.floor(p * N));
     var local = p * N - si;
     var vObj = videos[si];
-    if (vObj && vObj.el.readyState >= 1 && vObj.el.duration) {
+
+    // Transição cinematográfica (film dissolve) entre a cena anterior e a atual
+    var prevObj = si > 0 ? videos[si - 1] : null;
+    var crossFadeAlpha = (si > 0 && local < 0.12 && prevObj && prevObj.frames && prevObj.frames.length > 0) ? (local / 0.12) : 1;
+
+    if (crossFadeAlpha < 1 && prevObj && prevObj.frames.length > 0) {
+      var prevLastFrame = prevObj.frames[prevObj.frames.length - 1];
+      if (prevLastFrame) drawMedia(prevLastFrame, 1.0);
+    }
+
+    if (vObj && vObj.frames && vObj.frames.length > 0) {
+      var fIdx = Math.min(vObj.frames.length - 1, Math.floor(local * vObj.frames.length));
+      var frame = vObj.frames[fIdx];
+      if (frame) {
+        drawMedia(frame, crossFadeAlpha);
+      } else if (vObj.el.readyState >= 1) {
+        drawMedia(vObj.el, crossFadeAlpha);
+      }
+    } else if (vObj && vObj.el.readyState >= 1 && vObj.el.duration) {
       var t = Math.min(vObj.el.duration - 0.04, Math.max(0, local * vObj.el.duration));
       seekTo(vObj, t);
-      drawMedia(vObj.el);
+      drawMedia(vObj.el, crossFadeAlpha);
     }
 
     // textos sincronizados (fade por progresso local da cena)
@@ -233,14 +353,14 @@
   function startEngine() {
     if (engineOn) return;
     gsap.registerPlugin(ScrollTrigger);
-    lenis = new Lenis({ wrapper: scroller, content: track, duration: 1.15, smoothWheel: true });
+    lenis = new Lenis({ wrapper: scroller, content: track, duration: 0.85, smoothWheel: true });
     lenis.on('scroll', ScrollTrigger.update);
     tickFn = function (t) { lenis.raf(t * 1000); };
     gsap.ticker.add(tickFn);
     gsap.ticker.lagSmoothing(0);
     master = ScrollTrigger.create({
       scroller: scroller, trigger: track, start: 'top top', end: 'bottom bottom',
-      scrub: 0.45, onUpdate: function (self) { update(self.progress); }
+      scrub: 0.25, onUpdate: function (self) { update(self.progress); }
     });
     engineOn = true;
     document.addEventListener('visibilitychange', onVisibility);
