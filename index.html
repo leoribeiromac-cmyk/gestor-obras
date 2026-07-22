@@ -202,6 +202,7 @@ label.fl{font-size:12px;font-weight:600;color:var(--text-2);display:block;margin
 <div id="app"></div>
 
 <script src="vendor/pdfjs/pdf.min.js"></script>
+<script src="vendor/xlsx/xlsx.bundle.js"></script>
 <script src="dados/ruas-de-terra.js"></script>
 <script src="dados/teotonio-vilela.js"></script>
 <script src="dados/_index.js"></script>
@@ -762,15 +763,29 @@ function viewMedicao(o){
 
 /* ---------- HISTÓRICO ---------- */
 function viewHistorico(o){
-  const arr=getLanc(o.id).slice().sort((a,b)=>b.dataISO.localeCompare(a.dataISO)||b.criadoEm-a.criadoEm);
-  if(!arr.length)return `<div class="empty"><div class="ic">≡</div>Nenhum apontamento. Comece no <b>Lançar serviços</b>.</div>`;
-  return `<div class="tbl-wrap"><table class="t">
-    <thead><tr><th>Data</th><th>Rua</th><th>Frente</th><th>Serviço</th><th>Trecho</th><th class="num">Qtd</th><th>Clima</th><th></th></tr></thead>
-    <tbody>${arr.map(l=>`<tr><td class="mono">${new Date(l.dataISO+'T00:00:00').toLocaleDateString('pt-BR')}</td>
-      <td>${esc(l.rua)}</td><td class="kpi-s">${l.avulso?'<span class="chip" style="background:var(--surface-2)">avulso</span>':esc(frenteNome(o,l.capId))}</td><td>${esc(l.servico)}</td>
-      <td class="mono">${esc(estacaTxt(l))||'—'}</td><td class="num">${fmtQtd(l.qtd)} ${esc(l.un)}</td><td>${esc(l.clima||'')}</td>
-      <td class="num"><button class="btn btn-sm btn-ghost" onclick="excluir('${l.id}')" title="Excluir">✕</button></td></tr>`).join('')}
-    </tbody></table></div>`;
+  const datas=todasDatas(o).slice().reverse(); // mais recente primeiro
+  if(!datas.length)return `<div class="empty"><div class="ic">≡</div>Nenhum RDO ainda. Comece em <b>Lançar serviços</b> ou <b>Diário de Obra</b>.</div>`;
+  const topo=`<div class="row" style="margin-bottom:16px;align-items:center">
+    <div class="chip">${datas.length} RDO(s)</div>
+    <div style="margin-left:auto"><button class="btn btn-sm" onclick="gerarExcelTudo()">⬇ Exportar Excel (todos)</button></div></div>`;
+  const cards=datas.map(d=>{
+    const dd=montarRDO(o,d);const dv=diarioDoDia(o.id,d);
+    const dataBR=new Date(d+'T00:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit',year:'numeric'});
+    const linhas=dd.servicos.length?dd.servicos.map(l=>`<tr>
+      <td>${esc(l.servico)} ${l.avulso?'<span class="chip" style="padding:0 6px;font-size:10px">avulso</span>':''}<div class="kpi-s">${esc(l.rua)} · ${esc(frenteNome(o,l.capId))}</div></td>
+      <td class="mono">${esc(estacaTxt(l))||'—'}</td><td class="num">${fmtQtd(l.qtd)} ${esc(l.un)}</td>
+      <td class="num" style="white-space:nowrap"><button class="btn btn-sm btn-ghost" onclick="editarServ('${l.id}')" title="Editar">✎</button><button class="btn btn-sm btn-ghost" onclick="excluir('${l.id}')" title="Excluir">✕</button></td></tr>`).join('')
+      :`<tr><td colspan="4" class="kpi-s">Nenhum serviço lançado neste dia.</td></tr>`;
+    const resumo=dv?`👷 ${totalPessoal(dv.pessoal||[])} · 🚜 ${(dv.equipamentos||[]).length} equip. · ☁ ${esc(dv.climaManha||'—')}/${esc(dv.climaTarde||'—')}`:'sem diário — só serviços';
+    return `<div class="card" style="margin-bottom:14px"><div class="card-h">
+      <div><div class="card-t">RDO ${numeroRDO(o,d)} · ${dataBR}</div><div class="card-st">${resumo}</div></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-sm" onclick="gerarPDFdia('${d}')">📄 PDF</button>
+        <button class="btn btn-sm" onclick="gerarExcelDia('${d}')">⬇ Excel</button></div></div>
+      <div class="tbl-wrap" style="border:none"><table class="t">
+      <thead><tr><th>Serviço</th><th>Trecho</th><th class="num">Qtd</th><th></th></tr></thead>
+      <tbody>${linhas}</tbody></table></div></div>`;
+  }).join('');
+  return topo+cards;
 }
 
 /* ---------- PROJETOS (PDFs) ---------- */
@@ -927,15 +942,25 @@ function delDiario(dataISO){const o=obra();if(!confirm('Excluir o diário de '+n
   const d=diarioDoDia(o.id,dataISO);
   setDiarios(o.id,getDiarios(o.id).filter(x=>x.dataISO!==dataISO));
   if(d&&d.id)enfileirarDelDiario(o.id,d.id);render();toast('Diário excluído');}
-function imprimirRDO(){
-  const o=obra();const dd=coletaDiario();const servDia=getLanc(o.id).filter(l=>l.dataISO===dd.dataISO);
-  const datas=[...new Set([...getDiarios(o.id).map(x=>x.dataISO),dd.dataISO])].sort();
-  const numero=datas.indexOf(dd.dataISO)+1;
+// nº do RDO da data (posição cronológica entre todas as datas com diário ou serviço)
+function numeroRDO(o,dataISO){
+  const datas=[...new Set([...getDiarios(o.id).map(x=>x.dataISO),...getLanc(o.id).map(l=>l.dataISO)])].sort();
+  return datas.indexOf(dataISO)+1;
+}
+// monta os dados do RDO de uma data (diário salvo + serviços do dia)
+function montarRDO(o,dataISO){
+  const d=diarioDoDia(o.id,dataISO)||{};
+  return {dataISO,climaManha:d.climaManha||'—',climaTarde:d.climaTarde||'—',condicao:d.condicao||'Normal',
+    pessoal:d.pessoal||[],equipamentos:d.equipamentos||[],ocorrencias:d.ocorrencias||'',
+    servicos:getLanc(o.id).filter(l=>l.dataISO===dataISO)};
+}
+// HTML do RDO no modelo A4 (compartilhado por impressão e PDF)
+function htmlRDO(o,dd,numero){
   const dataBR=new Date(dd.dataISO+'T00:00:00').toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit',year:'numeric'});
   const linhasP=(dd.pessoal.length?dd.pessoal:[{funcao:'—',qtd:''}]).map(p=>`<tr><td>${esc(p.funcao)}</td><td style="text-align:right">${p.qtd||''}</td></tr>`).join('');
   const linhasE=(dd.equipamentos.length?dd.equipamentos:[{nome:'—',qtd:''}]).map(e=>`<tr><td>${esc(e.nome)}</td><td style="text-align:right">${e.qtd||''}</td></tr>`).join('');
-  const linhasS=servDia.length?servDia.map(l=>`<tr><td>${esc(l.servico)}${l.avulso?' (avulso)':''}</td><td>${esc(l.rua)}</td><td>${esc(estacaTxt(l))||'—'}</td><td style="text-align:right">${fmtQtd(l.qtd)} ${esc(l.un)}</td></tr>`).join(''):`<tr><td colspan="4" style="text-align:center;color:#888">Sem serviços lançados</td></tr>`;
-  const html=`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>RDO ${numero} — ${dd.dataISO}</title>
+  const linhasS=dd.servicos.length?dd.servicos.map(l=>`<tr><td>${esc(l.servico)}${l.avulso?' (avulso)':''}</td><td>${esc(l.rua)}</td><td>${esc(estacaTxt(l))||'—'}</td><td style="text-align:right">${fmtQtd(l.qtd)} ${esc(l.un)}</td></tr>`).join(''):`<tr><td colspan="4" style="text-align:center;color:#888">Sem serviços lançados</td></tr>`;
+  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>RDO ${numero} — ${dd.dataISO}</title>
   <style>@page{size:A4;margin:16mm} *{font-family:Arial,Helvetica,sans-serif;box-sizing:border-box}
   body{color:#111;font-size:12px;margin:0} h1{font-size:16px;margin:0} .hd{display:flex;align-items:center;gap:14px;border-bottom:2px solid #1f6f4a;padding-bottom:10px;margin-bottom:14px}
   .hd img{height:46px} .meta{font-size:11px;color:#444} .num{margin-left:auto;text-align:right}
@@ -960,10 +985,77 @@ function imprimirRDO(){
     <h2>Ocorrências / observações</h2><div class="box" style="min-height:60px;white-space:pre-wrap">${esc(dd.ocorrencias||'—')}</div>
     <div class="sign"><div>Responsável técnico</div><div>Fiscalização</div></div>
   </body></html>`;
-  const w=window.open('','_blank');
-  if(!w){toast('Permita pop-ups para imprimir o RDO');return;}
-  w.document.write(html);w.document.close();
 }
+function abrirImpressao(html){const w=window.open('','_blank');if(!w){toast('Permita pop-ups para gerar o RDO');return;}w.document.write(html);w.document.close();}
+function imprimirRDO(){const o=obra();const dd=coletaDiario();dd.servicos=getLanc(o.id).filter(l=>l.dataISO===dd.dataISO);abrirImpressao(htmlRDO(o,dd,numeroRDO(o,dd.dataISO)));}
+function gerarPDFdia(dataISO){const o=obra();abrirImpressao(htmlRDO(o,montarRDO(o,dataISO),numeroRDO(o,dataISO)));}
+
+/* ---------- Excel no modelo do RDO (xlsx-js-style) ---------- */
+function _brd(){const s={style:'thin',color:{rgb:'CCCCCC'}};return {top:s,bottom:s,left:s,right:s};}
+function wsRDO(o,dd,numero){
+  const aoa=[],merges=[],st={};
+  const put=(r,c,v,s)=>{while(aoa.length<=r)aoa.push([]);const row=aoa[r];while(row.length<=c)row.push('');row[c]=v;if(s)st[r+','+c]=s;};
+  const green={font:{bold:true,color:{rgb:'FFFFFF'}},fill:{fgColor:{rgb:'1F6F4A'}},alignment:{vertical:'center'}};
+  const hdr={font:{bold:true},fill:{fgColor:{rgb:'F0EFE9'}},border:_brd()};
+  const cel={border:_brd()},celR={border:_brd(),alignment:{horizontal:'right'}},bold={font:{bold:true}};
+  let r=0;
+  put(r,0,'RELATÓRIO DIÁRIO DE OBRA',{font:{bold:true,sz:14,color:{rgb:'1F6F4A'}}});put(r,3,'RDO Nº '+numero,{font:{bold:true,sz:12},alignment:{horizontal:'right'}});merges.push({s:{r,c:0},e:{r,c:2}});r++;
+  put(r,0,o.nome,bold);merges.push({s:{r,c:0},e:{r,c:3}});r++;
+  put(r,0,(o.contratada||'Gestor Engenharia')+' · '+(o.contrato||''));merges.push({s:{r,c:0},e:{r,c:3}});r+=2;
+  const dataBR=new Date(dd.dataISO+'T00:00:00').toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit',year:'numeric'});
+  put(r,0,'Data: '+dataBR,bold);put(r,3,'Condição: '+dd.condicao,{alignment:{horizontal:'right'}});merges.push({s:{r,c:0},e:{r,c:2}});r++;
+  put(r,0,'Clima — Manhã: '+dd.climaManha+'   Tarde: '+dd.climaTarde);merges.push({s:{r,c:0},e:{r,c:3}});r+=2;
+  put(r,0,'MÃO DE OBRA',green);put(r,2,'EQUIPAMENTOS',green);merges.push({s:{r,c:0},e:{r,c:1}});merges.push({s:{r,c:2},e:{r,c:3}});r++;
+  put(r,0,'Função',hdr);put(r,1,'Qtd',hdr);put(r,2,'Equipamento',hdr);put(r,3,'Qtd',hdr);r++;
+  const nmax=Math.max(dd.pessoal.length,dd.equipamentos.length,1);
+  for(let i=0;i<nmax;i++){const p=dd.pessoal[i],e=dd.equipamentos[i];
+    put(r,0,p?p.funcao:'',cel);put(r,1,p?p.qtd:'',celR);put(r,2,e?e.nome:'',cel);put(r,3,e?e.qtd:'',celR);r++;}
+  put(r,0,'Total',hdr);put(r,1,totalPessoal(dd.pessoal),{...hdr,alignment:{horizontal:'right'}});put(r,2,'',cel);put(r,3,'',cel);r+=2;
+  put(r,0,'SERVIÇOS EXECUTADOS',green);merges.push({s:{r,c:0},e:{r,c:3}});r++;
+  put(r,0,'Serviço',hdr);put(r,1,'Rua',hdr);put(r,2,'Trecho (estacas)',hdr);put(r,3,'Quantidade',hdr);r++;
+  if(dd.servicos.length)dd.servicos.forEach(l=>{put(r,0,l.servico+(l.avulso?' (avulso)':''),cel);put(r,1,l.rua,cel);put(r,2,estacaTxt(l)||'—',cel);put(r,3,fmtQtd(l.qtd)+' '+l.un,celR);r++;});
+  else{put(r,0,'Sem serviços lançados',cel);put(r,1,'',cel);put(r,2,'',cel);put(r,3,'',cel);r++;}
+  r++;
+  put(r,0,'OCORRÊNCIAS / OBSERVAÇÕES',green);merges.push({s:{r,c:0},e:{r,c:3}});r++;
+  put(r,0,dd.ocorrencias||'—',{border:_brd(),alignment:{wrapText:true,vertical:'top'}});put(r,1,'',cel);put(r,2,'',cel);put(r,3,'',cel);merges.push({s:{r,c:0},e:{r,c:3}});r+=3;
+  put(r,0,'______________________________');put(r,2,'______________________________');r++;
+  put(r,0,'Responsável técnico');put(r,2,'Fiscalização');
+  const ws=XLSX.utils.aoa_to_sheet(aoa);
+  ws['!merges']=merges; ws['!cols']=[{wch:40},{wch:12},{wch:30},{wch:14}];
+  Object.keys(st).forEach(k=>{const [rr,cc]=k.split(',').map(Number);const ref=XLSX.utils.encode_cell({r:rr,c:cc});if(!ws[ref])ws[ref]={t:'s',v:''};ws[ref].s=st[k];});
+  return ws;
+}
+function nomeAba(d){return 'RDO '+d.replace(/-/g,'');}
+function todasDatas(o){return [...new Set([...getDiarios(o.id).map(x=>x.dataISO),...getLanc(o.id).map(l=>l.dataISO)])].sort();}
+function gerarExcelDia(dataISO){const o=obra();const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,wsRDO(o,montarRDO(o,dataISO),numeroRDO(o,dataISO)),nomeAba(dataISO));XLSX.writeFile(wb,'RDO_'+o.id+'_'+dataISO+'.xlsx');toast('Excel gerado ✓');}
+function gerarExcelTudo(){const o=obra();const datas=todasDatas(o);if(!datas.length){toast('Nada para exportar');return;}const wb=XLSX.utils.book_new();datas.forEach(d=>XLSX.utils.book_append_sheet(wb,wsRDO(o,montarRDO(o,d),numeroRDO(o,d)),nomeAba(d)));XLSX.writeFile(wb,'RDOs_'+o.id+'_'+hoje()+'.xlsx');toast('Excel gerado ✓');}
+
+/* ---------- editar serviço lançado ---------- */
+function editarServ(id){
+  const o=obra();const l=getLanc(o.id).find(x=>x.id===id);if(!l)return;
+  const html=`
+    <div class="row"><div class="field"><label class="fl">Data</label><input type="date" id="edData" value="${l.dataISO}"></div>
+      <div class="field"><label class="fl">Rua</label><select id="edRua">${o.ruas.map(r=>`<option ${r===l.rua?'selected':''}>${esc(r)}</option>`).join('')}</select></div></div>
+    <div class="field"><label class="fl">Serviço</label><input id="edServ" value="${esc(l.servico)}" ${l.avulso?'':'readonly style="opacity:.65"'}></div>
+    <div class="row"><div class="field"><label class="fl">Quantidade (${esc(l.un)})</label><input type="number" step="any" id="edQtd" value="${l.qtd}"></div>
+      <div class="field"><label class="fl">Efetivo</label><input type="number" id="edEfet" value="${l.efetivo||0}"></div></div>
+    <div class="row"><div class="field"><label class="fl">Estaca inicial</label><input id="edEi" value="${esc(l.estIni||'')}"></div>
+      <div class="field"><label class="fl">Estaca final</label><input id="edEf" value="${esc(l.estFim||'')}"></div></div>
+    <div class="field"><label class="fl">Clima</label><select id="edClima">${CLIMA_OPC.map(c=>`<option ${c===l.clima?'selected':''}>${c}</option>`).join('')}</select></div>
+    <div class="field"><label class="fl">Observações</label><textarea id="edObs" rows="2">${esc(l.obs||'')}</textarea></div>
+    <button class="btn btn-pri" style="width:100%;justify-content:center" onclick="salvarEdicao('${id}')">Salvar alterações</button>`;
+  abrirModal('Editar serviço',html);
+}
+function salvarEdicao(id){
+  const o=obra();const arr=getLanc(o.id);const l=arr.find(x=>x.id===id);if(!l)return;
+  l.dataISO=el('edData').value||l.dataISO;l.rua=el('edRua').value;if(l.avulso)l.servico=el('edServ').value.trim();
+  l.qtd=+el('edQtd').value||0;l.efetivo=+el('edEfet').value||0;l.estIni=el('edEi').value.trim();l.estFim=el('edEf').value.trim();
+  l.clima=el('edClima').value;l.obs=el('edObs').value.trim();
+  setLanc(o.id,arr);enfileirarUpdateRDO(o.id,l);fecharModal();render();toast('Serviço atualizado ✓');
+}
+function enfileirarUpdateRDO(obraId,l){if(!BACKEND)return;
+  const payload={id:l.id,data:l.dataISO,rua:l.rua,capid:l.capId,servico:l.servico,un:l.un,qtd:l.qtd,efetivo:l.efetivo,estini:l.estIni,estfim:l.estFim,clima:l.clima,obs:l.obs};
+  outboxAdd({id:'ob'+uid(),obra:obraId,tipo:'updRdo',params:{action:'updateRDO',payload:JSON.stringify(payload)}});outboxFlush();}
 
 /* ============================================================ AÇÕES */
 function abrirObra(id){estado.obraId=id;estado.tela='executivo';estado.filtroRua='Todas';estado.mesMed='';estado.diarioData='';estado.projSel='';estado.painelFrente='Todas';estado.painelMes='Todos';_pdfDoc=null;_pdfUrl='';_pdfZoom=1;render();

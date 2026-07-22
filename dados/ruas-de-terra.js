@@ -3,7 +3,7 @@
 window.OBRAS = window.OBRAS || {};
 window.OBRAS["ruas-de-terra"] = {
   "id": "ruas-de-terra",
-  "nome": "Ruas de Terra — Agrimensor & Astrogildo",
+  "nome": "Ruas de Terra 4 — Agrimensor & Astrogildo",
   "contrato": "Ata 079/SMSUB/COGEL",
   "contratada": "Gestor Engenharia",
   "local": "Distrito de Itaquera — São Paulo/SP",

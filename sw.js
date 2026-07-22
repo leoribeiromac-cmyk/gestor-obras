@@ -1,9 +1,9 @@
 /* Service worker do Gestor Obras — cache do app; dados sempre de localStorage. */
-const CACHE = 'gestor-obras-v7';
+const CACHE = 'gestor-obras-v8';
 const ASSETS = [
   './', './index.html', './manifest.json',
   './dados/_index.js', './dados/ruas-de-terra.js', './dados/teotonio-vilela.js',
-  './vendor/pdfjs/pdf.min.js', './vendor/pdfjs/pdf.worker.min.js',
+  './vendor/pdfjs/pdf.min.js', './vendor/pdfjs/pdf.worker.min.js', './vendor/xlsx/xlsx.bundle.js',
   './assets/logo_gestor.png', './assets/favicon.svg',
   './assets/icon-192.png', './assets/icon-512.png',
   './projetos/agrimensor/agrimensor-pavimentacao.pdf',
