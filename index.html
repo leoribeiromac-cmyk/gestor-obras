@@ -248,8 +248,8 @@ function diarioDoDia(obraId,dataISO){return getDiarios(obraId).find(d=>d.dataISO
    Preencha o CONFIG após montar a planilha (ver SETUP-BACKEND.md).
    ============================================================ */
 const CONFIG = {
-  appsScript: '',                        // URL /exec do Apps Script (vazio = modo local)
-  csv: { rdo: '', diario: '' },          // URLs CSV publicadas das abas RDO e Diario
+  appsScript: 'https://script.google.com/macros/s/AKfycbyMBWiCRypVKFY5maZeVRQrxN82R8my729DhXd18AJ8hBKBg5dxj4D3Uy52_r_dyhnCkw/exec',
+  csv: { rdo: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTfyzEdBOsa1k5T7minhY-n-Dd4xsa11zQsV2ErrWSfIj7ZQZVTN8VRZD7kAR_FQJUIlYyShkrqccyI/pub?gid=0&single=true&output=csv', diario: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTfyzEdBOsa1k5T7minhY-n-Dd4xsa11zQsV2ErrWSfIj7ZQZVTN8VRZD7kAR_FQJUIlYyShkrqccyI/pub?gid=1308635253&single=true&output=csv' },
   usuarios: ['Leonardo', 'Wallace', 'Guilherme'],
   exigirLogin: true
 };
