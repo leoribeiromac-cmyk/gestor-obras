@@ -293,6 +293,10 @@ label.fl{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppe
 #apres .ap-op{width:100%;border-collapse:collapse;font-size:14px;margin-top:4px}
 #apres .ap-op td{padding:9px 4px;border-bottom:1px solid rgba(255,255,255,.1)}
 #apres .ap-op .n{text-align:right;font-family:'JetBrains Mono',monospace;font-weight:700;white-space:nowrap;padding-left:14px}
+#apres .ap-doc{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:12px}
+#apres .ap-doc-frame{height:50vh;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 8px 30px rgba(0,0,0,.4)}
+#apres .ap-doc-frame iframe{border:0;background:#fff;width:100%;height:1400px;pointer-events:none}
+#apres .ap-doc-lbl{font-size:12.5px;color:rgba(242,237,227,.72);margin-top:9px;text-align:center;font-weight:600}
 #apres .ap-caps{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:13px;margin-top:24px}
 #apres .ap-cap{display:flex;gap:12px;align-items:flex-start;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.09);border-radius:12px;padding:13px 16px}
 #apres .ap-cap .ic{font-size:22px;line-height:1.1}#apres .ap-cap b{display:block;font-size:14.5px;margin-bottom:2px}#apres .ap-cap span{font-size:12.5px;color:rgba(242,237,227,.62);line-height:1.4}
@@ -959,8 +963,9 @@ function viewEquip(o){
       <select id="eqFilMes"><option value="Todos">Todos os meses</option>${meses.map(m=>`<option value="${m}">${mesLabel(m+'-01')}</option>`).join('')}</select></div>
     <div class="field" style="margin:0;max-width:240px"><label class="fl">Equipamento</label>
       <select id="eqFilEquip"><option value="Todos">Todos os equipamentos</option>${equipNomes.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('')}</select></div>
-    <button class="btn btn-pri" onclick="medicaoEquipExcel()" ${EQUIP.apontamentos.length?'':'disabled'} style="margin-left:auto">⬇ Gerar medição (Excel)</button>
-    <div class="kpi-s" style="flex-basis:100%">O Excel sai no layout de medição (uma aba por equipamento), respeitando os filtros acima.</div></div></div>
+    <button class="btn" onclick="imprimirMedicaoEquip()" ${EQUIP.apontamentos.length?'':'disabled'} style="margin-left:auto">🖨 Medição (PDF)</button>
+    <button class="btn btn-pri" onclick="medicaoEquipExcel()" ${EQUIP.apontamentos.length?'':'disabled'}>⬇ Gerar medição (Excel)</button>
+    <div class="kpi-s" style="flex-basis:100%">Relatório de medição no padrão de obra pública (resumo consolidado + diário por equipamento, com paradas, horímetro, combustível e disponibilidade), respeitando os filtros acima. PDF para impressão/fiscalização; Excel com uma aba por equipamento.</div></div></div>
   <div class="grid g2" style="grid-template-columns:1.3fr 1fr;align-items:start">
     <div class="card"><div class="card-h"><div class="card-t">🚜 Apontamento de equipamento</div><div class="card-st">produção do dia: horas, paradas, horímetro, combustível</div></div>
       <div class="card-b">
@@ -1094,6 +1099,67 @@ function medicaoEquipExcel(){
   });
   const sufEq=fEq==='Todos'?'':'_'+fEq.replace(/[^\w]+/g,'-');
   XLSX.writeFile(wb,'Medicao_Equip_'+o.id+'_'+sufMes+sufEq+'.xlsx');toast('Medição gerada ✓ ('+nomes.length+' equip.)');
+}
+/* medição de equipamentos em PDF/A4 (modelo robusto para fiscalização) */
+function paradasMinTxt(t){const s=String(t||'');const re=/(\d{1,2}):(\d{2})\s*[-–]\s*(\d{1,2}):(\d{2})/g;let m,min=0;while((m=re.exec(s))){let a=(+m[1])*60+(+m[2]),b=(+m[3])*60+(+m[4]),d=b-a;if(d<0)d+=1440;min+=d;}return min;}
+function htmlMedicaoEquip(o,aps,periodoLabel){
+  const num=n=>(n||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const porEq={};aps.forEach(a=>{(porEq[a.equipamento]=porEq[a.equipamento]||[]).push(a);});
+  const nomes=Object.keys(porEq).sort();
+  const resumo=nomes.map(nome=>{
+    const list=porEq[nome].slice().sort((a,b)=>String(a.data).localeCompare(String(b.data)));
+    const eq=(EQUIP.equipamentos||[]).find(e=>e.nome===nome)||{};
+    const dias=new Set(list.map(a=>String(a.data).slice(0,10))).size;
+    const horas=list.reduce((s,a)=>s+(+a.horas||0),0);
+    const comb=list.reduce((s,a)=>s+(+a.combustivel||0),0);
+    const parH=list.reduce((s,a)=>s+paradasMinTxt(a.paradas)/60,0);
+    const disp=(horas+parH)>0?horas/(horas+parH)*100:100;
+    return {nome,eq,list,dias,horas,comb,parH,disp};
+  });
+  const totHoras=resumo.reduce((s,r)=>s+r.horas,0),totComb=resumo.reduce((s,r)=>s+r.comb,0),totDias=resumo.reduce((s,r)=>s+r.dias,0),totPar=resumo.reduce((s,r)=>s+r.parH,0);
+  const resumoRows=resumo.map(r=>`<tr><td>${esc(r.nome)}</td><td>${esc(r.eq.tipo||'—')}</td><td>${esc(r.eq.vinculo||'—')}${r.eq.locadora?' ('+esc(r.eq.locadora)+')':''}</td>
+    <td class="r">${r.dias}</td><td class="r">${num(r.horas)}</td><td class="r">${num(r.parH)}</td><td class="r">${num(r.comb)}</td><td class="r">${r.disp.toFixed(1)}%</td></tr>`).join('');
+  const secoes=resumo.map(r=>{
+    const rows=r.list.map(a=>{const parH=paradasMinTxt(a.paradas)/60,dh=(+a.horimFim||0)-(+a.horimIni||0);
+      return `<tr><td>${esc(String(a.data).slice(0,10))}</td><td>${esc(a.turno||'')}</td><td>${esc(a.operador||'—')}</td>
+        <td>${esc(a.inicio||'')}–${esc(a.fim||'')}</td><td class="r">${num(parH)}</td><td class="r">${num(+a.horas||0)}</td>
+        <td class="r">${a.horimIni!==''&&a.horimIni!=null?esc(String(a.horimIni)):'—'}</td><td class="r">${a.horimFim!==''&&a.horimFim!=null?esc(String(a.horimFim)):'—'}</td>
+        <td class="r">${dh?num(dh):'—'}</td><td class="r">${a.combustivel!==''&&a.combustivel!=null?num(+a.combustivel||0):'—'}</td><td>${esc(a.situacao||'')}</td></tr>`;}).join('');
+    return `<h2>${esc(r.nome)} <span class="sub2">· ${esc(r.eq.tipo||'')} · ${esc(r.eq.vinculo||'')}${r.eq.locadora?' ('+esc(r.eq.locadora)+')':''}</span></h2>
+      <table><tr><th>Data</th><th>Turno</th><th>Operador</th><th>Jornada</th><th class="r">Paradas (h)</th><th class="r">Horas trab.</th><th class="r">Horím. ini</th><th class="r">Horím. fim</th><th class="r">Δ</th><th class="r">Comb. (L)</th><th>Situação</th></tr>
+      ${rows}<tr class="tot"><td colspan="4">TOTAL — ${r.dias} dia(s)</td><td class="r">${num(r.parH)}</td><td class="r">${num(r.horas)}</td><td></td><td></td><td></td><td class="r">${num(r.comb)}</td><td>Disp. ${r.disp.toFixed(1)}%</td></tr></table>`;
+  }).join('');
+  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Medição de Equipamentos — ${esc(periodoLabel)}</title>
+  <style>@page{size:A4 landscape;margin:12mm} *{font-family:Arial,Helvetica,sans-serif;box-sizing:border-box}
+  body{color:#111;font-size:11px;margin:0} .r{text-align:right}
+  .hd{display:flex;align-items:center;gap:14px;border-bottom:2px solid #1f6f4a;padding-bottom:10px;margin-bottom:12px}
+  .hd img{height:44px} h1{font-size:15px;margin:0} .meta{font-size:10.5px;color:#444} .sub2{font-weight:normal;color:#666;font-size:11px}
+  .numb{margin-left:auto;text-align:right} .numb b{font-size:13px;color:#1f6f4a}
+  h2{font-size:12px;color:#1f6f4a;border-bottom:1px solid #ccc;padding-bottom:3px;margin:14px 0 6px}
+  table{width:100%;border-collapse:collapse;margin-bottom:6px} td,th{border:1px solid #ccc;padding:4px 6px;text-align:left;font-size:10px}
+  th{background:#f0efe9} tr.tot td{background:#eef5f0;font-weight:bold}
+  .sign{display:flex;gap:40px;margin-top:30px} .sign>div{flex:1;border-top:1px solid #333;padding-top:5px;text-align:center;font-size:10.5px}</style></head>
+  <body onload="window.print()">
+    <div class="hd"><img src="assets/logo_gestor.png" alt="">
+      <div><h1>Medição Mensal de Equipamentos</h1>
+      <div class="meta">${esc(o.contratada||'Gestor Engenharia')} · ${esc(o.contrato||'')}</div>
+      <div class="meta">${esc(o.nome)} — ${esc(o.local||'')}</div></div>
+      <div class="numb"><div class="meta">Período</div><b>${esc(periodoLabel)}</b></div></div>
+    <h2>Resumo consolidado</h2>
+    <table><tr><th>Equipamento</th><th>Tipo</th><th>Vínculo</th><th class="r">Dias</th><th class="r">Horas trab.</th><th class="r">Paradas (h)</th><th class="r">Combustível (L)</th><th class="r">Disponib.</th></tr>
+    ${resumoRows}<tr class="tot"><td colspan="3">TOTAL GERAL — ${nomes.length} equipamento(s)</td><td class="r">${totDias}</td><td class="r">${num(totHoras)}</td><td class="r">${num(totPar)}</td><td class="r">${num(totComb)}</td><td></td></tr></table>
+    ${secoes}
+    <div class="sign"><div>Responsável técnico</div><div>Fiscalização</div></div>
+  </body></html>`;
+}
+function imprimirMedicaoEquip(){
+  const o=obra();
+  const fMes=(el('eqFilMes')&&el('eqFilMes').value)||'Todos';
+  const fEq=(el('eqFilEquip')&&el('eqFilEquip').value)||'Todos';
+  const aps=EQUIP.apontamentos.filter(a=>(fMes==='Todos'||String(a.data).slice(0,7)===fMes)&&(fEq==='Todos'||a.equipamento===fEq));
+  if(!aps.length){toast('Nenhum apontamento para os filtros escolhidos');return;}
+  const periodo=fMes==='Todos'?'Todos os meses':mesLabel(fMes+'-01');
+  abrirImpressao(htmlMedicaoEquip(o,aps,periodo));
 }
 
 /* ---------- PROJETOS (PDFs) ---------- */
@@ -1445,7 +1511,7 @@ function apMontarSlides(){
   const totalGerido=todas.reduce((a,o)=>a+(o.valorGlobal||0),0);
   const avg=geridas.length?geridas.reduce((a,o)=>a+mediaPct(o.servicos||[],avancoServ(o)),0)/geridas.length:0;
   const s=[{tipo:'capa'},{tipo:'capacidades'}];
-  geridas.forEach(o=>{s.push({tipo:'obra',o});if(getLanc(o.id).length){s.push({tipo:'operacao',o});s.push({tipo:'ruas',o});}});
+  geridas.forEach(o=>{s.push({tipo:'obra',o});if(getLanc(o.id).length){s.push({tipo:'operacao',o});s.push({tipo:'ruas',o});s.push({tipo:'relatorios',o});}});
   s.push({tipo:'fim',totalGerido,nObras:geridas.length,nPort:todas.length,avg});
   return s;
 }
@@ -1516,6 +1582,22 @@ function apSlideHTML(sl){
       <div class="ap-sub" style="margin-bottom:16px">Cada barra é uma estaca; a altura mostra os serviços executados naquele trecho.</div>
       <div class="ap-two">${o.ruas.map((rua,ri)=>cena3D(o,rua,ri,lf,maxG)).join('')}</div></div>`;
   }
+  if(sl.tipo==='relatorios'){
+    const o=sl.o,datas=todasDatas(o),diarios=getDiarios(o.id);
+    const dRdo=diarios.length?diarios.slice().sort((a,b)=>b.dataISO.localeCompare(a.dataISO))[0].dataISO:(datas.length?datas[datas.length-1]:null);
+    const rdoHtml=dRdo?htmlRDO(o,montarRDO(o,dRdo),numeroRDO(o,dRdo)).replace('onload="window.print()"',''):'';
+    const aps=(EQUIP&&EQUIP.apontamentos)||[];
+    const medHtml=aps.length?htmlMedicaoEquip(o,aps,'Consolidado').replace('onload="window.print()"',''):'';
+    const docs=[];
+    if(rdoHtml)docs.push(['Relatório Diário de Obra · PDF / Excel',rdoHtml]);
+    if(medHtml)docs.push(['Medição de Equipamentos · PDF / Excel',medHtml]);
+    return `<div class="ap-slide"><div class="ap-kicker">${esc(o.nome)} · documentos gerados</div>
+      <h2>Relatórios prontos para a fiscalização</h2>
+      <div class="ap-sub" style="margin-bottom:16px">RDO e medição de equipamentos gerados automaticamente em PDF e Excel, no padrão de obra pública.</div>
+      <div class="${docs.length>1?'ap-two':''}">
+        ${docs.map(d=>`<div class="ap-doc"><div class="ap-doc-frame"><iframe title="${esc(d[0])}" srcdoc="${esc(d[1])}"></iframe></div><div class="ap-doc-lbl">${esc(d[0])}</div></div>`).join('')||'<div class="ap-sub">Sem documentos para exibir.</div>'}
+      </div></div>`;
+  }
   return `<div class="ap-slide" style="text-align:center">
     <div class="ap-kicker">Portfólio consolidado</div>
     <h2>${fmtBRLc(sl.totalGerido)} sob gestão</h2>
@@ -1543,6 +1625,7 @@ function apPlayPause(){
 }
 function abrirApresentacao(){
   if(APRES.on)return;
+  if(BACKEND&&estado.obraId&&EQUIP&&!EQUIP.carregado){try{carregarEquip();}catch(e){}}
   APRES.slides=apMontarSlides();APRES.on=true;APRES.idx=0;APRES.playing=true;
   const ov=document.createElement('div');ov.id='apres';ov.style.setProperty('--apdur',(APRES.dur/1000)+'s');
   const segs=APRES.slides.map(()=>'<span class="seg"><i></i></span>').join('');
