@@ -262,6 +262,44 @@ label.fl{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppe
   color:var(--bg);padding:12px 22px;border-radius:30px;font-weight:600;font-size:13.5px;z-index:100;
   box-shadow:0 10px 30px rgba(0,0,0,.25);transition:transform .3s;max-width:90vw}
 .toast.show{transform:translateX(-50%) translateY(0)}
+
+/* ---------- Modo Apresentação (auto-pilot executivo, fullscreen) ---------- */
+#apres{position:fixed;inset:0;z-index:400;color:#f2ede3;display:flex;flex-direction:column;
+  font-family:'Space Grotesk',system-ui,sans-serif;animation:capF .4s;
+  background:radial-gradient(ellipse at 50% -10%,rgba(31,111,74,.22),transparent 55%),linear-gradient(160deg,#14120e,#1c1813 60%,#0f0d0a);
+  --border:rgba(255,255,255,.16);--muted:rgba(242,237,227,.55);--accent:#4cc487;--accent-2:#4cc487;--azul:#6ba3d6;--text:#f2ede3}
+#apres .ap-top{display:flex;align-items:center;gap:12px;padding:18px 26px}
+#apres .ap-top img{width:36px;height:36px;border-radius:9px;background:#fff;object-fit:contain}
+#apres .ap-top .t{font-weight:700;font-size:14.5px}#apres .ap-top .s{font-size:11.5px;color:rgba(242,237,227,.6)}
+#apres .ap-prog{display:flex;gap:6px;margin-left:auto;align-items:center;flex-wrap:wrap;max-width:50%;justify-content:flex-end}
+#apres .ap-prog .seg{width:32px;height:4px;border-radius:3px;background:rgba(255,255,255,.16);overflow:hidden}
+#apres .ap-prog .seg>i{display:block;height:100%;width:0;background:var(--accent-2)}
+#apres .ap-prog .seg.done>i{width:100%}
+#apres .ap-prog .seg.cur>i{animation:apBar var(--apdur,8s) linear forwards}
+@keyframes apBar{from{width:0}to{width:100%}}
+#apres.paused .ap-prog .seg.cur>i{animation-play-state:paused}
+#apres .ap-stage{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:2vh 5vw;overflow:auto}
+#apres .ap-slide{width:100%;max-width:1120px;animation:apIn .7s cubic-bezier(.2,0,0,1)}
+@keyframes apIn{from{opacity:0;transform:translateY(26px) scale(.985)}to{opacity:1;transform:none}}
+#apres .ap-kicker{font:700 12px 'JetBrains Mono',monospace;letter-spacing:.22em;text-transform:uppercase;color:var(--accent-2);margin-bottom:12px}
+#apres h2{font-size:clamp(26px,4.6vw,50px);font-weight:700;letter-spacing:-.03em;line-height:1.06;margin-bottom:12px}
+#apres .ap-sub{font-size:clamp(14px,1.8vw,19px);color:rgba(242,237,227,.72);max-width:780px;line-height:1.5}
+#apres .ap-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:13px;margin:22px 0}
+#apres .ap-k{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:15px 18px}
+#apres .ap-k .l{font:700 10px 'JetBrains Mono',monospace;letter-spacing:.06em;text-transform:uppercase;color:rgba(242,237,227,.55)}
+#apres .ap-k .v{font:700 29px 'JetBrains Mono',monospace;letter-spacing:-.03em;margin-top:4px;line-height:1.05}
+#apres .ap-cols{display:grid;grid-template-columns:1.2fr 1fr;gap:22px;align-items:start}
+#apres .ap-caps{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:13px;margin-top:24px}
+#apres .ap-cap{display:flex;gap:12px;align-items:flex-start;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.09);border-radius:12px;padding:13px 16px}
+#apres .ap-cap .ic{font-size:22px;line-height:1.1}#apres .ap-cap b{display:block;font-size:14.5px;margin-bottom:2px}#apres .ap-cap span{font-size:12.5px;color:rgba(242,237,227,.62);line-height:1.4}
+#apres .ap-frn .fr{margin-bottom:11px}
+#apres .ap-frn .fr .hd{display:flex;justify-content:space-between;font-size:13.5px;font-weight:600;margin-bottom:5px}
+#apres .ap-ctrl{display:flex;align-items:center;justify-content:center;gap:10px;padding:14px;flex-wrap:wrap}
+#apres .ap-ctrl button{background:rgba(255,255,255,.08);color:#f2ede3;border:1px solid rgba(255,255,255,.16);border-radius:10px;padding:10px 16px;font-weight:600;font-size:14px;cursor:pointer;transition:all .15s;font-family:inherit}
+#apres .ap-ctrl button:hover{background:rgba(255,255,255,.16)}
+#apres .ap-credits{text-align:center;font-size:12px;color:rgba(242,237,227,.5);padding-bottom:12px}
+#apres .ap-credits b{color:#f2ede3}
+@media(max-width:760px){#apres .ap-cols{grid-template-columns:1fr}#apres .ap-prog{display:none}}
 </style>
 </head>
 <body>
@@ -292,6 +330,7 @@ const el = id => document.getElementById(id);
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function fmtNum(n,d=2){return (n||0).toLocaleString('pt-BR',{minimumFractionDigits:d,maximumFractionDigits:d});}
 function fmtBRL(n){return 'R$ '+(n||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});}
+function fmtBRLc(n){n=n||0;if(n>=1e6)return 'R$ '+(n/1e6).toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1})+' mi';if(n>=1e3)return 'R$ '+(n/1e3).toLocaleString('pt-BR',{maximumFractionDigits:0})+' mil';return fmtBRL(n);}
 function fmtQtd(n){return (n||0).toLocaleString('pt-BR',{maximumFractionDigits:2});}
 function fmtPct(n,d=1){return (n||0).toLocaleString('pt-BR',{minimumFractionDigits:d,maximumFractionDigits:d})+'%';}
 function hoje(){return new Date().toISOString().slice(0,10);}
@@ -373,7 +412,8 @@ function outboxRemove(id){outboxGravar(outboxLer().filter(x=>x.id!==id));}
 async function outboxFlush(){
   if(!BACKEND||!navigator.onLine)return;
   for(const it of outboxLer()){
-    try{const r=await jsonp(CONFIG.appsScript,{...it.params,...authParams()},1,2000);
+    // POST (FormData): dados do RDO/Diário NÃO trafegam na URL. postAcao anexa o token.
+    try{const r=await postAcao(it.params);
       if(r&&r.error&&/TOKEN/i.test(r.error)){toast('Sessão expirada — entre novamente');break;}
       outboxRemove(it.id);
     }catch(e){break;}
@@ -495,6 +535,7 @@ function sidebar(o){
         <span class="nav-ic">${it.ic}</span><span class="nav-txt">${it.t}</span>${b?`<span class="nav-badge">${b}</span>`:''}</div>`;
     }).join('')}`).join('')}</nav>
     <div class="side-foot"><button class="btn btn-sm btn-ghost" onclick="irHome()">← Obras</button>
+      <button class="btn btn-sm btn-ghost" onclick="abrirApresentacao()" title="Modo apresentação">▶</button>
       <button class="btn btn-sm btn-ghost" onclick="toggleTema()" title="Tema">◐</button>
       ${BACKEND&&getToken()?`<button class="btn btn-sm btn-ghost" onclick="sair()" title="Sair (${esc(usuarioAtual())})">⇥ Sair</button>`:''}
       <div style="width:100%;font-size:11px;color:var(--muted);margin-top:6px;padding-top:6px;border-top:1px solid var(--border);text-align:center">Criado e desenvolvido por <b>Leonardo Maciel</b></div></div></aside>`;
@@ -524,10 +565,10 @@ function viewLogin(){
         <img src="assets/logo_gestor.png" style="width:52px;height:52px;border-radius:11px;background:#fff;object-fit:contain">
         <div style="font-weight:700;font-size:18px;margin-top:10px">Gestor — Controle de Obras</div>
         <div class="kpi-s">Entre para acompanhar e lançar</div></div>
-      <div class="field"><label class="fl">Usuário</label><select id="loginUser">
+      <div class="field"><label class="fl" for="loginUser">Usuário</label><select id="loginUser">
         ${CONFIG.usuarios.map(u=>`<option>${esc(u)}</option>`).join('')}</select></div>
-      <div class="field"><label class="fl">Senha</label>
-        <input type="password" id="loginPass" onkeyup="if(event.key==='Enter')fazerLogin()" placeholder="••••••••"></div>
+      <div class="field"><label class="fl" for="loginPass">Senha</label>
+        <input type="password" id="loginPass" autocomplete="current-password" onkeyup="if(event.key==='Enter')fazerLogin()" placeholder="••••••••"></div>
       <div id="loginErro" class="kpi-s" style="color:var(--vermelho);min-height:16px;margin:-6px 0 10px"></div>
       <button class="btn btn-pri" style="width:100%;justify-content:center" onclick="fazerLogin()">Entrar</button>
       <div style="text-align:center;margin-top:16px;font-size:12px;color:var(--muted)">Criado e desenvolvido por <b style="color:var(--text)">Leonardo Maciel</b></div>
@@ -571,12 +612,27 @@ function viewHome(){
       <div class="obra-foot"><span class="obra-meta">Prazo ${o.prazoMeses} meses · ${(o.servicos||[]).length} serviços</span>
       <span class="chip">${(o.frentes||[]).length} frentes</span></div></div>`;
   }).join('');
+  const geridas=ORDEM.map(id=>OBRAS[id]).filter(o=>o&&!o.externo);
+  const todas=ORDEM.map(id=>OBRAS[id]).filter(o=>o);
+  const totalGerido=todas.reduce((a,o)=>a+(o.valorGlobal||0),0);
+  const avgFisico=geridas.length?geridas.reduce((a,o)=>a+mediaPct(o.servicos||[],avancoServ(o)),0)/geridas.length:0;
+  const totServ=geridas.reduce((a,o)=>a+((o.servicos||[]).length),0);
+  const resumo=`<div class="grid g4" style="margin-bottom:22px">
+    <div class="kpi kpi-hero"><div class="kpi-l">Valor total gerido</div>
+      <div class="kpi-v" style="font-size:30px">${fmtBRLc(totalGerido)}</div><div class="kpi-s">${fmtBRL(totalGerido)} · ${todas.length} obra(s) no portfólio</div></div>
+    <div class="kpi"><div class="kpi-l">Obras geridas no app</div><div class="kpi-v">${geridas.length}</div>
+      <div class="kpi-s">${todas.length-geridas.length>0?'+'+(todas.length-geridas.length)+' sistema(s) integrado(s)':'controle físico completo'}</div></div>
+    <div class="kpi"><div class="kpi-l">Avanço físico médio</div><div class="kpi-v">${fmtPct(avgFisico)}</div>
+      <div class="bar"><i style="width:${clamp(avgFisico).toFixed(1)}%"></i></div></div>
+    <div class="kpi"><div class="kpi-l">Serviços monitorados</div><div class="kpi-v">${totServ}</div><div class="kpi-s">itens físicos acompanhados</div></div>
+  </div>`;
   return `<div class="app"><div class="main" style="width:100%">
     <header class="topbar">
-      <img src="assets/logo_gestor.png" style="width:40px;height:40px;border-radius:9px;background:#fff;object-fit:contain">
+      <img src="assets/logo_gestor.png" style="width:40px;height:40px;border-radius:9px;background:#fff;object-fit:contain" alt="Gestor">
       <div style="flex:1"><h1>Gestor — Controle de Obras</h1><div class="sub">Selecione uma obra para acompanhar</div></div>
+      <button class="btn btn-sm btn-pri" onclick="abrirApresentacao()" title="Modo apresentação">▶ Apresentar</button>
       <button class="btn btn-sm btn-ghost" onclick="toggleTema()" title="Tema">◐</button></header>
-    <div class="content"><div class="obras-grid">${cards}
+    <div class="content">${resumo}<div class="obras-grid">${cards}
       <div class="obra-card add"><div style="font-size:30px;margin-bottom:8px">＋</div>
         <div style="font-weight:600;color:var(--text-2)">Adicionar nova obra</div>
         <div class="obra-meta" style="margin-top:6px">Crie um arquivo em <b>dados/</b> e registre em <b>_index.js</b>.<br>Passo a passo no README.</div></div>
@@ -769,29 +825,29 @@ function viewRDO(o){
   return `<div class="grid g2" style="grid-template-columns:1fr 1fr;align-items:start">
     <div class="card"><div class="card-h"><div class="card-t">⊕ Novo apontamento</div>
       <div class="card-st">Produção física do dia por serviço</div></div><div class="card-b">
-      <div class="row"><div class="field"><label class="fl">Data</label><input type="date" id="fData" value="${hoje()}"></div>
-        <div class="field"><label class="fl">Rua</label><select id="fRua" onchange="atualizaServ()">
+      <div class="row"><div class="field"><label class="fl" for="fData">Data</label><input type="date" id="fData" value="${hoje()}"></div>
+        <div class="field"><label class="fl" for="fRua">Rua</label><select id="fRua" onchange="atualizaServ()">
           ${o.ruas.map(r=>`<option>${esc(r)}</option>`).join('')}</select></div></div>
-      <div class="field"><label class="fl">Frente</label><select id="fFrente" onchange="atualizaServ()">
+      <div class="field"><label class="fl" for="fFrente">Frente</label><select id="fFrente" onchange="atualizaServ()">
         <option value="">Todas as frentes</option>
         ${(o.frentes||[]).map(f=>`<option value="${f.id}">${f.id}. ${esc(f.nome)}</option>`).join('')}
         <option value="OUTRO">➕ Outro serviço (avulso)</option></select></div>
-      <div class="field" id="servBox"><label class="fl">Serviço</label><select id="fServ" onchange="mostraSaldo()"></select></div>
+      <div class="field" id="servBox"><label class="fl" for="fServ">Serviço</label><select id="fServ" onchange="mostraSaldo()"></select></div>
       <div id="avulsoBox" style="display:none">
-        <div class="field"><label class="fl">Descrição do serviço avulso</label>
+        <div class="field"><label class="fl" for="fAvDesc">Descrição do serviço avulso</label>
           <input id="fAvDesc" placeholder="Ex.: apoio, remoção pontual, serviço não previsto..."></div>
-        <div class="field" style="max-width:140px"><label class="fl">Unidade</label>
+        <div class="field" style="max-width:140px"><label class="fl" for="fAvUn">Unidade</label>
           <input id="fAvUn" placeholder="un, m², vb..."></div>
         <div class="kpi-s" style="margin:-4px 0 12px;color:var(--amarelo)">⚠ Serviço avulso: fica registrado no histórico, mas <b>não conta no avanço nem na medição</b>.</div>
       </div>
-      <div class="row"><div class="field"><label class="fl">Quantidade executada</label><input type="number" step="any" id="fQtd" placeholder="0,00" oninput="mostraSaldo()"></div>
-        <div class="field"><label class="fl">Efetivo (pessoas)</label><input type="number" step="1" id="fEfet" placeholder="0"></div></div>
+      <div class="row"><div class="field"><label class="fl" for="fQtd">Quantidade executada</label><input type="number" step="any" id="fQtd" placeholder="0,00" oninput="mostraSaldo()"></div>
+        <div class="field"><label class="fl" for="fEfet">Efetivo (pessoas)</label><input type="number" step="1" id="fEfet" placeholder="0"></div></div>
       <div id="saldoBox" class="kpi-s" style="margin:-6px 0 12px"></div>
-      <div class="row"><div class="field"><label class="fl">Estaca inicial</label><input id="fEstIni" placeholder="Ex.: E0"></div>
-        <div class="field"><label class="fl">Estaca final</label><input id="fEstFim" placeholder="Ex.: E12"></div></div>
-      <div class="field"><label class="fl">Clima</label><select id="fClima">
+      <div class="row"><div class="field"><label class="fl" for="fEstIni">Estaca inicial</label><input id="fEstIni" placeholder="Ex.: E0"></div>
+        <div class="field"><label class="fl" for="fEstFim">Estaca final</label><input id="fEstFim" placeholder="Ex.: E12"></div></div>
+      <div class="field"><label class="fl" for="fClima">Clima</label><select id="fClima">
         <option>Bom</option><option>Nublado</option><option>Chuva fraca</option><option>Chuva forte</option><option>Impraticável</option></select></div>
-      <div class="field"><label class="fl">Observações</label><textarea id="fObs" rows="2" placeholder="Trecho, estaca, ocorrências..."></textarea></div>
+      <div class="field"><label class="fl" for="fObs">Observações</label><textarea id="fObs" rows="2" placeholder="Trecho, estaca, ocorrências..."></textarea></div>
       <button class="btn btn-pri" style="width:100%;justify-content:center" onclick="salvar()">Salvar apontamento</button>
     </div></div>
     <div class="card"><div class="card-h"><div class="card-t">Últimos apontamentos</div>
@@ -1372,6 +1428,116 @@ function exportaCSV(){
   const csv='﻿'+rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(';')).join('\r\n');
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
   a.download=`medicao_fisica_${o.id}_${mes}.csv`;a.click();toast('CSV exportado ✓');
+}
+
+/* ============================================================ MODO APRESENTAÇÃO
+   Overlay fullscreen que "apresenta o sistema sozinho": capa → capacidades →
+   uma cena por obra (KPIs + Curva S + avanço por frente) → encerramento com
+   créditos. Auto-avança; setas/espaço/Esc controlam. Reusa as funções de cálculo. */
+const APRES={on:false,idx:0,slides:[],timer:null,playing:true,dur:8500,keyH:null};
+function apMontarSlides(){
+  const geridas=ORDEM.map(id=>OBRAS[id]).filter(o=>o&&!o.externo);
+  const todas=ORDEM.map(id=>OBRAS[id]).filter(o=>o);
+  const totalGerido=todas.reduce((a,o)=>a+(o.valorGlobal||0),0);
+  const avg=geridas.length?geridas.reduce((a,o)=>a+mediaPct(o.servicos||[],avancoServ(o)),0)/geridas.length:0;
+  const s=[{tipo:'capa'},{tipo:'capacidades'}];
+  geridas.forEach(o=>s.push({tipo:'obra',o}));
+  s.push({tipo:'fim',totalGerido,nObras:geridas.length,nPort:todas.length,avg});
+  return s;
+}
+function apSlideHTML(sl){
+  if(sl.tipo==='capa')return `<div class="ap-slide" style="text-align:center">
+    <img src="assets/logo_gestor.png" alt="" style="width:88px;height:88px;border-radius:20px;background:#fff;object-fit:contain;margin-bottom:20px">
+    <div class="ap-kicker">Sistema Integrado de Controle de Obras Públicas</div>
+    <h2>Gestor — Controle de Obras</h2>
+    <div class="ap-sub" style="margin:0 auto">Acompanhamento físico, diário de obra, equipamentos, medição e projetos — do canteiro à gestão executiva, em um só sistema.</div></div>`;
+  if(sl.tipo==='capacidades'){
+    const caps=[
+      ['◆','Painel Executivo','KPIs, Curva S e desvio previsto × realizado'],
+      ['⊕','RDO de Campo','Apontamento diário de produção por serviço e estaca'],
+      ['📋','Diário de Obra','Efetivo, equipamentos, clima e ocorrências — PDF pronto'],
+      ['🚜','Equipamentos','Horas, paradas, horímetro, combustível e assinatura'],
+      ['⌗','Medição Física','Produção do mês por serviço, com exportação'],
+      ['📐','Projetos','Pranchas renderizadas offline, com zoom'],
+      ['≡','Histórico','Consulta auditável por data, com edição'],
+      ['☁','Sincronização','Nuvem com fila offline — funciona sem sinal no campo']
+    ];
+    return `<div class="ap-slide"><div class="ap-kicker">O que o sistema entrega</div>
+      <h2>Uma plataforma, todo o ciclo da obra</h2>
+      <div class="ap-caps">${caps.map(c=>`<div class="ap-cap"><span class="ic">${c[0]}</span><div><b>${esc(c[1])}</b><span>${esc(c[2])}</span></div></div>`).join('')}</div></div>`;
+  }
+  if(sl.tipo==='obra'){
+    const o=sl.o,serv=o.servicos||[],av=avancoServ(o),pf=mediaPct(serv,av);
+    const concl=serv.filter(x=>pctServ(x,av)>=99.95).length,inic=serv.filter(x=>pctServ(x,av)>0).length;
+    const pts=pontos(o),prev=curvaPrev(o,pts),real=curvaReal(o,pts);
+    const frn=(o.frentes||[]).map(f=>{const sf=serv.filter(x=>x.capId===f.id);if(!sf.length)return null;return{nome:f.nome,id:f.id,p:mediaPct(sf,av)};}).filter(Boolean).sort((a,b)=>b.p-a.p).slice(0,5);
+    return `<div class="ap-slide"><div class="ap-kicker">${esc(o.contrato||'Obra')}</div>
+      <h2>${esc(o.nome)}</h2>
+      <div class="ap-sub">${esc(o.local||'')}</div>
+      <div class="ap-kpis">
+        <div class="ap-k"><div class="l">Avanço físico</div><div class="v">${fmtPct(pf)}</div></div>
+        <div class="ap-k"><div class="l">Serviços iniciados</div><div class="v">${inic}/${serv.length}</div></div>
+        <div class="ap-k"><div class="l">Concluídos</div><div class="v">${concl}</div></div>
+        <div class="ap-k"><div class="l">Prazo</div><div class="v">${o.prazoMeses||'—'}m</div></div>
+        ${o.valorGlobal?`<div class="ap-k"><div class="l">Valor</div><div class="v" style="font-size:21px">${fmtBRLc(o.valorGlobal)}</div></div>`:''}
+      </div>
+      <div class="ap-cols">
+        <div><div class="ap-kicker" style="margin-bottom:8px">Curva S — previsto × realizado</div>${curvaSVG(pts,prev,real)}</div>
+        <div><div class="ap-kicker" style="margin-bottom:8px">Avanço por frente</div><div class="ap-frn">
+          ${frn.length?frn.map(f=>`<div class="fr"><div class="hd"><span>${ICONE[f.id]||'•'} ${esc(f.nome)}</span><span class="mono">${fmtPct(f.p)}</span></div><div class="bar" style="margin:0"><i style="width:${clamp(f.p).toFixed(1)}%"></i></div></div>`).join(''):'<div class="ap-sub">Sem serviços cadastrados.</div>'}
+        </div></div>
+      </div></div>`;
+  }
+  return `<div class="ap-slide" style="text-align:center">
+    <div class="ap-kicker">Portfólio consolidado</div>
+    <h2>${fmtBRLc(sl.totalGerido)} sob gestão</h2>
+    <div class="ap-kpis" style="max-width:680px;margin:24px auto">
+      <div class="ap-k"><div class="l">Obras no portfólio</div><div class="v">${sl.nPort}</div></div>
+      <div class="ap-k"><div class="l">Geridas no app</div><div class="v">${sl.nObras}</div></div>
+      <div class="ap-k"><div class="l">Avanço médio</div><div class="v">${fmtPct(sl.avg)}</div></div>
+    </div>
+    <div class="ap-sub" style="margin:0 auto 10px">Gestor — Controle de Obras</div>
+    <div style="font-size:15px;color:rgba(242,237,227,.75)">Criado e desenvolvido por <b style="color:#fff">Leonardo Maciel</b></div></div>`;
+}
+function apRender(){
+  const box=el('apStage');if(!box)return;
+  box.innerHTML=apSlideHTML(APRES.slides[APRES.idx]);box.scrollTop=0;
+  [...document.querySelectorAll('#apres .ap-prog .seg')].forEach((s,i)=>{s.classList.toggle('done',i<APRES.idx);s.classList.toggle('cur',i===APRES.idx);});
+  apArmar();
+}
+function apArmar(){clearTimeout(APRES.timer);if(APRES.playing)APRES.timer=setTimeout(()=>apGo(1),APRES.dur);}
+function apGo(d){const n=APRES.slides.length;let i=APRES.idx+d;if(i>=n){apFechar();return;}if(i<0)i=0;APRES.idx=i;apRender();}
+function apPlayPause(){
+  APRES.playing=!APRES.playing;
+  const o=el('apres');if(o)o.classList.toggle('paused',!APRES.playing);
+  const b=el('apPlay');if(b)b.textContent=APRES.playing?'⏸ Pausar':'▶ Continuar';
+  if(APRES.playing)apArmar();else clearTimeout(APRES.timer);
+}
+function abrirApresentacao(){
+  if(APRES.on)return;
+  APRES.slides=apMontarSlides();APRES.on=true;APRES.idx=0;APRES.playing=true;
+  const ov=document.createElement('div');ov.id='apres';ov.style.setProperty('--apdur',(APRES.dur/1000)+'s');
+  const segs=APRES.slides.map(()=>'<span class="seg"><i></i></span>').join('');
+  ov.innerHTML=`
+    <div class="ap-top"><img src="assets/logo_gestor.png" alt=""><div><div class="t">Gestor — Controle de Obras</div><div class="s">Modo apresentação</div></div>
+      <div class="ap-prog">${segs}</div></div>
+    <div class="ap-stage" id="apStage"></div>
+    <div class="ap-ctrl"><button type="button" onclick="apGo(-1)">← Anterior</button>
+      <button type="button" id="apPlay" onclick="apPlayPause()">⏸ Pausar</button>
+      <button type="button" onclick="apGo(1)">Próximo →</button>
+      <button type="button" onclick="apFechar()">✕ Sair</button></div>
+    <div class="ap-credits">Criado e desenvolvido por <b>Leonardo Maciel</b></div>`;
+  document.body.appendChild(ov);
+  APRES.keyH=e=>{if(e.key==='Escape')apFechar();else if(e.key==='ArrowRight')apGo(1);else if(e.key==='ArrowLeft')apGo(-1);else if(e.key===' '){e.preventDefault();apPlayPause();}};
+  document.addEventListener('keydown',APRES.keyH);
+  try{if(document.documentElement.requestFullscreen)document.documentElement.requestFullscreen().catch(()=>{});}catch(e){}
+  apRender();
+}
+function apFechar(){
+  clearTimeout(APRES.timer);APRES.on=false;
+  if(APRES.keyH){document.removeEventListener('keydown',APRES.keyH);APRES.keyH=null;}
+  const o=el('apres');if(o)o.remove();
+  try{if(document.fullscreenElement)document.exitFullscreen().catch(()=>{});}catch(e){}
 }
 
 function temaAtual(){return localStorage.getItem('gestor:tema')||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');}
