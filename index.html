@@ -1518,7 +1518,8 @@ function apMontarSlides(){
   geridas.forEach(o=>{const tem=getLanc(o.id).length;s.push({tipo:'obra',o});
     if(tem){s.push({tipo:'operacao',o});s.push({tipo:'ruas',o});}
     if((o.projetos||[]).length)s.push({tipo:'projetos',o});
-    if(tem)s.push({tipo:'relatorios',o});});
+    if(tem)s.push({tipo:'relatorios',o,doc:'rdo'});
+    if(EQUIP&&EQUIP.apontamentos&&EQUIP.apontamentos.length)s.push({tipo:'relatorios',o,doc:'equip'});});
   s.push({tipo:'fim',totalGerido,nObras:geridas.length,nPort:todas.length,avg});
   return s;
 }
@@ -1604,20 +1605,23 @@ function apSlideHTML(sl){
       </div></div>`;
   }
   if(sl.tipo==='relatorios'){
-    const o=sl.o,datas=todasDatas(o),diarios=getDiarios(o.id);
+    const o=sl.o;
+    const capa=`<div class="ap-kicker">${esc(o.nome)} · documento gerado</div>`;
+    if(sl.doc==='equip'){
+      const aps=(EQUIP&&EQUIP.apontamentos)||[];
+      const medHtml=aps.length?htmlMedicaoEquip(o,aps,'Consolidado').replace('onload="window.print()"',''):'';
+      return `<div class="ap-slide">${capa}
+        <h2 style="font-size:clamp(20px,3vw,32px);margin-bottom:6px">Medição Mensal de Equipamentos</h2>
+        <div class="ap-sub" style="margin-bottom:12px">Resumo consolidado + diário por equipamento — paradas, horímetro, combustível e disponibilidade. Gerado em PDF e Excel.</div>
+        <div class="ap-doc" style="max-width:1180px;margin:0 auto">${medHtml?`<div class="ap-doc-frame"><iframe class="doc-a4" data-orient="land" title="Medição de Equipamentos" srcdoc="${esc(medHtml)}"></iframe></div>`:'<div class="ap-sub">Sem apontamentos de equipamento.</div>'}<div class="ap-doc-lbl">Medição de Equipamentos · PDF / Excel</div></div></div>`;
+    }
+    const datas=todasDatas(o),diarios=getDiarios(o.id);
     const dRdo=diarios.length?diarios.slice().sort((a,b)=>b.dataISO.localeCompare(a.dataISO))[0].dataISO:(datas.length?datas[datas.length-1]:null);
     const rdoHtml=dRdo?htmlRDO(o,montarRDO(o,dRdo),numeroRDO(o,dRdo)).replace('onload="window.print()"',''):'';
-    const aps=(EQUIP&&EQUIP.apontamentos)||[];
-    const medHtml=aps.length?htmlMedicaoEquip(o,aps,'Consolidado').replace('onload="window.print()"',''):'';
-    const docs=[];
-    if(rdoHtml)docs.push({lbl:'Relatório Diário de Obra · PDF / Excel',html:rdoHtml,orient:'port'});
-    if(medHtml)docs.push({lbl:'Medição de Equipamentos · PDF / Excel',html:medHtml,orient:'land'});
-    return `<div class="ap-slide"><div class="ap-kicker">${esc(o.nome)} · documentos gerados</div>
-      <h2>Relatórios prontos para a fiscalização</h2>
-      <div class="ap-sub" style="margin-bottom:16px">RDO e medição de equipamentos gerados automaticamente em PDF e Excel, no padrão de obra pública.</div>
-      <div class="${docs.length>1?'ap-two':''}" style="align-items:flex-start">
-        ${docs.map(d=>`<div class="ap-doc"><div class="ap-doc-frame"><iframe class="doc-a4" data-orient="${d.orient}" title="${esc(d.lbl)}" srcdoc="${esc(d.html)}"></iframe></div><div class="ap-doc-lbl">${esc(d.lbl)}</div></div>`).join('')||'<div class="ap-sub">Sem documentos para exibir.</div>'}
-      </div></div>`;
+    return `<div class="ap-slide">${capa}
+      <h2 style="font-size:clamp(20px,3vw,32px);margin-bottom:6px">Relatório Diário de Obra (RDO)</h2>
+      <div class="ap-sub" style="margin-bottom:12px">Efetivo, equipamentos, serviços executados por trecho e ocorrências — gerado em PDF e Excel, no padrão de obra pública.</div>
+      <div class="ap-doc" style="max-width:770px;margin:0 auto">${rdoHtml?`<div class="ap-doc-frame"><iframe class="doc-a4" data-orient="port" title="RDO" srcdoc="${esc(rdoHtml)}"></iframe></div>`:'<div class="ap-sub">Sem RDO para exibir.</div>'}<div class="ap-doc-lbl">Relatório Diário de Obra · PDF / Excel</div></div></div>`;
   }
   return `<div class="ap-slide" style="text-align:center">
     <div class="ap-kicker">Portfólio consolidado</div>
@@ -1639,8 +1643,9 @@ function apRender(){
 }
 // escala os relatórios para caber como página A4 inteira (proporção correta)
 function apFitDocs(){
-  const maxH=Math.max(280,window.innerHeight*0.5);
-  document.querySelectorAll('#apres iframe.doc-a4').forEach(ifr=>{
+  const ifrs=document.querySelectorAll('#apres iframe.doc-a4');
+  const maxH=Math.max(300,window.innerHeight*(ifrs.length<=1?0.64:0.5));
+  ifrs.forEach(ifr=>{
     const land=ifr.dataset.orient==='land';const W=land?1123:794,H=land?794:1123;
     const fr=ifr.parentElement,card=fr.closest('.ap-doc');
     const maxW=Math.max(200,(card?card.clientWidth:480)-24);
