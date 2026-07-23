@@ -294,8 +294,10 @@ label.fl{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppe
 #apres .ap-op td{padding:9px 4px;border-bottom:1px solid rgba(255,255,255,.1)}
 #apres .ap-op .n{text-align:right;font-family:'JetBrains Mono',monospace;font-weight:700;white-space:nowrap;padding-left:14px}
 #apres .ap-doc{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:12px}
-#apres .ap-doc-frame{height:50vh;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 8px 30px rgba(0,0,0,.4)}
-#apres .ap-doc-frame iframe{border:0;background:#fff;width:100%;height:1400px;pointer-events:none}
+#apres .ap-doc-frame{position:relative;background:#fff;border-radius:6px;overflow:hidden;box-shadow:0 8px 30px rgba(0,0,0,.4);margin:0 auto}
+#apres .ap-doc-frame iframe{border:0;background:#fff;display:block}
+#apres .ap-doc-frame iframe.doc-a4{position:absolute;top:0;left:0;transform-origin:top left;pointer-events:none}
+#apres .ap-doc-frame iframe.proj{width:100%;height:100%;pointer-events:none}
 #apres .ap-doc-lbl{font-size:12.5px;color:rgba(242,237,227,.72);margin-top:9px;text-align:center;font-weight:600}
 #apres .ap-caps{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:13px;margin-top:24px}
 #apres .ap-cap{display:flex;gap:12px;align-items:flex-start;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.09);border-radius:12px;padding:13px 16px}
@@ -1513,7 +1515,10 @@ function apMontarSlides(){
   const totalGerido=todas.reduce((a,o)=>a+(o.valorGlobal||0),0);
   const avg=geridas.length?geridas.reduce((a,o)=>a+mediaPct(o.servicos||[],avancoServ(o)),0)/geridas.length:0;
   const s=[{tipo:'capa'},{tipo:'capacidades'}];
-  geridas.forEach(o=>{s.push({tipo:'obra',o});if(getLanc(o.id).length){s.push({tipo:'operacao',o});s.push({tipo:'ruas',o});s.push({tipo:'relatorios',o});}});
+  geridas.forEach(o=>{const tem=getLanc(o.id).length;s.push({tipo:'obra',o});
+    if(tem){s.push({tipo:'operacao',o});s.push({tipo:'ruas',o});}
+    if((o.projetos||[]).length)s.push({tipo:'projetos',o});
+    if(tem)s.push({tipo:'relatorios',o});});
   s.push({tipo:'fim',totalGerido,nObras:geridas.length,nPort:todas.length,avg});
   return s;
 }
@@ -1584,6 +1589,20 @@ function apSlideHTML(sl){
       <div class="ap-sub" style="margin-bottom:16px">Cada barra é uma estaca; a altura mostra os serviços executados naquele trecho.</div>
       <div class="ap-two">${o.ruas.map((rua,ri)=>cena3D(o,rua,ri,lf,maxG)).join('')}</div></div>`;
   }
+  if(sl.tipo==='projetos'){
+    const o=sl.o,projs=o.projetos||[];const porRua={};projs.forEach(p=>{(porRua[p.rua]=porRua[p.rua]||[]).push(p);});
+    const first=projs[0];
+    const cat=Object.entries(porRua).map(([rua,ps])=>`<div style="margin-bottom:12px"><div class="ap-kicker" style="margin-bottom:6px">${esc(rua)}</div>
+      ${ps.map(p=>`<div class="ap-cap" style="padding:10px 14px;margin-bottom:8px"><span class="ic">📄</span><div><b>${esc(p.disciplina)}</b><span>${esc(p.cod||'')}</span></div></div>`).join('')}</div>`).join('');
+    return `<div class="ap-slide"><div class="ap-kicker">${esc(o.nome)} · projetos</div>
+      <h2>Projetos de engenharia, sempre à mão</h2>
+      <div class="ap-sub" style="margin-bottom:16px">Pranchas de pavimentação, drenagem e terraplenagem renderizadas no próprio app — offline e com zoom.</div>
+      <div class="ap-cols">
+        <div class="ap-doc"><div class="ap-doc-frame" style="width:100%;height:52vh">${first?`<iframe class="proj" title="Projeto" src="${esc(first.arquivo)}#toolbar=0&navpanes=0&view=FitH"></iframe>`:'<div class="ap-sub" style="padding:20px">Sem prancha para exibir.</div>'}</div>
+          <div class="ap-doc-lbl">${first?esc(first.disciplina+' — '+first.rua):''}</div></div>
+        <div>${cat}</div>
+      </div></div>`;
+  }
   if(sl.tipo==='relatorios'){
     const o=sl.o,datas=todasDatas(o),diarios=getDiarios(o.id);
     const dRdo=diarios.length?diarios.slice().sort((a,b)=>b.dataISO.localeCompare(a.dataISO))[0].dataISO:(datas.length?datas[datas.length-1]:null);
@@ -1591,13 +1610,13 @@ function apSlideHTML(sl){
     const aps=(EQUIP&&EQUIP.apontamentos)||[];
     const medHtml=aps.length?htmlMedicaoEquip(o,aps,'Consolidado').replace('onload="window.print()"',''):'';
     const docs=[];
-    if(rdoHtml)docs.push(['Relatório Diário de Obra · PDF / Excel',rdoHtml]);
-    if(medHtml)docs.push(['Medição de Equipamentos · PDF / Excel',medHtml]);
+    if(rdoHtml)docs.push({lbl:'Relatório Diário de Obra · PDF / Excel',html:rdoHtml,orient:'port'});
+    if(medHtml)docs.push({lbl:'Medição de Equipamentos · PDF / Excel',html:medHtml,orient:'land'});
     return `<div class="ap-slide"><div class="ap-kicker">${esc(o.nome)} · documentos gerados</div>
       <h2>Relatórios prontos para a fiscalização</h2>
       <div class="ap-sub" style="margin-bottom:16px">RDO e medição de equipamentos gerados automaticamente em PDF e Excel, no padrão de obra pública.</div>
-      <div class="${docs.length>1?'ap-two':''}">
-        ${docs.map(d=>`<div class="ap-doc"><div class="ap-doc-frame"><iframe title="${esc(d[0])}" srcdoc="${esc(d[1])}"></iframe></div><div class="ap-doc-lbl">${esc(d[0])}</div></div>`).join('')||'<div class="ap-sub">Sem documentos para exibir.</div>'}
+      <div class="${docs.length>1?'ap-two':''}" style="align-items:flex-start">
+        ${docs.map(d=>`<div class="ap-doc"><div class="ap-doc-frame"><iframe class="doc-a4" data-orient="${d.orient}" title="${esc(d.lbl)}" srcdoc="${esc(d.html)}"></iframe></div><div class="ap-doc-lbl">${esc(d.lbl)}</div></div>`).join('')||'<div class="ap-sub">Sem documentos para exibir.</div>'}
       </div></div>`;
   }
   return `<div class="ap-slide" style="text-align:center">
@@ -1615,7 +1634,20 @@ function apRender(){
   const box=el('apStage');if(!box)return;
   box.innerHTML=apSlideHTML(APRES.slides[APRES.idx]);box.scrollTop=0;
   [...document.querySelectorAll('#apres .ap-prog .seg')].forEach((s,i)=>{s.classList.toggle('done',i<APRES.idx);s.classList.toggle('cur',i===APRES.idx);});
+  if(APRES.slides[APRES.idx].tipo==='relatorios'){apFitDocs();setTimeout(apFitDocs,90);}
   apArmar();
+}
+// escala os relatórios para caber como página A4 inteira (proporção correta)
+function apFitDocs(){
+  const maxH=Math.max(280,window.innerHeight*0.5);
+  document.querySelectorAll('#apres iframe.doc-a4').forEach(ifr=>{
+    const land=ifr.dataset.orient==='land';const W=land?1123:794,H=land?794:1123;
+    const fr=ifr.parentElement,card=fr.closest('.ap-doc');
+    const maxW=Math.max(200,(card?card.clientWidth:480)-24);
+    const scale=Math.min(maxH/H,maxW/W);
+    ifr.style.width=W+'px';ifr.style.height=H+'px';ifr.style.transform='scale('+scale+')';
+    fr.style.width=Math.round(W*scale)+'px';fr.style.height=Math.round(H*scale)+'px';
+  });
 }
 function apArmar(){clearTimeout(APRES.timer);if(APRES.playing)APRES.timer=setTimeout(()=>apGo(1),APRES.dur);}
 function apGo(d){const n=APRES.slides.length;let i=APRES.idx+d;if(i>=n){apFechar();return;}if(i<0)i=0;APRES.idx=i;apRender();}
@@ -1644,12 +1676,15 @@ function abrirApresentacao(){
   document.body.appendChild(ov);
   APRES.keyH=e=>{if(e.key==='Escape')apFechar();else if(e.key==='ArrowRight')apGo(1);else if(e.key==='ArrowLeft')apGo(-1);else if(e.key===' '){e.preventDefault();apPlayPause();}};
   document.addEventListener('keydown',APRES.keyH);
+  APRES.rz=()=>{if(APRES.on&&APRES.slides[APRES.idx]&&APRES.slides[APRES.idx].tipo==='relatorios')apFitDocs();};
+  window.addEventListener('resize',APRES.rz);
   try{if(document.documentElement.requestFullscreen)document.documentElement.requestFullscreen().catch(()=>{});}catch(e){}
   apRender();
 }
 function apFechar(){
   clearTimeout(APRES.timer);APRES.on=false;
   if(APRES.keyH){document.removeEventListener('keydown',APRES.keyH);APRES.keyH=null;}
+  if(APRES.rz){window.removeEventListener('resize',APRES.rz);APRES.rz=null;}
   const o=el('apres');if(o)o.remove();
   try{if(document.fullscreenElement)document.exitFullscreen().catch(()=>{});}catch(e){}
 }
