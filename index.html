@@ -289,6 +289,10 @@ label.fl{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppe
 #apres .ap-k .l{font:700 10px 'JetBrains Mono',monospace;letter-spacing:.06em;text-transform:uppercase;color:rgba(242,237,227,.55)}
 #apres .ap-k .v{font:700 29px 'JetBrains Mono',monospace;letter-spacing:-.03em;margin-top:4px;line-height:1.05}
 #apres .ap-cols{display:grid;grid-template-columns:1.2fr 1fr;gap:22px;align-items:start}
+#apres .ap-two{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+#apres .ap-op{width:100%;border-collapse:collapse;font-size:14px;margin-top:4px}
+#apres .ap-op td{padding:9px 4px;border-bottom:1px solid rgba(255,255,255,.1)}
+#apres .ap-op .n{text-align:right;font-family:'JetBrains Mono',monospace;font-weight:700;white-space:nowrap;padding-left:14px}
 #apres .ap-caps{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:13px;margin-top:24px}
 #apres .ap-cap{display:flex;gap:12px;align-items:flex-start;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.09);border-radius:12px;padding:13px 16px}
 #apres .ap-cap .ic{font-size:22px;line-height:1.1}#apres .ap-cap b{display:block;font-size:14.5px;margin-bottom:2px}#apres .ap-cap span{font-size:12.5px;color:rgba(242,237,227,.62);line-height:1.4}
@@ -299,7 +303,7 @@ label.fl{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppe
 #apres .ap-ctrl button:hover{background:rgba(255,255,255,.16)}
 #apres .ap-credits{text-align:center;font-size:12px;color:rgba(242,237,227,.5);padding-bottom:12px}
 #apres .ap-credits b{color:#f2ede3}
-@media(max-width:760px){#apres .ap-cols{grid-template-columns:1fr}#apres .ap-prog{display:none}}
+@media(max-width:760px){#apres .ap-cols,#apres .ap-two{grid-template-columns:1fr}#apres .ap-prog{display:none}}
 </style>
 </head>
 <body>
@@ -1441,7 +1445,7 @@ function apMontarSlides(){
   const totalGerido=todas.reduce((a,o)=>a+(o.valorGlobal||0),0);
   const avg=geridas.length?geridas.reduce((a,o)=>a+mediaPct(o.servicos||[],avancoServ(o)),0)/geridas.length:0;
   const s=[{tipo:'capa'},{tipo:'capacidades'}];
-  geridas.forEach(o=>s.push({tipo:'obra',o}));
+  geridas.forEach(o=>{s.push({tipo:'obra',o});if(getLanc(o.id).length){s.push({tipo:'operacao',o});s.push({tipo:'ruas',o});}});
   s.push({tipo:'fim',totalGerido,nObras:geridas.length,nPort:todas.length,avg});
   return s;
 }
@@ -1487,6 +1491,30 @@ function apSlideHTML(sl){
           ${frn.length?frn.map(f=>`<div class="fr"><div class="hd"><span>${ICONE[f.id]||'•'} ${esc(f.nome)}</span><span class="mono">${fmtPct(f.p)}</span></div><div class="bar" style="margin:0"><i style="width:${clamp(f.p).toFixed(1)}%"></i></div></div>`).join(''):'<div class="ap-sub">Sem serviços cadastrados.</div>'}
         </div></div>
       </div></div>`;
+  }
+  if(sl.tipo==='operacao'){
+    const o=sl.o,lanc=getLanc(o.id),serv=o.servicos||[],av=avancoServ(o);
+    const dias=[...new Set(lanc.map(l=>l.dataISO))].length;
+    const efet=lanc.reduce((a,l)=>a+(+l.efetivo||0),0);
+    const top=serv.map(sv=>({s:sv,q:av[skeyS(sv)]||0,p:clamp(pctServ(sv,av))})).filter(x=>x.q>0).sort((a,b)=>b.p-a.p).slice(0,6);
+    return `<div class="ap-slide"><div class="ap-kicker">${esc(o.nome)} · operação de campo</div>
+      <h2>A obra em números</h2>
+      <div class="ap-kpis">
+        <div class="ap-k"><div class="l">Dias apontados</div><div class="v">${dias}</div></div>
+        <div class="ap-k"><div class="l">Lançamentos (RDO)</div><div class="v">${lanc.length}</div></div>
+        <div class="ap-k"><div class="l">Diários salvos</div><div class="v">${getDiarios(o.id).length}</div></div>
+        <div class="ap-k"><div class="l">Efetivo acumulado</div><div class="v">${efet}</div></div>
+      </div>
+      <div class="ap-kicker" style="margin:8px 0 2px">Serviços mais executados</div>
+      <table class="ap-op"><tbody>${top.map(t=>`<tr><td>${ICONE[t.s.capId]||'•'} ${esc(t.s.servico)}</td><td class="n">${fmtQtd(t.q)} ${esc(t.s.un)}</td><td class="n" style="color:var(--accent-2)">${fmtPct(t.p)}</td></tr>`).join('')}</tbody></table></div>`;
+  }
+  if(sl.tipo==='ruas'){
+    const o=sl.o,lf=getLanc(o.id);
+    const maxG=Math.max(1,...o.ruas.map(r=>Math.max(0,...ativPorEstaca(o,r,lf))));
+    return `<div class="ap-slide"><div class="ap-kicker">${esc(o.nome)} · mapa físico</div>
+      <h2>Avanço por estaca, rua a rua</h2>
+      <div class="ap-sub" style="margin-bottom:16px">Cada barra é uma estaca; a altura mostra os serviços executados naquele trecho.</div>
+      <div class="ap-two">${o.ruas.map((rua,ri)=>cena3D(o,rua,ri,lf,maxG)).join('')}</div></div>`;
   }
   return `<div class="ap-slide" style="text-align:center">
     <div class="ap-kicker">Portfólio consolidado</div>
