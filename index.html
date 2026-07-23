@@ -448,6 +448,7 @@ function enfileirarDelDiario(obraId,id){if(!BACKEND)return;outboxAdd({id:'ob'+ui
 
 /* --- leitura do servidor (CSV) e reconciliação com pendências --- */
 async function carregarObra(obraId){
+  if(isDemo())return;                 // modo demonstração: sync pausado (não sobrescreve os dados fictícios)
   if(!BACKEND||!CONFIG.csv.rdo)return;
   try{
     const [rdoRows,diaRows]=await Promise.all([fetchCSV(CONFIG.csv.rdo),CONFIG.csv.diario?fetchCSV(CONFIG.csv.diario):Promise.resolve([])]);
@@ -639,6 +640,7 @@ function viewHome(){
       <img src="assets/logo_gestor.png" style="width:40px;height:40px;border-radius:9px;background:#fff;object-fit:contain" alt="Gestor">
       <div style="flex:1"><h1>Gestor — Controle de Obras</h1><div class="sub">Selecione uma obra para acompanhar</div></div>
       <button class="btn btn-sm btn-pri" onclick="abrirApresentacao()" title="Modo apresentação">▶ Apresentar</button>
+      ${isDemo()?`<button class="btn btn-sm" style="border-color:var(--amarelo);color:var(--amarelo)" onclick="sairDemo()" title="Sair da demonstração">● Demo ativo</button>`:`<button class="btn btn-sm btn-ghost" onclick="carregarDemo()" title="Preencher com dados de demonstração (local)">🎬 Demo</button>`}
       <button class="btn btn-sm btn-ghost" onclick="toggleTema()" title="Tema">◐</button></header>
     <div class="content">${resumo}<div class="obras-grid">${cards}
       <div class="obra-card add"><div style="font-size:30px;margin-bottom:8px">＋</div>
@@ -1432,7 +1434,7 @@ function enfileirarUpdateRDO(obraId,l){if(!BACKEND)return;
   outboxAdd({id:'ob'+uid(),obra:obraId,tipo:'updRdo',params:{action:'updateRDO',payload:JSON.stringify(payload)}});outboxFlush();}
 
 /* ============================================================ AÇÕES */
-function abrirObra(id){estado.obraId=id;estado.tela='executivo';estado.filtroRua='Todas';estado.mesMed='';estado.diarioData='';estado.projSel='';estado.painelFrente='Todas';estado.painelMes='Todos';_pdfDoc=null;_pdfUrl='';_pdfZoom=1;EQUIP={equipamentos:[],locadoras:[],apontamentos:[],carregado:false};render();
+function abrirObra(id){estado.obraId=id;estado.tela='executivo';estado.filtroRua='Todas';estado.mesMed='';estado.diarioData='';estado.projSel='';estado.painelFrente='Todas';estado.painelMes='Todos';_pdfDoc=null;_pdfUrl='';_pdfZoom=1;EQUIP=isDemo()?_demoEquip():{equipamentos:[],locadoras:[],apontamentos:[],carregado:false};render();
   if(BACKEND)carregarObra(id).then(()=>{if(estado.obraId===id&&estado.tela!=='home')render();});}
 function abrirExterno(url){window.open(url,'_blank','noopener');}
 function setPFrente(v){estado.painelFrente=v;render();}
@@ -1625,7 +1627,8 @@ function apPlayPause(){
 }
 function abrirApresentacao(){
   if(APRES.on)return;
-  if(BACKEND&&estado.obraId&&EQUIP&&!EQUIP.carregado){try{carregarEquip();}catch(e){}}
+  if(isDemo()){if(!EQUIP||!EQUIP.carregado)EQUIP=_demoEquip();}
+  else if(BACKEND&&estado.obraId&&EQUIP&&!EQUIP.carregado){try{carregarEquip();}catch(e){}}
   APRES.slides=apMontarSlides();APRES.on=true;APRES.idx=0;APRES.playing=true;
   const ov=document.createElement('div');ov.id='apres';ov.style.setProperty('--apdur',(APRES.dur/1000)+'s');
   const segs=APRES.slides.map(()=>'<span class="seg"><i></i></span>').join('');
@@ -1651,12 +1654,69 @@ function apFechar(){
   try{if(document.fullscreenElement)document.exitFullscreen().catch(()=>{});}catch(e){}
 }
 
+/* ============================================================ MODO DEMONSTRAÇÃO
+   Carrega dados FICTÍCIOS só neste navegador (sem sincronizar com a nuvem), para
+   apresentar o sistema completo. Pausa o sync (carregarObra) enquanto ativo. */
+function isDemo(){return localStorage.getItem('gestor:demo')==='1';}
+function _demoEquip(){return {carregado:true,
+  equipamentos:[{nome:'Escavadeira 01',tipo:'Escavadeira hidráulica',vinculo:'Locado',locadora:'Loca Máquinas SP',ativo:'true'},
+    {nome:'Retro 02',tipo:'Retroescavadeira',vinculo:'Próprio',locadora:'',ativo:'true'},
+    {nome:'Rolo CA-250',tipo:'Rolo compactador',vinculo:'Locado',locadora:'Loca Máquinas SP',ativo:'true'}],
+  locadoras:[{nome:'Loca Máquinas SP',observacoes:'Contato: (11) 4000-0000'}],
+  apontamentos:[
+    {carimbo:'d1001',data:'2026-07-06',turno:'Diurno',equipamento:'Escavadeira 01',operador:'J. Santos',inicio:'07:00',fim:'17:00',horas:'9.00',paradas:'Almoço 12:00-13:00',horimIni:'1240',horimFim:'1249.5',combustivel:'82',situacao:'Operando normalmente'},
+    {carimbo:'d1005',data:'2026-07-09',turno:'Diurno',equipamento:'Escavadeira 01',operador:'J. Santos',inicio:'07:00',fim:'17:00',horas:'9.50',paradas:'Almoço 12:00-12:30',horimIni:'1249.5',horimFim:'1259',combustivel:'80',situacao:'Operando normalmente'},
+    {carimbo:'d1008',data:'2026-07-14',turno:'Diurno',equipamento:'Escavadeira 01',operador:'R. Alves',inicio:'07:00',fim:'17:00',horas:'8.00',paradas:'Almoço 12:00-13:00; Chuva 15:00-16:00',horimIni:'1259',horimFim:'1267',combustivel:'74',situacao:'Operando com restrição'},
+    {carimbo:'d1002',data:'2026-07-06',turno:'Diurno',equipamento:'Rolo CA-250',operador:'M. Lima',inicio:'07:00',fim:'17:00',horas:'8.00',paradas:'Almoço 12:00-13:00; Chuva 15:00-16:00',horimIni:'842',horimFim:'850',combustivel:'48',situacao:'Operando com restrição'},
+    {carimbo:'d1006',data:'2026-07-10',turno:'Diurno',equipamento:'Rolo CA-250',operador:'M. Lima',inicio:'07:00',fim:'17:00',horas:'9.00',paradas:'Almoço 12:00-13:00',horimIni:'850',horimFim:'859',combustivel:'52',situacao:'Operando normalmente'},
+    {carimbo:'d1003',data:'2026-07-07',turno:'Diurno',equipamento:'Retro 02',operador:'A. Costa',inicio:'07:00',fim:'17:00',horas:'10.00',paradas:'Sem paradas',horimIni:'3110',horimFim:'3120',combustivel:'65',situacao:'Operando normalmente'},
+    {carimbo:'d1004',data:'2026-07-08',turno:'Diurno',equipamento:'Retro 02',operador:'A. Costa',inicio:'07:00',fim:'16:00',horas:'8.00',paradas:'Manutenção 09:00-10:00',horimIni:'3120',horimFim:'3128',combustivel:'58',situacao:'Parado — manutenção'}
+  ]};}
+function _demoSeed(o){
+  let seed=987654321;const rnd=()=>{seed=(seed*1103515245+12345)&0x7fffffff;return seed/0x7fffffff;};
+  const pick=a=>a[Math.floor(rnd()*a.length)];const climas=['Bom','Bom','Nublado','Bom','Chuva fraca','Bom'];
+  const isoAdd=(b,d)=>{const x=new Date(b+'T00:00:00');x.setDate(x.getDate()+d);return x.toISOString().slice(0,10);};
+  const start=o.inicioISO||hoje();const estN=o.estacas||{};const servs=o.servicos||[];const lanc=[];
+  servs.forEach((s,si)=>{const alvo=0.32+rnd()*0.55,tot=(s.qtdPrev||0)*alvo,k=2+Math.floor(rnd()*4);let rest=tot;
+    for(let j=0;j<k;j++){let q=(j===k-1)?rest:tot/k*(0.7+rnd()*0.6);rest-=q;if(q<=0)continue;
+      const dia=isoAdd(start,2+Math.floor(rnd()*88));const nEst=estN[s.rua]||12;const e1=1+Math.floor(rnd()*Math.max(1,nEst-3));const e2=Math.min(nEst,e1+1+Math.floor(rnd()*4));
+      lanc.push({id:uid(),dataISO:dia,rua:s.rua,capId:s.capId,servico:s.servico,un:s.un,qtd:+Math.max(0.1,q).toFixed(2),efetivo:4+Math.floor(rnd()*10),estIni:'E'+e1,estFim:'E'+e2,clima:pick(climas),obs:'',criadoEm:Date.now()-si*1000-j*100});}});
+  const datas=[...new Set(lanc.map(l=>l.dataISO))].sort();
+  const diarios=datas.slice(0,14).map((d,i)=>({id:uid(),dataISO:d,climaManha:pick(climas),climaTarde:pick(climas),condicao:'Normal',
+    pessoal:FUNCOES.slice(0,3+Math.floor(rnd()*3)).map(f=>({funcao:f,qtd:1+Math.floor(rnd()*6)})),
+    equipamentos:EQUIPS.slice(0,2+Math.floor(rnd()*3)).map(e=>({nome:e,qtd:1+Math.floor(rnd()*2)})),
+    ocorrencias:i%3===0?'Recebimento de material e liberação de frente de serviço.':'',criadoEm:Date.now()-i*1000}));
+  return {lanc,diarios};
+}
+function carregarDemo(){
+  if(!confirm('Carregar DADOS DE DEMONSTRAÇÃO (fictícios)?\n\nPreenche as obras com lançamentos, diários e equipamentos de exemplo — só neste navegador, para apresentação. A sincronização com a nuvem fica pausada até você sair da demonstração.'))return;
+  ORDEM.map(id=>OBRAS[id]).filter(o=>o&&!o.externo).forEach(o=>{const s=_demoSeed(o);setLanc(o.id,s.lanc);setDiarios(o.id,s.diarios);});
+  EQUIP=_demoEquip();
+  localStorage.setItem('gestor:demo','1');
+  toast('Modo demonstração ativado ✓');render();
+}
+function sairDemo(){
+  if(!confirm('Sair do modo demonstração e limpar os dados fictícios deste navegador?\n\nOs dados reais voltam a sincronizar da nuvem normalmente.'))return;
+  ORDEM.map(id=>OBRAS[id]).filter(o=>o&&!o.externo).forEach(o=>{localStorage.removeItem(keyL(o.id));localStorage.removeItem('gestor:diario:'+o.id);});
+  localStorage.removeItem('gestor:demo');
+  EQUIP={equipamentos:[],locadoras:[],apontamentos:[],carregado:false};
+  estado.tela='home';estado.obraId=null;toast('Modo demonstração encerrado');render();
+}
+function atualizaDemoUI(){
+  let b=el('demoBanner');
+  if(!isDemo()){if(b)b.remove();return;}
+  if(!b){b=document.createElement('div');b.id='demoBanner';
+    b.style.cssText='position:fixed;top:0;left:50%;transform:translateX(-50%);z-index:180;background:var(--amarelo);color:#1a1200;font-weight:700;font-size:11.5px;letter-spacing:.02em;padding:5px 14px;border-radius:0 0 12px 12px;box-shadow:0 4px 14px rgba(0,0,0,.28);cursor:pointer;white-space:nowrap';
+    b.title='Clique para sair da demonstração';b.onclick=sairDemo;document.body.appendChild(b);}
+  b.innerHTML='● MODO DEMONSTRAÇÃO — dados fictícios · <u>sair</u>';
+}
 function temaAtual(){return localStorage.getItem('gestor:tema')||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');}
 function toggleTema(){const t=temaAtual()==='dark'?'light':'dark';localStorage.setItem('gestor:tema',t);document.documentElement.setAttribute('data-theme',t);}
 function toast(m){let t=el('toast');if(!t){t=document.createElement('div');t.id='toast';t.className='toast';document.body.appendChild(t);}
   t.textContent=m;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),2200);}
 function bind(){if(estado.tela==='rdo')atualizaServ();if(estado.tela==='projetos')renderPdfDoc(estado.projSel);
-  if(estado.tela==='equip'){if(BACKEND&&!EQUIP.carregado)carregarEquip();eqInitSign();eqCalcHoras();}}
+  if(estado.tela==='equip'){if(BACKEND&&!EQUIP.carregado)carregarEquip();eqInitSign();eqCalcHoras();}
+  atualizaDemoUI();}
 
 if(window.pdfjsLib)window.pdfjsLib.GlobalWorkerOptions.workerSrc='vendor/pdfjs/pdf.worker.min.js';
 document.addEventListener('keydown',e=>{if(e.key==='Escape')fecharModal();});
