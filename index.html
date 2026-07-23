@@ -491,7 +491,7 @@ function sidebar(o){
       <div class="brand-txt"><div class="brand-t">Gestor</div><div class="brand-s">Controle de Obras</div></div></div>
     <nav class="nav">${NAV.map(g=>`<div class="nav-label">${g.grupo}</div>${g.itens.map(it=>{
       const b=it.badge?it.badge(o):0;
-      return `<div class="nav-item ${estado.tela===it.id?'active':''}" onclick="ir('${it.id}')">
+      return `<div class="nav-item ${estado.tela===it.id?'active':''}" role="button" tabindex="0" onclick="ir('${it.id}')">
         <span class="nav-ic">${it.ic}</span><span class="nav-txt">${it.t}</span>${b?`<span class="nav-badge">${b}</span>`:''}</div>`;
     }).join('')}`).join('')}</nav>
     <div class="side-foot"><button class="btn btn-sm btn-ghost" onclick="irHome()">← Obras</button>
@@ -538,7 +538,8 @@ async function fazerLogin(){
   if(!p){el('loginErro').textContent='Informe a senha.';return;}
   el('loginErro').textContent='Entrando...';
   try{
-    const r=await jsonp(CONFIG.appsScript,{action:'login',usuario:u,senha:p},1,2000);
+    // login via POST (FormData): a senha NÃO trafega na URL/query (fora de logs e histórico)
+    const r=await postAcao({action:'login',usuario:u,senha:p});
     if(r&&r.ok&&r.token){setToken(r.token,r.usuario);outboxFlush();render();}
     else el('loginErro').textContent=(r&&/CREDENC/i.test(r.error||''))?'Usuário ou senha incorretos.':((r&&r.error)||'Falha ao entrar.');
   }catch(e){el('loginErro').textContent='Sem conexão com o servidor.';}
@@ -549,7 +550,7 @@ function viewHome(){
   const cards=ORDEM.map(id=>{
     const o=OBRAS[id];
     if(o.externo){
-      return `<div class="obra-card" onclick="abrirExterno('${esc(o.url)}')" style="border-style:dashed">
+      return `<div class="obra-card" role="button" tabindex="0" onclick="abrirExterno('${esc(o.url)}')" style="border-style:dashed">
         <div><div class="obra-tag">${esc(o.contrato)}</div><div class="obra-nome">${esc(o.nome)} <span style="font-size:14px">↗</span></div>
         <div class="obra-meta">${esc(o.local||'')}</div></div>
         <div class="chip" style="align-self:flex-start;background:var(--accent-soft);color:var(--accent);border-color:transparent">Sistema próprio (outro repositório)</div>
@@ -559,7 +560,7 @@ function viewHome(){
         <span class="chip on">Abrir ↗</span></div></div>`;
     }
     const av=avancoServ(o); const pf=mediaPct(o.servicos||[],av);
-    return `<div class="obra-card" onclick="abrirObra('${id}')">
+    return `<div class="obra-card" role="button" tabindex="0" onclick="abrirObra('${id}')">
       <div><div class="obra-tag">${esc(o.contrato)}</div><div class="obra-nome">${esc(o.nome)}</div>
       <div class="obra-meta">${esc(o.local||'')}</div></div>
       <div><div class="kpi-l">Avanço físico médio</div>
@@ -1013,7 +1014,7 @@ function medicaoEquipExcel(){
   const porEq={};filtrados.forEach(a=>{(porEq[a.equipamento]=porEq[a.equipamento]||[]).push(a);});
   const nomes=Object.keys(porEq);
   const sufMes=fMes==='Todos'?'todos':fMes;
-  const green={font:{bold:true,color:{rgb:'FFFFFF'}},fill:{fgColor:{rgb:'1F6F4A'}}},hdr={font:{bold:true},fill:{fgColor:{rgb:'F0EFE9'}},border:_brd()},cel={border:_brd()},celR={border:_brd(),alignment:{horizontal:'right'}};
+  const hdr={font:{bold:true},fill:{fgColor:{rgb:'F0EFE9'}},border:_brd()},cel={border:_brd()},celR={border:_brd(),alignment:{horizontal:'right'}};
   const wb=XLSX.utils.book_new();
   nomes.forEach(nome=>{
     const aps=porEq[nome].slice().sort((a,b)=>String(a.data).localeCompare(String(b.data)));
@@ -1382,6 +1383,8 @@ function bind(){if(estado.tela==='rdo')atualizaServ();if(estado.tela==='projetos
 
 if(window.pdfjsLib)window.pdfjsLib.GlobalWorkerOptions.workerSrc='vendor/pdfjs/pdf.worker.min.js';
 document.addEventListener('keydown',e=>{if(e.key==='Escape')fecharModal();});
+// ativa por teclado (Enter/Espaço) qualquer elemento clicável focável (role=button + tabindex)
+document.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&e.target&&e.target.matches&&e.target.matches('[onclick][tabindex]')){e.preventDefault();e.target.click();}});
 document.documentElement.setAttribute('data-theme',temaAtual());
 render();
 if(BACKEND){atualizaOutboxUI();outboxFlush();window.addEventListener('online',outboxFlush);}
