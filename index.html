@@ -430,7 +430,7 @@ function outboxGravar(a){localStorage.setItem(OUTBOX_KEY,JSON.stringify(a));atua
 function outboxAdd(it){const a=outboxLer();a.push(it);outboxGravar(a);}
 function outboxRemove(id){outboxGravar(outboxLer().filter(x=>x.id!==id));}
 async function outboxFlush(){
-  if(!BACKEND||!navigator.onLine)return;
+  if(!BACKEND||isDemo()||!navigator.onLine)return;   // demo: nada sai deste navegador
   for(const it of outboxLer()){
     // POST (FormData): dados do RDO/Diário NÃO trafegam na URL. postAcao anexa o token.
     try{const r=await postAcao(it.params);
@@ -449,14 +449,14 @@ function atualizaOutboxUI(){
 }
 
 /* --- envio (enfileira + tenta enviar) --- */
-function enfileirarRDO(obraId,l){if(!BACKEND)return;
+function enfileirarRDO(obraId,l){if(!BACKEND||isDemo())return;
   const item={obra:obraId,data:l.dataISO,rua:l.rua,capid:l.capId,servico:l.servico,un:l.un,qtd:l.qtd,efetivo:l.efetivo,estini:l.estIni,estfim:l.estFim,clima:l.clima,obs:l.obs,avulso:l.avulso,usuario:l.usuario||'',criadoem:l.criadoEm,id:l.id};
   outboxAdd({id:'ob'+uid(),clientId:l.id,obra:obraId,tipo:'rdo',params:{action:'addBatchRDO',batch:JSON.stringify([item]),clientId:l.id}});outboxFlush();}
-function enfileirarDelRDO(obraId,id){if(!BACKEND)return;outboxAdd({id:'ob'+uid(),obra:obraId,tipo:'delRdo',params:{action:'deleteRDO',id:id}});outboxFlush();}
-function enfileirarDiario(obraId,d){if(!BACKEND)return;
+function enfileirarDelRDO(obraId,id){if(!BACKEND||isDemo())return;outboxAdd({id:'ob'+uid(),obra:obraId,tipo:'delRdo',params:{action:'deleteRDO',id:id}});outboxFlush();}
+function enfileirarDiario(obraId,d){if(!BACKEND||isDemo())return;
   const item={action:'addDiario',obra:obraId,data:d.dataISO,climamanha:d.climaManha,climatarde:d.climaTarde,condicao:d.condicao,pessoal:JSON.stringify(d.pessoal||[]),equipamentos:JSON.stringify(d.equipamentos||[]),ocorrencias:d.ocorrencias,usuario:d.usuario||'',criadoem:d.criadoEm,id:d.id||''};
   outboxAdd({id:'ob'+uid(),obra:obraId,tipo:'diario',dados:d,params:item});outboxFlush();}
-function enfileirarDelDiario(obraId,id){if(!BACKEND)return;outboxAdd({id:'ob'+uid(),obra:obraId,tipo:'delDiario',params:{action:'deleteDiario',id:id}});outboxFlush();}
+function enfileirarDelDiario(obraId,id){if(!BACKEND||isDemo())return;outboxAdd({id:'ob'+uid(),obra:obraId,tipo:'delDiario',params:{action:'deleteDiario',id:id}});outboxFlush();}
 
 /* --- leitura do servidor (CSV) e reconciliação com pendências --- */
 async function carregarObra(obraId){
@@ -962,7 +962,7 @@ function renderFotosPrev(){
   const c=el('fotosCount');if(c)c.textContent=_fotosRDO.length?`${_fotosRDO.length}/${MAX_FOTOS} foto(s)`:'';
 }
 function enviarFotos(obraId,lancId,fulls){
-  if(!BACKEND||!fulls.length)return;
+  if(!BACKEND||isDemo()||!fulls.length)return;
   fulls.forEach((dataUrl,i)=>{
     postAcao({action:'rdoFoto',obra:obraId,id:lancId,idx:i,foto:dataUrl})
       .then(r=>{if(r&&r.ok&&r.url){const arr=getLanc(obraId);const l=arr.find(x=>x.id===lancId);
@@ -1048,6 +1048,8 @@ const SITUACOES=['Operando normalmente','Operando com restrição','Parado — m
 const MOTIVOS_PARADA=['Almoço','Refeição','Manutenção / Quebra','Chuva','Abastecimento','Sem operador','Sem frente de serviço','Outro'];
 const TIPOS_EQUIP=['Escavadeira hidráulica','Retroescavadeira','Pá-carregadeira','Motoniveladora','Rolo compactador','Caminhão basculante','Caminhão pipa','Vibroacabadora','Trator','Mini-carregadeira','Outros'];
 
+// no modo demonstração nada é gravado no servidor (só o login continua permitido)
+function demoBloqueia(){if(!isDemo())return false;toast('Modo demonstração — envio ao servidor desativado');return true;}
 function postAcao(params){
   const fd=new FormData();Object.keys(params).forEach(k=>fd.append(k,params[k]==null?'':params[k]));
   if(getToken())fd.append('token',getToken());
@@ -1151,6 +1153,7 @@ function eqLimparSign(){const c=el('eqSign');if(c){c.getContext('2d').clearRect(
 function eqAssinaturaData(){const c=el('eqSign');return (c&&c._has)?c.toDataURL('image/png'):'';}
 /* envio */
 function eqEnviar(){
+  if(demoBloqueia())return;
   const o=obra();const equip=el('eqEquip').value;
   if(!equip){toast('Selecione um equipamento');return;}
   const horas=+el('eqHoras').value;if(!horas){toast('Horas zeradas — confira os horários');return;}
@@ -1165,7 +1168,7 @@ function eqEnviar(){
   postAcao(p).then(r=>{if(r&&r.ok){toast('Apontamento enviado ✓');['eqOper','eqHi','eqHf','eqComb','eqObs'].forEach(id=>el(id).value='');el('eqParadas').innerHTML='';eqLimparSign();eqCalcHoras();carregarEquip();}
     else toast((r&&r.error)||'Falha ao enviar');}).catch(()=>toast('Sem conexão — tente de novo'));
 }
-function eqApagar(carimbo){if(!confirm('Apagar este apontamento?'))return;postAcao({action:'equipApagar',carimbo:carimbo}).then(r=>{if(r&&r.ok){toast('Apagado');carregarEquip();}else toast('Falha ao apagar');});}
+function eqApagar(carimbo){if(demoBloqueia())return;if(!confirm('Apagar este apontamento?'))return;postAcao({action:'equipApagar',carimbo:carimbo}).then(r=>{if(r&&r.ok){toast('Apagado');carregarEquip();}else toast('Falha ao apagar');});}
 /* cadastros */
 function cadEquipModal(){
   const locOpts=EQUIP.locadoras.map(l=>`<option>${esc(l.nome)}</option>`).join('');
@@ -1176,14 +1179,14 @@ function cadEquipModal(){
     <div class="field" id="ceLocWrap" style="display:none"><label class="fl">Locadora</label><select id="ceLoc"><option value="">—</option>${locOpts}</select></div>
     <button class="btn btn-pri" style="width:100%;justify-content:center" onclick="cadEquipSalvar()">Cadastrar</button>`);
 }
-function cadEquipSalvar(){const o=obra();const nome=el('ceNome').value.trim();if(!nome){toast('Informe o nome');return;}
+function cadEquipSalvar(){if(demoBloqueia())return;const o=obra();const nome=el('ceNome').value.trim();if(!nome){toast('Informe o nome');return;}
   postAcao({action:'equipCadastrar',obra:o.id,nome:nome,tipo:el('ceTipo').value,vinculo:el('ceVinc').value,locadora:el('ceVinc').value==='Próprio'?'':el('ceLoc').value}).then(r=>{
     if(r&&r.equipamentos){EQUIP.equipamentos=r.equipamentos;EQUIP.locadoras=r.locadoras||EQUIP.locadoras;fecharModal();render();toast('Equipamento cadastrado ✓');}else toast((r&&r.error)||'Falha');});}
 function cadLocadoraModal(){abrirModal('Cadastrar locadora',`
     <div class="field"><label class="fl">Nome *</label><input id="clNome" placeholder="Empresa locadora"></div>
     <div class="field"><label class="fl">Observações</label><textarea id="clObs" rows="2"></textarea></div>
     <button class="btn btn-pri" style="width:100%;justify-content:center" onclick="cadLocadoraSalvar()">Cadastrar</button>`);}
-function cadLocadoraSalvar(){const o=obra();const nome=el('clNome').value.trim();if(!nome){toast('Informe o nome');return;}
+function cadLocadoraSalvar(){if(demoBloqueia())return;const o=obra();const nome=el('clNome').value.trim();if(!nome){toast('Informe o nome');return;}
   postAcao({action:'locadoraCadastrar',obra:o.id,nome:nome,observacoes:el('clObs').value.trim()}).then(r=>{if(r&&r.locadoras){EQUIP.locadoras=r.locadoras;fecharModal();toast('Locadora cadastrada ✓');}else toast((r&&r.error)||'Falha');});}
 /* medição em Excel (uma aba por equipamento) */
 function medicaoEquipExcel(){
@@ -1618,7 +1621,7 @@ function salvarEdicao(id){
   l.clima=el('edClima').value;l.obs=el('edObs').value.trim();
   setLanc(o.id,arr);enfileirarUpdateRDO(o.id,l);fecharModal();render();toast('Serviço atualizado ✓');
 }
-function enfileirarUpdateRDO(obraId,l){if(!BACKEND)return;
+function enfileirarUpdateRDO(obraId,l){if(!BACKEND||isDemo())return;
   const payload={id:l.id,data:l.dataISO,rua:l.rua,capid:l.capId,servico:l.servico,un:l.un,qtd:l.qtd,efetivo:l.efetivo,estini:l.estIni,estfim:l.estFim,clima:l.clima,obs:l.obs};
   outboxAdd({id:'ob'+uid(),obra:obraId,tipo:'updRdo',params:{action:'updateRDO',payload:JSON.stringify(payload)}});outboxFlush();}
 
@@ -1953,7 +1956,7 @@ function sairDemo(){
   ORDEM.map(id=>OBRAS[id]).filter(o=>o&&!o.externo).forEach(o=>{localStorage.removeItem(keyL(o.id));localStorage.removeItem('gestor:diario:'+o.id);});
   localStorage.removeItem('gestor:demo');
   EQUIP={equipamentos:[],locadoras:[],apontamentos:[],carregado:false};
-  estado.tela='home';estado.obraId=null;toast('Modo demonstração encerrado');render();
+  estado.tela='home';estado.obraId=null;toast('Modo demonstração encerrado');render();outboxFlush();
 }
 function atualizaDemoUI(){
   let b=el('demoBanner');
