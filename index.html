@@ -1633,6 +1633,7 @@ function apMontarSlides(){
   geridas.forEach(o=>{const tem=getLanc(o.id).length;s.push({tipo:'obra',o});
     if(tem){s.push({tipo:'operacao',o});s.push({tipo:'ruas',o});}
     if((o.projetos||[]).length)s.push({tipo:'projetos',o});
+    if(tem)s.push({tipo:'relatorios',o,doc:'exec'});
     if(tem)s.push({tipo:'relatorios',o,doc:'rdo'});
     if(EQUIP&&EQUIP.apontamentos&&EQUIP.apontamentos.length)s.push({tipo:'relatorios',o,doc:'equip'});});
   s.push({tipo:'fim',totalGerido,nObras:geridas.length,nPort:todas.length,avg});
@@ -1646,7 +1647,7 @@ function apSlideHTML(sl){
     <div class="ap-sub" style="margin:0 auto">Acompanhamento físico, diário de obra, equipamentos, medição e projetos — do canteiro à gestão executiva, em um só sistema.</div></div>`;
   if(sl.tipo==='capacidades'){
     const caps=[
-      ['◆','Painel Executivo','KPIs, Curva S e desvio previsto × realizado'],
+      ['◆','Painel Executivo','KPIs, Curva S e alertas automáticos de desvio por frente'],
       ['⊕','RDO de Campo','Apontamento diário de produção por serviço e estaca'],
       ['📋','Diário de Obra','Efetivo, equipamentos, clima e ocorrências — PDF pronto'],
       ['🚜','Equipamentos','Horas, paradas, horímetro, combustível e assinatura'],
@@ -1722,6 +1723,14 @@ function apSlideHTML(sl){
   if(sl.tipo==='relatorios'){
     const o=sl.o;
     const capa=`<div class="ap-kicker">${esc(o.nome)} · documento gerado</div>`;
+    if(sl.doc==='exec'){
+      const execHtml=htmlExecutivo(o).replace('onload="window.print()"','');
+      return `<div class="ap-slide">${capa}
+        <h2 style="font-size:clamp(20px,3vw,32px);margin-bottom:6px">Relatório Executivo de Obra</h2>
+        <div class="ap-sub" style="margin-bottom:12px">Indicadores, Curva S, análise de desvio por frente e pontos de atenção — em uma página, num clique.</div>
+        <div class="ap-doc" style="max-width:820px;margin:0 auto"><div class="ap-doc-frame"><iframe class="doc-a4" data-orient="port" onload="apFitDoc1(this)" title="Relatório Executivo" srcdoc="${esc(execHtml)}"></iframe></div>
+        <div class="ap-doc-lbl">Relatório Executivo · PDF</div></div></div>`;
+    }
     if(sl.doc==='equip'){
       const aps=(EQUIP&&EQUIP.apontamentos)||[];
       const medHtml=aps.length?htmlMedicaoEquip(o,aps,'Consolidado').replace('onload="window.print()"',''):'';
