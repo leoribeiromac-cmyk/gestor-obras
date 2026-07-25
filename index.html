@@ -352,7 +352,17 @@ function clamp(n){return Math.max(0,Math.min(100,n));}
 /* ---------- storage ---------- */
 function keyL(obraId){return 'gestor:rdo:'+obraId;}
 function getLanc(obraId){try{return JSON.parse(localStorage.getItem(keyL(obraId))||'[]');}catch(e){return[];}}
-function setLanc(obraId,arr){localStorage.setItem(keyL(obraId),JSON.stringify(arr));}
+function setLanc(obraId,arr){
+  try{localStorage.setItem(keyL(obraId),JSON.stringify(arr));}
+  catch(e){ // cota estourada: descarta as miniaturas mais antigas já enviadas ao servidor
+    try{const lim=arr.slice().sort((a,b)=>(a.criadoEm||0)-(b.criadoEm||0));
+      for(const l of lim){if(l.fotos&&l.fotos.some(f=>f.thumb&&f.url)){l.fotos.forEach(f=>{if(f.url)f.thumb='';});
+        try{localStorage.setItem(keyL(obraId),JSON.stringify(arr));return;}catch(e2){}}}
+      localStorage.setItem(keyL(obraId),JSON.stringify(arr.map(l=>({...l,fotos:(l.fotos||[]).map(f=>({thumb:'',url:f.url||''}))}))));
+      toast('Espaço local cheio — miniaturas antigas foram liberadas');
+    }catch(e3){toast('Não foi possível salvar (armazenamento cheio)');}
+  }
+}
 function getDiarios(obraId){try{return JSON.parse(localStorage.getItem('gestor:diario:'+obraId)||'[]');}catch(e){return[];}}
 function setDiarios(obraId,arr){localStorage.setItem('gestor:diario:'+obraId,JSON.stringify(arr));}
 function diarioDoDia(obraId,dataISO){return getDiarios(obraId).find(d=>d.dataISO===dataISO)||null;}
@@ -410,8 +420,8 @@ function csvNum(v){if(typeof v==='number')return v;if(v==null||v==='')return 0;l
 function csvISO(v){if(!v)return '';v=String(v).trim();if(/^\d{4}-\d{2}-\d{2}/.test(v))return v.slice(0,10);const m=v.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);if(m)return m[3]+'-'+('0'+m[2]).slice(-2)+'-'+('0'+m[1]).slice(-2);return v.slice(0,10);}
 function csvBool(v){return v===true||String(v).toLowerCase()==='true';}
 function jparse(s,def){try{return JSON.parse(s||'');}catch(e){return def;}}
-function rowToLanc(o){return {id:o.id,clientId:o.clientid||o.id,dataISO:csvISO(o.data),rua:o.rua,capId:o.capid===''?null:parseInt(csvNum(o.capid),10),servico:o.servico,un:o.un,qtd:csvNum(o.qtd),efetivo:csvNum(o.efetivo),estIni:o.estini||'',estFim:o.estfim||'',clima:o.clima,obs:o.obs,avulso:csvBool(o.avulso),criadoEm:csvNum(o.criadoem)||Date.now()};}
-function rowToDiario(o){return {id:o.id,dataISO:csvISO(o.data),climaManha:o.climamanha,climaTarde:o.climatarde,condicao:o.condicao,pessoal:jparse(o.pessoal,[]),equipamentos:jparse(o.equipamentos,[]),ocorrencias:o.ocorrencias,criadoEm:csvNum(o.criadoem)||Date.now()};}
+function rowToLanc(o){return {id:o.id,clientId:o.clientid||o.id,dataISO:csvISO(o.data),rua:o.rua,capId:o.capid===''?null:parseInt(csvNum(o.capid),10),servico:o.servico,un:o.un,qtd:csvNum(o.qtd),efetivo:csvNum(o.efetivo),estIni:o.estini||'',estFim:o.estfim||'',clima:o.clima,obs:o.obs,avulso:csvBool(o.avulso),usuario:o.usuario||'',fotos:String(o.fotos||'').split(/[\s;]+/).filter(u=>/^https?:/.test(u)).map(u=>({thumb:'',url:u})),criadoEm:csvNum(o.criadoem)||Date.now()};}
+function rowToDiario(o){return {id:o.id,dataISO:csvISO(o.data),climaManha:o.climamanha,climaTarde:o.climatarde,condicao:o.condicao,pessoal:jparse(o.pessoal,[]),equipamentos:jparse(o.equipamentos,[]),ocorrencias:o.ocorrencias,usuario:o.usuario||'',criadoEm:csvNum(o.criadoem)||Date.now()};}
 
 /* --- fila offline (outbox) --- */
 const OUTBOX_KEY='gestor:outbox';
@@ -440,11 +450,11 @@ function atualizaOutboxUI(){
 
 /* --- envio (enfileira + tenta enviar) --- */
 function enfileirarRDO(obraId,l){if(!BACKEND)return;
-  const item={obra:obraId,data:l.dataISO,rua:l.rua,capid:l.capId,servico:l.servico,un:l.un,qtd:l.qtd,efetivo:l.efetivo,estini:l.estIni,estfim:l.estFim,clima:l.clima,obs:l.obs,avulso:l.avulso,criadoem:l.criadoEm,id:l.id};
+  const item={obra:obraId,data:l.dataISO,rua:l.rua,capid:l.capId,servico:l.servico,un:l.un,qtd:l.qtd,efetivo:l.efetivo,estini:l.estIni,estfim:l.estFim,clima:l.clima,obs:l.obs,avulso:l.avulso,usuario:l.usuario||'',criadoem:l.criadoEm,id:l.id};
   outboxAdd({id:'ob'+uid(),clientId:l.id,obra:obraId,tipo:'rdo',params:{action:'addBatchRDO',batch:JSON.stringify([item]),clientId:l.id}});outboxFlush();}
 function enfileirarDelRDO(obraId,id){if(!BACKEND)return;outboxAdd({id:'ob'+uid(),obra:obraId,tipo:'delRdo',params:{action:'deleteRDO',id:id}});outboxFlush();}
 function enfileirarDiario(obraId,d){if(!BACKEND)return;
-  const item={action:'addDiario',obra:obraId,data:d.dataISO,climamanha:d.climaManha,climatarde:d.climaTarde,condicao:d.condicao,pessoal:JSON.stringify(d.pessoal||[]),equipamentos:JSON.stringify(d.equipamentos||[]),ocorrencias:d.ocorrencias,criadoem:d.criadoEm,id:d.id||''};
+  const item={action:'addDiario',obra:obraId,data:d.dataISO,climamanha:d.climaManha,climatarde:d.climaTarde,condicao:d.condicao,pessoal:JSON.stringify(d.pessoal||[]),equipamentos:JSON.stringify(d.equipamentos||[]),ocorrencias:d.ocorrencias,usuario:d.usuario||'',criadoem:d.criadoEm,id:d.id||''};
   outboxAdd({id:'ob'+uid(),obra:obraId,tipo:'diario',dados:d,params:item});outboxFlush();}
 function enfileirarDelDiario(obraId,id){if(!BACKEND)return;outboxAdd({id:'ob'+uid(),obra:obraId,tipo:'delDiario',params:{action:'deleteDiario',id:id}});outboxFlush();}
 
@@ -906,18 +916,74 @@ function viewRDO(o){
       <div class="field"><label class="fl" for="fClima">Clima</label><select id="fClima">
         <option>Bom</option><option>Nublado</option><option>Chuva fraca</option><option>Chuva forte</option><option>Impraticável</option></select></div>
       <div class="field"><label class="fl" for="fObs">Observações</label><textarea id="fObs" rows="2" placeholder="Trecho, estaca, ocorrências..."></textarea></div>
+      <div class="field"><label class="fl" for="fFotos">📷 Fotos do serviço (até ${MAX_FOTOS}) <span id="fotosCount" class="kpi-s" style="text-transform:none;letter-spacing:0"></span></label>
+        <input type="file" id="fFotos" accept="image/*" capture="environment" multiple onchange="fotosSelecionadas(this)">
+        <div id="fotosPrev" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:9px"></div>
+        <div class="kpi-s" style="margin-top:5px">Comprovação de execução — a foto vai no histórico e no RDO impresso.</div></div>
       <button class="btn btn-pri" style="width:100%;justify-content:center" onclick="salvar()">Salvar apontamento</button>
     </div></div>
     <div class="card"><div class="card-h"><div class="card-t">Últimos apontamentos</div>
       <div class="card-st">${getLanc(o.id).length} no total</div></div>
       <div class="card-b" id="ultimos">${listaUltimos(o)}</div></div></div>`;
 }
+/* ---------- FOTOS DO RDO (comprime no aparelho, envia ao Drive via backend) ---------- */
+const MAX_FOTOS=3;
+let _fotosRDO=[];   // {thumb, full}
+function comprimirImg(file,maxLado,q){
+  return new Promise((res,rej)=>{
+    const fr=new FileReader();
+    fr.onload=()=>{const img=new Image();
+      img.onload=()=>{let w=img.width,h=img.height;const m=Math.max(w,h);
+        if(m>maxLado){const k=maxLado/m;w=Math.round(w*k);h=Math.round(h*k);}
+        const c=document.createElement('canvas');c.width=w;c.height=h;
+        c.getContext('2d').drawImage(img,0,0,w,h);
+        try{res(c.toDataURL('image/jpeg',q));}catch(e){rej(e);}};
+      img.onerror=rej;img.src=fr.result;};
+    fr.onerror=rej;fr.readAsDataURL(file);});
+}
+async function fotosSelecionadas(inp){
+  const files=[...(inp.files||[])];inp.value='';
+  for(const f of files){
+    if(_fotosRDO.length>=MAX_FOTOS){toast('Máximo de '+MAX_FOTOS+' fotos por apontamento');break;}
+    if(!/^image\//.test(f.type))continue;
+    try{
+      const [thumb,full]=await Promise.all([comprimirImg(f,320,.5),comprimirImg(f,1280,.72)]);
+      _fotosRDO.push({thumb,full});
+    }catch(e){toast('Não foi possível ler a imagem');}
+  }
+  renderFotosPrev();
+}
+function removerFoto(i){_fotosRDO.splice(i,1);renderFotosPrev();}
+function renderFotosPrev(){
+  const box=el('fotosPrev');if(!box)return;
+  box.innerHTML=_fotosRDO.map((f,i)=>`<div style="position:relative">
+    <img src="${f.thumb}" alt="foto ${i+1}" style="width:74px;height:74px;object-fit:cover;border-radius:8px;border:1px solid var(--border-strong)">
+    <button class="btn btn-sm" onclick="removerFoto(${i})" title="Remover" style="position:absolute;top:-7px;right:-7px;padding:1px 7px;border-radius:50%;background:var(--vermelho);color:#fff;border-color:var(--vermelho)">✕</button></div>`).join('');
+  const c=el('fotosCount');if(c)c.textContent=_fotosRDO.length?`${_fotosRDO.length}/${MAX_FOTOS} foto(s)`:'';
+}
+function enviarFotos(obraId,lancId,fulls){
+  if(!BACKEND||!fulls.length)return;
+  fulls.forEach((dataUrl,i)=>{
+    postAcao({action:'rdoFoto',obra:obraId,id:lancId,idx:i,foto:dataUrl})
+      .then(r=>{if(r&&r.ok&&r.url){const arr=getLanc(obraId);const l=arr.find(x=>x.id===lancId);
+        if(l&&l.fotos&&l.fotos[i]){l.fotos[i].url=r.url;setLanc(obraId,arr);}}})
+      .catch(()=>{});
+  });
+}
+function fotoSrc(f){return f.url||f.thumb||'';}
+function galeriaFotos(fotos,tam){
+  tam=tam||58;
+  return (fotos||[]).filter(f=>fotoSrc(f)).map(f=>`<img src="${esc(fotoSrc(f))}" alt="foto do serviço" loading="lazy" onclick="ampliarFoto('${esc(fotoSrc(f))}')" style="width:${tam}px;height:${tam}px;object-fit:cover;border-radius:6px;border:1px solid var(--border);cursor:zoom-in;margin:3px 3px 0 0">`).join('');
+}
+function ampliarFoto(src){abrirModal('Foto do serviço',`<img src="${esc(src)}" alt="foto do serviço" style="width:100%;border-radius:8px">`);}
+
 function listaUltimos(o){
   const arr=getLanc(o.id).slice().sort((a,b)=>b.criadoEm-a.criadoEm).slice(0,8);
   if(!arr.length)return `<div class="empty"><div class="ic">◔</div>Nada apontado ainda.</div>`;
   return arr.map(l=>`<div style="padding:10px 0;border-bottom:1px solid var(--border);display:flex;gap:12px;align-items:flex-start">
     <div style="flex:1"><div style="font-weight:600;font-size:13.5px">${esc(l.servico)} ${l.avulso?'<span class="chip" style="padding:1px 7px;font-size:10px;background:var(--surface-2)">avulso</span>':''}</div>
-    <div class="kpi-s">${new Date(l.dataISO+'T00:00:00').toLocaleDateString('pt-BR')} · ${esc(l.rua)}${estacaTxt(l)?' · '+esc(estacaTxt(l)):''} · ${esc(l.clima||'')}</div></div>
+    <div class="kpi-s">${new Date(l.dataISO+'T00:00:00').toLocaleDateString('pt-BR')} · ${esc(l.rua)}${estacaTxt(l)?' · '+esc(estacaTxt(l)):''} · ${esc(l.clima||'')}${l.usuario?' · '+esc(l.usuario):''}</div>
+    ${(l.fotos&&l.fotos.length)?`<div style="display:flex;flex-wrap:wrap">${galeriaFotos(l.fotos,44)}</div>`:''}</div>
     <div class="num" style="font-weight:700">${fmtQtd(l.qtd)} ${esc(l.un)}</div></div>`).join('');
 }
 
@@ -959,7 +1025,8 @@ function viewHistorico(o){
     const dd=montarRDO(o,d);const dv=diarioDoDia(o.id,d);
     const dataBR=new Date(d+'T00:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit',year:'numeric'});
     const linhas=dd.servicos.length?dd.servicos.map(l=>`<tr>
-      <td>${esc(l.servico)} ${l.avulso?'<span class="chip" style="padding:0 6px;font-size:10px">avulso</span>':''}<div class="kpi-s">${esc(l.rua)} · ${esc(frenteNome(o,l.capId))}</div></td>
+      <td>${esc(l.servico)} ${l.avulso?'<span class="chip" style="padding:0 6px;font-size:10px">avulso</span>':''}<div class="kpi-s">${esc(l.rua)} · ${esc(frenteNome(o,l.capId))}${l.usuario?' · por <b>'+esc(l.usuario)+'</b>':''}</div>
+      ${(l.fotos&&l.fotos.length)?`<div style="display:flex;flex-wrap:wrap">${galeriaFotos(l.fotos,52)}</div>`:''}</td>
       <td class="mono">${esc(estacaTxt(l))||'—'}</td><td class="num">${fmtQtd(l.qtd)} ${esc(l.un)}</td>
       <td class="num" style="white-space:nowrap"><button class="btn btn-sm btn-ghost" onclick="editarServ('${l.id}')" title="Editar">✎</button><button class="btn btn-sm btn-ghost" onclick="excluir('${l.id}')" title="Excluir">✕</button></td></tr>`).join('')
       :`<tr><td colspan="4" class="kpi-s">Nenhum serviço lançado neste dia.</td></tr>`;
@@ -1358,7 +1425,7 @@ function coletaDiario(){
 function salvarDiario(){
   const o=obra();const dd=coletaDiario();
   const anterior=diarioDoDia(o.id,dd.dataISO);
-  const novo={id:(anterior&&anterior.id)||uid(),...dd,criadoEm:Date.now()};
+  const novo={id:(anterior&&anterior.id)||uid(),...dd,usuario:usuarioAtual(),criadoEm:Date.now()};
   const arr=getDiarios(o.id).filter(x=>x.dataISO!==dd.dataISO);arr.push(novo);
   setDiarios(o.id,arr);enfileirarDiario(o.id,novo);toast('Diário salvo ✓');render();
 }
@@ -1384,6 +1451,7 @@ function htmlRDO(o,dd,numero){
   const linhasP=(dd.pessoal.length?dd.pessoal:[{funcao:'—',qtd:''}]).map(p=>`<tr><td>${esc(p.funcao)}</td><td style="text-align:right">${p.qtd||''}</td></tr>`).join('');
   const linhasE=(dd.equipamentos.length?dd.equipamentos:[{nome:'—',qtd:''}]).map(e=>`<tr><td>${esc(e.nome)}</td><td style="text-align:right">${e.qtd||''}</td></tr>`).join('');
   const linhasS=dd.servicos.length?dd.servicos.map(l=>`<tr><td>${esc(l.servico)}${l.avulso?' (avulso)':''}</td><td>${esc(l.rua)}</td><td>${esc(estacaTxt(l))||'—'}</td><td style="text-align:right">${fmtQtd(l.qtd)} ${esc(l.un)}</td></tr>`).join(''):`<tr><td colspan="4" style="text-align:center;color:#888">Sem serviços lançados</td></tr>`;
+  const fotosDoDia=[];dd.servicos.forEach(l=>(l.fotos||[]).forEach(f=>{const src=f.url||f.thumb;if(src)fotosDoDia.push({src,leg:l.servico+(estacaTxt(l)?' — '+estacaTxt(l):'')});}));
   return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>RDO ${numero} — ${dd.dataISO}</title>
   <style>@page{size:A4;margin:16mm} *{font-family:Arial,Helvetica,sans-serif;box-sizing:border-box}
   body{color:#111;font-size:12px;margin:0}@media screen{body{padding:16px 20px}} h1{font-size:16px;margin:0} .hd{display:flex;align-items:center;gap:14px;border-bottom:2px solid #1f6f4a;padding-bottom:10px;margin-bottom:14px}
@@ -1392,7 +1460,10 @@ function htmlRDO(o,dd,numero){
   table{width:100%;border-collapse:collapse;margin-bottom:6px} td,th{border:1px solid #ccc;padding:5px 8px;text-align:left;font-size:11.5px}
   th{background:#f0efe9} .grid2{display:flex;gap:16px} .grid2>div{flex:1} .box{border:1px solid #ccc;padding:8px 10px;border-radius:6px}
   .sign{display:flex;gap:40px;margin-top:40px} .sign>div{flex:1;border-top:1px solid #333;padding-top:5px;text-align:center;font-size:11px}
-  .clima span{display:inline-block;background:#f0efe9;border:1px solid #ccc;border-radius:4px;padding:2px 8px;margin-right:6px}</style></head>
+  .clima span{display:inline-block;background:#f0efe9;border:1px solid #ccc;border-radius:4px;padding:2px 8px;margin-right:6px}
+  .fotos{display:flex;flex-wrap:wrap;gap:10px} .fotos figure{margin:0;width:31%;page-break-inside:avoid}
+  .fotos img{width:100%;height:120px;object-fit:cover;border:1px solid #ccc;border-radius:4px;display:block}
+  .fotos figcaption{font-size:9px;color:#555;margin-top:3px;line-height:1.25}</style></head>
   <body onload="window.print()">
     <div class="hd"><img src="assets/logo_gestor.png" alt="">
       <div><h1>Relatório Diário de Obra</h1><div class="meta">${esc(o.contratada||'Gestor Engenharia')} · ${esc(o.contrato||'')}</div>
@@ -1407,6 +1478,7 @@ function htmlRDO(o,dd,numero){
     </div>
     <h2>Serviços executados</h2><table><tr><th>Serviço</th><th>Rua</th><th>Trecho (estacas)</th><th style="text-align:right;width:110px">Quantidade</th></tr>${linhasS}</table>
     <h2>Ocorrências / observações</h2><div class="box" style="min-height:60px;white-space:pre-wrap">${esc(dd.ocorrencias||'—')}</div>
+    ${fotosDoDia.length?`<h2>Registro fotográfico</h2><div class="fotos">${fotosDoDia.map(f=>`<figure><img src="${esc(f.src)}" alt=""><figcaption>${esc(f.leg)}</figcaption></figure>`).join('')}</div>`:''}
     <div class="sign"><div>Responsável técnico</div><div>Fiscalização</div></div>
   </body></html>`;
 }
@@ -1599,12 +1671,15 @@ function salvar(){
   }
   const novo={id:uid(),dataISO:el('fData').value||hoje(),...lanc,
     qtd,efetivo:+el('fEfet').value||0,estIni:el('fEstIni').value.trim(),estFim:el('fEstFim').value.trim(),
-    clima:el('fClima').value,obs:el('fObs').value.trim(),criadoEm:Date.now()};
+    clima:el('fClima').value,obs:el('fObs').value.trim(),usuario:usuarioAtual(),
+    fotos:_fotosRDO.map(f=>({thumb:f.thumb,url:''})),criadoEm:Date.now()};
   const arr=getLanc(o.id);arr.push(novo);setLanc(o.id,arr);
   enfileirarRDO(o.id,novo);
+  enviarFotos(o.id,novo.id,_fotosRDO.map(f=>f.full));
   toast(lanc.avulso?'Serviço avulso registrado ✓':'Apontamento salvo ✓');
   el('fQtd').value='';el('fEfet').value='';el('fObs').value='';el('fEstIni').value='';el('fEstFim').value='';
   if(el('fAvDesc'))el('fAvDesc').value='';
+  _fotosRDO=[];renderFotosPrev();
   el('ultimos').innerHTML=listaUltimos(o);mostraSaldo();
 }
 function excluir(id){const o=obra();if(!confirm('Excluir este apontamento?'))return;

@@ -38,7 +38,7 @@ function rotear(e) {
   var action = p.action || '';
   var resp;
   try {
-    var PROTEGIDAS = ['addBatchRDO', 'deleteRDO', 'updateRDO',
+    var PROTEGIDAS = ['addBatchRDO', 'deleteRDO', 'updateRDO', 'rdoFoto',
                       'addDiario', 'updateDiario', 'deleteDiario',
                       'equipCadastrar', 'equipDesativar', 'locadoraCadastrar', 'equipApontar', 'equipApagar'];
     if (PROTEGIDAS.indexOf(action) !== -1) {
@@ -51,6 +51,7 @@ function rotear(e) {
       case 'addBatchRDO':  resp = addBatchRDO(p.batch, p.clientId); break;
       case 'deleteRDO':    resp = deleteLinhaPorId(ABA_RDO, p.id); break;
       case 'updateRDO':    resp = updateLinha(ABA_RDO, p.payload); break;
+      case 'rdoFoto':      resp = rdoFoto(p); break;
       case 'addDiario':    resp = upsertDiario(p, false); break;
       case 'updateDiario': resp = upsertDiario(p, true); break;
       case 'deleteDiario': resp = deleteLinhaPorId(ABA_DIARIO, p.id); break;
@@ -151,11 +152,14 @@ function addBatchRDO(batchJson, clientId) {
   try {
     var a = aba(ABA_RDO);
     var cab = cabecalho(a);
+    // garante as colunas de controle (clientId, usuario, fotos) — criadas se faltarem
+    ['clientId', 'usuario', 'fotos'].forEach(function (nome) {
+      if (idxCol(cabecalho(a), nome.toLowerCase()) === -1) {
+        a.getRange(1, a.getLastColumn() + 1).setValue(nome);
+      }
+    });
+    cab = cabecalho(a);
     var iClient = idxCol(cab, 'clientid');
-    if (iClient === -1) {
-      a.getRange(1, a.getLastColumn() + 1).setValue('clientId');
-      cab = cabecalho(a); iClient = idxCol(cab, 'clientid');
-    }
     // Dedup: se o clientId já existe, considera salvo.
     if (clientId && iClient !== -1) {
       var dados = a.getDataRange().getValues();
@@ -177,6 +181,41 @@ function addBatchRDO(batchJson, clientId) {
     a.getRange(a.getLastRow() + 1, 1, linhas.length, cab.length).setValues(linhas);
     return { ok: true, inserted: linhas.length };
   } finally { lock.releaseLock(); }
+}
+
+// -------------------- RDO: foto (Drive) + link na linha --------------------
+function rdoFoto(p) {
+  var b64 = String(p.foto || '');
+  if (b64.indexOf('data:image') !== 0) return { ok: false, error: 'Foto inválida' };
+  var nome = 'rdo_' + (p.obra || 'obra') + '_' + (p.id || Date.now()) + '_' + (p.idx || 0) + '.jpg';
+  var blob = Utilities.newBlob(Utilities.base64Decode(b64.split(',')[1]), 'image/jpeg', nome);
+  var pastas = DriveApp.getFoldersByName('Fotos RDO Gestor Obras');
+  var pasta = pastas.hasNext() ? pastas.next() : DriveApp.createFolder('Fotos RDO Gestor Obras');
+  var f = pasta.createFile(blob);
+  f.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  var url = 'https://drive.google.com/uc?id=' + f.getId();
+
+  // anexa a URL na coluna "fotos" da linha do lançamento (se a linha já existir)
+  try {
+    var a = aba(ABA_RDO);
+    var dados = a.getDataRange().getValues();
+    var cab = dados[0].map(function (h) { return String(h).trim().toLowerCase(); });
+    var iId = idxCol(cab, 'id'), iFotos = idxCol(cab, 'fotos');
+    if (iFotos === -1) {
+      a.getRange(1, a.getLastColumn() + 1).setValue('fotos');
+      iFotos = a.getLastColumn() - 1;
+    }
+    if (iId !== -1) {
+      for (var i = 1; i < dados.length; i++) {
+        if (String(dados[i][iId]).trim() === String(p.id || '').trim()) {
+          var atual = String(dados[i][iFotos] == null ? '' : dados[i][iFotos]).trim();
+          a.getRange(i + 1, iFotos + 1).setValue(atual ? atual + ' ' + url : url);
+          break;
+        }
+      }
+    }
+  } catch (e) { /* a foto já está salva; o link na planilha é complementar */ }
+  return { ok: true, url: url };
 }
 
 // -------------------- DIÁRIO: upsert por obra + data --------------------
