@@ -1937,7 +1937,16 @@ function apFechar(){
 /* ============================================================ MODO DEMONSTRAÇÃO
    Carrega dados FICTÍCIOS só neste navegador (sem sincronizar com a nuvem), para
    apresentar o sistema completo. Pausa o sync (carregarObra) enquanto ativo. */
-function isDemo(){return localStorage.getItem('gestor:demo')==='1';}
+const DEMO_VER='2';   // suba a versão sempre que o conteúdo da demo mudar
+function isDemo(){return !!localStorage.getItem('gestor:demo');}
+// Se a demo já estava ligada com um conteúdo antigo (ex.: antes das fotos), regenera
+// sozinha ao abrir — senão o usuário veria a demo velha achando que o app não atualizou.
+function conferirDemoDesatualizada(){
+  if(!isDemo()||localStorage.getItem('gestor:demo')===DEMO_VER)return;
+  ORDEM.map(id=>OBRAS[id]).filter(o=>o&&!o.externo).forEach(o=>{const d=_demoSeed(o);setLanc(o.id,d.lanc);setDiarios(o.id,d.diarios);});
+  EQUIP=_demoEquip();
+  localStorage.setItem('gestor:demo',DEMO_VER);
+}
 function _demoEquip(){return {carregado:true,
   equipamentos:[{nome:'Escavadeira 01',tipo:'Escavadeira hidráulica',vinculo:'Locado',locadora:'Loca Máquinas SP',ativo:'true'},
     {nome:'Retro 02',tipo:'Retroescavadeira',vinculo:'Próprio',locadora:'',ativo:'true'},
@@ -2035,7 +2044,7 @@ function carregarDemo(){
   if(!confirm('Carregar DADOS DE DEMONSTRAÇÃO (fictícios)?\n\nPreenche as obras com lançamentos, diários e equipamentos de exemplo — só neste navegador, para apresentação. A sincronização com a nuvem fica pausada até você sair da demonstração.'))return;
   ORDEM.map(id=>OBRAS[id]).filter(o=>o&&!o.externo).forEach(o=>{const s=_demoSeed(o);setLanc(o.id,s.lanc);setDiarios(o.id,s.diarios);});
   EQUIP=_demoEquip();
-  localStorage.setItem('gestor:demo','1');
+  localStorage.setItem('gestor:demo',DEMO_VER);
   toast('Modo demonstração ativado ✓');render();
 }
 function sairDemo(){
@@ -2066,6 +2075,7 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')fecharModal();});
 // ativa por teclado (Enter/Espaço) qualquer elemento clicável focável (role=button + tabindex)
 document.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&e.target&&e.target.matches&&e.target.matches('[onclick][tabindex]')){e.preventDefault();e.target.click();}});
 document.documentElement.setAttribute('data-theme',temaAtual());
+conferirDemoDesatualizada();
 render();
 if(BACKEND){atualizaOutboxUI();outboxFlush();window.addEventListener('online',outboxFlush);}
 if('serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(()=>{});}
