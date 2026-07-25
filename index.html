@@ -509,6 +509,46 @@ function curvaReal(o,pts){
   });
 }
 
+/* ---------- desvio por frente (realizado × previsto do cronograma) ---------- */
+function mesIdxHoje(o){const pts=pontos(o);return Math.max(0,pts.filter(p=>p.mes<=hoje().slice(0,7)).length-1);}
+function frenteStats(o){
+  const serv=o.servicos||[],av=avancoServ(o),idx=mesIdxHoje(o);
+  return (o.frentes||[]).map(f=>{
+    const sf=serv.filter(s=>s.capId===f.id); if(!sf.length)return null;
+    const real=mediaPct(sf,av);
+    const cr=(o.cronograma||[]).find(c=>c.frenteId===f.id);
+    const prev=cr?clamp(cr.pctMes.slice(0,idx+1).reduce((a,b)=>a+b,0)):null;
+    return {id:f.id,nome:f.nome,n:sf.length,real,prev,desvio:prev==null?null:real-prev,
+      concl:sf.filter(s=>pctServ(s,av)>=99.95).length};
+  }).filter(Boolean);
+}
+// -15 ou pior = crítico · -5 a -15 = atenção · +5 ou mais = adiantado
+function nivelDesvio(d){if(d==null)return'na';if(d<=-15)return'crit';if(d<=-5)return'aten';if(d>=5)return'bom';return'ok';}
+function alertasCard(o){
+  const fs=frenteStats(o).filter(f=>f.desvio!=null);
+  if(!fs.length)return '';
+  const crit=fs.filter(f=>nivelDesvio(f.desvio)==='crit').sort((a,b)=>a.desvio-b.desvio);
+  const aten=fs.filter(f=>nivelDesvio(f.desvio)==='aten').sort((a,b)=>a.desvio-b.desvio);
+  const probl=[...crit,...aten];
+  const linha=(f,cor)=>`<div style="display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--border)">
+    <span style="font-size:15px">${ICONE[f.id]||'•'}</span>
+    <div style="flex:1;min-width:0"><div style="font-weight:600;font-size:13.5px">${esc(f.nome)}</div>
+      <div class="kpi-s">previsto ${fmtPct(f.prev)} · realizado ${fmtPct(f.real)} · ${f.n} serviço(s)</div></div>
+    <span class="pill ${cor}" style="white-space:nowrap">${f.desvio>=0?'+':''}${fmtPct(f.desvio)}</span></div>`;
+  if(!probl.length){
+    const ad=fs.filter(f=>nivelDesvio(f.desvio)==='bom').length;
+    return `<div class="card" style="margin-bottom:18px;border-left:3px solid var(--accent)"><div class="card-b" style="padding:14px 20px;display:flex;align-items:center;gap:12px">
+      <span style="font-size:20px">✓</span><div><div style="font-weight:700;font-size:14px">Todas as frentes dentro do previsto</div>
+      <div class="kpi-s">Nenhuma frente com atraso relevante face ao cronograma${ad?' · '+ad+' adiantada(s)':''}.</div></div></div></div>`;
+  }
+  return `<div class="card" style="margin-bottom:18px;border-left:3px solid ${crit.length?'var(--vermelho)':'var(--amarelo)'}">
+    <div class="card-h"><div><div class="card-t">⚠ Alertas de desvio</div>
+      <div class="card-st">frentes abaixo do previsto no cronograma (acumulado até ${mesLabel(pontos(o)[mesIdxHoje(o)].mes+'-01')})</div></div>
+      <div style="display:flex;gap:7px">${crit.length?`<span class="pill pill-red">${crit.length} crítica(s)</span>`:''}${aten.length?`<span class="pill pill-ylw">${aten.length} em atenção</span>`:''}</div></div>
+    <div class="card-b" style="padding:6px 22px 14px">
+      ${crit.map(f=>linha(f,'pill-red')).join('')}${aten.map(f=>linha(f,'pill-ylw')).join('')}</div></div>`;
+}
+
 /* ============================================================ RENDER */
 const NAV=[
   {grupo:'Análise',itens:[
@@ -671,18 +711,23 @@ function viewExecutivo(o){
     {l:'Serviços iniciados',v:inic+'/'+serv.length,s:concl+' concluídos'},
     {l:'Desvio vs previsto',v:(desvio>=0?'+':'')+fmtPct(desvio),s:desvio>=0?'adiantado/no prazo':'atrasado'},
   ];
-  const linhasFrente=(o.frentes||[]).map(f=>{
-    const sf=serv.filter(s=>s.capId===f.id); if(!sf.length)return '';
-    const p=mediaPct(sf,av); const ci=sf.filter(s=>pctServ(s,av)>=99.95).length;
-    return `<tr><td>${ICONE[f.id]||'•'} ${esc(f.nome)}</td><td class="num">${sf.length}</td>
-      <td class="num">${ci}</td><td><span class="minibar"><i style="width:${clamp(p).toFixed(1)}%"></i></span></td>
-      <td class="num">${fmtPct(p)}</td></tr>`;
+  const CORD={crit:'var(--vermelho)',aten:'var(--amarelo)',bom:'var(--accent)',ok:'var(--text-2)',na:'var(--muted)'};
+  const linhasFrente=frenteStats(o).map(f=>{
+    const nv=nivelDesvio(f.desvio);
+    return `<tr><td>${ICONE[f.id]||'•'} ${esc(f.nome)}</td><td class="num">${f.n}</td>
+      <td class="num">${f.concl}</td><td><span class="minibar"><i style="width:${clamp(f.real).toFixed(1)}%"></i></span></td>
+      <td class="num">${fmtPct(f.real)}</td><td class="num" style="color:var(--muted)">${f.prev==null?'—':fmtPct(f.prev)}</td>
+      <td class="num" style="color:${CORD[nv]};font-weight:${nv==='crit'||nv==='aten'?'700':'400'}">${f.desvio==null?'—':(f.desvio>=0?'+':'')+fmtPct(f.desvio)}</td></tr>`;
   }).join('');
   return `
+  <div class="row" style="margin-bottom:14px;align-items:center">
+    <div class="chip">${serv.length} serviços · ${(o.frentes||[]).length} frentes</div>
+    <button class="btn btn-sm" style="margin-left:auto" onclick="imprimirExecutivo()">📄 Relatório Executivo</button></div>
   <div class="grid g4" style="margin-bottom:18px">
     ${kpis.map(k=>`<div class="kpi"><div class="kpi-l">${k.l}</div><div class="kpi-v">${k.v}</div>
       <div class="kpi-s">${k.s}</div>${k.bar!=null?`<div class="bar"><i style="width:${clamp(k.bar).toFixed(1)}%"></i></div>`:''}</div>`).join('')}
   </div>
+  ${alertasCard(o)}
   <div class="grid g2" style="grid-template-columns:1.3fr 1fr;margin-bottom:18px">
     <div class="card"><div class="card-h"><div><div class="card-t">Curva S — Avanço físico</div>
       <div class="card-st">Previsto (cronograma) × Realizado (RDO) — % médio acumulado</div></div>
@@ -701,7 +746,7 @@ function viewExecutivo(o){
   <div class="card"><div class="card-h"><div class="card-t">Avanço por frente de serviço</div>
     <div class="card-st">${(o.frentes||[]).length} frentes · % físico médio</div></div>
     <div class="tbl-wrap" style="border:none"><table class="t">
-      <thead><tr><th>Frente</th><th class="num">Serviços</th><th class="num">Concluídos</th><th>Avanço</th><th class="num">%</th></tr></thead>
+      <thead><tr><th>Frente</th><th class="num">Serviços</th><th class="num">Concluídos</th><th>Avanço</th><th class="num">Realizado</th><th class="num">Previsto</th><th class="num">Desvio</th></tr></thead>
       <tbody>${linhasFrente}</tbody></table></div></div>
   ${ruasAnim(o)}
   ${mapaEstacas(o)}`;
@@ -792,19 +837,20 @@ function mapaEstacas(o){
     <div class="card-b">${filtros}<div style="margin-top:14px">${rows}</div>
     <div class="kpi-s" style="margin-top:4px">Cor mais forte = mais serviços lançados naquela estaca (respeita os filtros).</div></div></div>`;
 }
-function curvaSVG(pts,prev,real){
+function curvaSVG(pts,prev,real,c){
+  c=c||{grid:'var(--border)',txt:'var(--muted)',prev:'var(--azul)',real:'var(--accent)'};
   const W=560,H=230,pad=34,pw=W-pad*2,ph=H-pad*2,n=pts.length;
   if(!n)return '<div class="empty">Sem cronograma</div>';
   const x=i=>pad+(n<=1?pw/2:pw*i/(n-1)), y=v=>pad+ph*(1-clamp(v)/100);
-  const gy=[0,25,50,75,100].map(g=>`<line x1="${pad}" y1="${y(g)}" x2="${W-pad}" y2="${y(g)}" stroke="var(--border)"/>
-    <text x="${pad-6}" y="${y(g)+4}" text-anchor="end" font-size="10" fill="var(--muted)">${g}%</text>`).join('');
-  const gx=pts.map((p,i)=>`<text x="${x(i)}" y="${H-pad+16}" text-anchor="middle" font-size="10" fill="var(--muted)">${p.label}</text>`).join('');
+  const gy=[0,25,50,75,100].map(g=>`<line x1="${pad}" y1="${y(g)}" x2="${W-pad}" y2="${y(g)}" stroke="${c.grid}"/>
+    <text x="${pad-6}" y="${y(g)+4}" text-anchor="end" font-size="10" fill="${c.txt}">${g}%</text>`).join('');
+  const gx=pts.map((p,i)=>`<text x="${x(i)}" y="${H-pad+16}" text-anchor="middle" font-size="10" fill="${c.txt}">${p.label}</text>`).join('');
   const lp=prev.map((v,i)=>`${x(i)},${y(v)}`).join(' '), lr=real.map((v,i)=>`${x(i)},${y(v)}`).join(' ');
-  const dp=prev.map((v,i)=>`<circle cx="${x(i)}" cy="${y(v)}" r="3" fill="var(--azul)"/>`).join('');
-  const dr=real.map((v,i)=>`<circle cx="${x(i)}" cy="${y(v)}" r="3" fill="var(--accent)"/>`).join('');
+  const dp=prev.map((v,i)=>`<circle cx="${x(i)}" cy="${y(v)}" r="3" fill="${c.prev}"/>`).join('');
+  const dr=real.map((v,i)=>`<circle cx="${x(i)}" cy="${y(v)}" r="3" fill="${c.real}"/>`).join('');
   return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto">${gy}${gx}
-    <polyline points="${lp}" fill="none" stroke="var(--azul)" stroke-width="2.2" stroke-dasharray="5 4"/>
-    <polyline points="${lr}" fill="none" stroke="var(--accent)" stroke-width="2.6"/>${dp}${dr}</svg>`;
+    <polyline points="${lp}" fill="none" stroke="${c.prev}" stroke-width="2.2" stroke-dasharray="5 4"/>
+    <polyline points="${lr}" fill="none" stroke="${c.real}" stroke-width="2.6"/>${dp}${dr}</svg>`;
 }
 
 /* ---------- SERVIÇOS ---------- */
@@ -1364,7 +1410,76 @@ function htmlRDO(o,dd,numero){
     <div class="sign"><div>Responsável técnico</div><div>Fiscalização</div></div>
   </body></html>`;
 }
-function abrirImpressao(html){const w=window.open('','_blank');if(!w){toast('Permita pop-ups para gerar o RDO');return;}w.document.write(html);w.document.close();}
+/* ---------- RELATÓRIO EXECUTIVO (PDF/A4) ---------- */
+function htmlExecutivo(o){
+  const serv=o.servicos||[],av=avancoServ(o),pf=mediaPct(serv,av);
+  const concl=serv.filter(s=>pctServ(s,av)>=99.95).length,inic=serv.filter(s=>pctServ(s,av)>0).length;
+  const fimISO=addMeses(o.inicioISO,o.prazoMeses);
+  const tot=new Date(fimISO)-new Date(o.inicioISO);
+  const pctPrazo=clamp(tot?(new Date()-new Date(o.inicioISO))/tot*100:0);
+  const pts=pontos(o),prev=curvaPrev(o,pts),real=curvaReal(o,pts);
+  const idx=mesIdxHoje(o),desvio=real[idx]-prev[idx];
+  const fs=frenteStats(o),lanc=getLanc(o.id);
+  const dias=[...new Set(lanc.map(l=>l.dataISO))].length;
+  const crit=fs.filter(f=>nivelDesvio(f.desvio)==='crit').sort((a,b)=>a.desvio-b.desvio);
+  const aten=fs.filter(f=>nivelDesvio(f.desvio)==='aten').sort((a,b)=>a.desvio-b.desvio);
+  const CD={crit:'#a8342a',aten:'#b8860b',bom:'#1f6f4a',ok:'#333',na:'#888'};
+  const kpi=(l,v,s)=>`<div class="k"><div class="kl">${l}</div><div class="kv">${v}</div><div class="ks">${s||''}</div></div>`;
+  const linhasF=fs.map(f=>{const nv=nivelDesvio(f.desvio);
+    return `<tr><td>${esc(f.nome)}</td><td class="r">${f.n}</td><td class="r">${f.concl}</td>
+      <td class="r">${fmtPct(f.real)}</td><td class="r">${f.prev==null?'—':fmtPct(f.prev)}</td>
+      <td class="r" style="color:${CD[nv]};font-weight:bold">${f.desvio==null?'—':(f.desvio>=0?'+':'')+fmtPct(f.desvio)}</td></tr>`;}).join('');
+  const linhasR=(o.ruas||[]).map(ru=>{const sr=serv.filter(s=>s.rua===ru);
+    return `<tr><td>${esc(ru)}</td><td class="r">${sr.length}</td><td class="r">${sr.filter(s=>pctServ(s,av)>=99.95).length}</td><td class="r">${fmtPct(mediaPct(sr,av))}</td></tr>`;}).join('');
+  const destaque=crit.length||aten.length
+    ? `<ul style="margin:4px 0 0 16px">${[...crit,...aten].map(f=>`<li><b>${esc(f.nome)}</b> — realizado ${fmtPct(f.real)} contra ${fmtPct(f.prev)} previsto (<b style="color:${CD[nivelDesvio(f.desvio)]}">${fmtPct(f.desvio)}</b>).</li>`).join('')}</ul>`
+    : `<div style="color:#1f6f4a"><b>Todas as frentes estão dentro do previsto no cronograma.</b></div>`;
+  const emiss=new Date().toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'});
+  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Relatório Executivo — ${esc(o.nome)}</title>
+  <style>@page{size:A4;margin:14mm} *{font-family:Arial,Helvetica,sans-serif;box-sizing:border-box}
+  body{color:#111;font-size:11.5px;margin:0}@media screen{body{padding:16px 20px}} .r{text-align:right}
+  .hd{display:flex;align-items:center;gap:14px;border-bottom:2px solid #1f6f4a;padding-bottom:10px;margin-bottom:12px}
+  .hd img{height:46px} h1{font-size:16px;margin:0} .meta{font-size:10.5px;color:#444}
+  .numb{margin-left:auto;text-align:right} .numb b{font-size:12px;color:#1f6f4a}
+  h2{font-size:12px;color:#1f6f4a;border-bottom:1px solid #ccc;padding-bottom:3px;margin:14px 0 7px;text-transform:uppercase;letter-spacing:.04em}
+  .kpis{display:flex;gap:9px} .k{flex:1;border:1px solid #ccc;border-radius:6px;padding:8px 10px}
+  .kl{font-size:8.5px;text-transform:uppercase;letter-spacing:.06em;color:#666;font-weight:bold}
+  .kv{font-size:19px;font-weight:bold;color:#1f6f4a;line-height:1.15;margin-top:2px} .ks{font-size:9px;color:#666}
+  table{width:100%;border-collapse:collapse;margin-bottom:4px} td,th{border:1px solid #ccc;padding:4px 7px;text-align:left;font-size:10.5px}
+  th{background:#f0efe9} .box{border:1px solid #ccc;border-radius:6px;padding:9px 12px}
+  .cols{display:flex;gap:14px} .cols>div{flex:1}
+  .sign{display:flex;gap:40px;margin-top:26px} .sign>div{flex:1;border-top:1px solid #333;padding-top:5px;text-align:center;font-size:10.5px}
+  .ft{margin-top:12px;border-top:1px solid #ddd;padding-top:6px;font-size:9px;color:#777;text-align:center}</style></head>
+  <body onload="window.print()">
+    <div class="hd"><img src="assets/logo_gestor.png" alt="">
+      <div><h1>Relatório Executivo de Obra</h1>
+      <div class="meta">${esc(o.contratada||'Gestor Engenharia')} · ${esc(o.contrato||'')}</div>
+      <div class="meta">${esc(o.nome)} — ${esc(o.local||'')}</div></div>
+      <div class="numb"><div class="meta">Emitido em</div><b>${emiss}</b></div></div>
+    <h2>Indicadores</h2>
+    <div class="kpis">
+      ${kpi('Avanço físico médio',fmtPct(pf),'média de '+serv.length+' serviços')}
+      ${kpi('Prazo decorrido',Math.round(pctPrazo)+'%',mesLabel(o.inicioISO)+' → '+mesLabel(fimISO))}
+      ${kpi('Serviços iniciados',inic+'/'+serv.length,concl+' concluídos')}
+      ${kpi('Desvio vs previsto',(desvio>=0?'+':'')+fmtPct(desvio),desvio>=0?'no prazo/adiantado':'atrasado')}
+      ${kpi('Dias apontados',String(dias),lanc.length+' lançamentos')}
+    </div>
+    <h2>Curva S — previsto × realizado</h2>
+    <div class="box">${curvaSVG(pts,prev,real,{grid:'#ddd',txt:'#666',prev:'#255bb3',real:'#1f6f4a'})}
+      <div style="font-size:9.5px;color:#666;text-align:center;margin-top:2px">— — Previsto (cronograma) &nbsp;·&nbsp; ——— Realizado (RDO) — % médio acumulado</div></div>
+    <h2>Análise de desvio por frente</h2>
+    <table><tr><th>Frente</th><th class="r">Serviços</th><th class="r">Concluídos</th><th class="r">Realizado</th><th class="r">Previsto</th><th class="r">Desvio</th></tr>${linhasF}</table>
+    <div class="cols" style="margin-top:12px">
+      <div><h2 style="margin-top:0">Avanço por rua</h2>
+        <table><tr><th>Rua / trecho</th><th class="r">Serviços</th><th class="r">Concl.</th><th class="r">Avanço</th></tr>${linhasR}</table></div>
+      <div><h2 style="margin-top:0">Destaques e pontos de atenção</h2><div class="box">${destaque}</div></div>
+    </div>
+    <div class="sign"><div>Responsável técnico</div><div>Fiscalização</div></div>
+    <div class="ft">Gestor — Controle de Obras · Criado e desenvolvido por Leonardo Maciel</div>
+  </body></html>`;
+}
+function imprimirExecutivo(){abrirImpressao(htmlExecutivo(obra()));}
+function abrirImpressao(html){const w=window.open('','_blank');if(!w){toast('Permita pop-ups para gerar o relatório');return;}w.document.write(html);w.document.close();}
 function imprimirRDO(){const o=obra();const dd=coletaDiario();dd.servicos=getLanc(o.id).filter(l=>l.dataISO===dd.dataISO);abrirImpressao(htmlRDO(o,dd,numeroRDO(o,dd.dataISO)));}
 function gerarPDFdia(dataISO){const o=obra();abrirImpressao(htmlRDO(o,montarRDO(o,dataISO),numeroRDO(o,dataISO)));}
 
