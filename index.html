@@ -451,7 +451,7 @@ function atualizaOutboxUI(){
 /* --- envio (enfileira + tenta enviar) --- */
 function enfileirarRDO(obraId,l){if(!BACKEND||isDemo())return;
   const item={obra:obraId,data:l.dataISO,rua:l.rua,capid:l.capId,servico:l.servico,un:l.un,qtd:l.qtd,efetivo:l.efetivo,estini:l.estIni,estfim:l.estFim,clima:l.clima,obs:l.obs,avulso:l.avulso,usuario:l.usuario||'',criadoem:l.criadoEm,id:l.id};
-  outboxAdd({id:'ob'+uid(),clientId:l.id,obra:obraId,tipo:'rdo',params:{action:'addBatchRDO',batch:JSON.stringify([item]),clientId:l.id}});outboxFlush();}
+  outboxAdd({id:'ob'+uid(),clientId:l.id,obra:obraId,tipo:'rdo',params:{action:'addBatchRDO',batch:JSON.stringify([item]),clientId:l.id}});return outboxFlush();}
 function enfileirarDelRDO(obraId,id){if(!BACKEND||isDemo())return;outboxAdd({id:'ob'+uid(),obra:obraId,tipo:'delRdo',params:{action:'deleteRDO',id:id}});outboxFlush();}
 function enfileirarDiario(obraId,d){if(!BACKEND||isDemo())return;
   const item={action:'addDiario',obra:obraId,data:d.dataISO,climamanha:d.climaManha,climatarde:d.climaTarde,condicao:d.condicao,pessoal:JSON.stringify(d.pessoal||[]),equipamentos:JSON.stringify(d.equipamentos||[]),ocorrencias:d.ocorrencias,usuario:d.usuario||'',criadoem:d.criadoEm,id:d.id||''};
@@ -1677,8 +1677,14 @@ function salvar(){
     clima:el('fClima').value,obs:el('fObs').value.trim(),usuario:usuarioAtual(),
     fotos:_fotosRDO.map(f=>({thumb:f.thumb,url:''})),criadoEm:Date.now()};
   const arr=getLanc(o.id);arr.push(novo);setLanc(o.id,arr);
-  enfileirarRDO(o.id,novo);
-  enviarFotos(o.id,novo.id,_fotosRDO.map(f=>f.full));
+  // as fotos só sobem DEPOIS que a linha do lançamento existe no servidor —
+  // senão o rdoFoto não acha a linha para anexar o link (a foto ia pro Drive e o link se perdia)
+  const _fotosFull=_fotosRDO.map(f=>f.full);
+  Promise.resolve(enfileirarRDO(o.id,novo)).then(()=>{
+    if(!_fotosFull.length)return;
+    const pend=outboxLer().some(it=>it.clientId===novo.id);   // ainda na fila = servidor não confirmou
+    if(!pend)enviarFotos(o.id,novo.id,_fotosFull);
+  }).catch(()=>{});
   toast(lanc.avulso?'Serviço avulso registrado ✓':'Apontamento salvo ✓');
   el('fQtd').value='';el('fEfet').value='';el('fObs').value='';el('fEstIni').value='';el('fEstFim').value='';
   if(el('fAvDesc'))el('fAvDesc').value='';
