@@ -908,8 +908,7 @@ function viewRDO(o){
           <input id="fAvUn" placeholder="un, m², vb..."></div>
         <div class="kpi-s" style="margin:-4px 0 12px;color:var(--amarelo)">⚠ Serviço avulso: fica registrado no histórico, mas <b>não conta no avanço nem na medição</b>.</div>
       </div>
-      <div class="row"><div class="field"><label class="fl" for="fQtd">Quantidade executada</label><input type="number" step="any" id="fQtd" placeholder="0,00" oninput="mostraSaldo()"></div>
-        <div class="field"><label class="fl" for="fEfet">Efetivo (pessoas)</label><input type="number" step="1" id="fEfet" placeholder="0"></div></div>
+      <div class="field"><label class="fl" for="fQtd">Quantidade executada</label><input type="number" step="any" id="fQtd" placeholder="0,00" oninput="mostraSaldo()"></div>
       <div id="saldoBox" class="kpi-s" style="margin:-6px 0 12px"></div>
       <div class="row"><div class="field"><label class="fl" for="fEstIni">Estaca inicial</label><input id="fEstIni" placeholder="Ex.: E0"></div>
         <div class="field"><label class="fl" for="fEstFim">Estaca final</label><input id="fEstFim" placeholder="Ex.: E12"></div></div>
@@ -970,7 +969,16 @@ function enviarFotos(obraId,lancId,fulls){
       .catch(()=>{});
   });
 }
-function fotoSrc(f){return f.url||f.thumb||'';}
+// O link "drive.google.com/uc?id=" NAO renderiza em <img> (Google devolve pagina de
+// verificacao). O formato /thumbnail?id=...&sz= funciona para arquivos publicos.
+function fotoURL(u){
+  u=String(u||'');if(!u)return '';
+  if(!/drive\.google\.com/.test(u))return u;
+  const m=u.match(/[?&]id=([\w-]+)/)||u.match(/\/d\/([\w-]+)/);
+  return m?('https://drive.google.com/thumbnail?id='+m[1]+'&sz=w1600'):u;
+}
+function fotoSrc(f){return f.thumb||fotoURL(f.url);}        // tela: miniatura local (rapida, offline)
+function fotoSrcAlta(f){return fotoURL(f.url)||f.thumb||'';} // impressao: imagem grande do Drive
 function galeriaFotos(fotos,tam){
   tam=tam||58;
   return (fotos||[]).filter(f=>fotoSrc(f)).map(f=>`<img src="${esc(fotoSrc(f))}" alt="foto do serviço" loading="lazy" onclick="ampliarFoto('${esc(fotoSrc(f))}')" style="width:${tam}px;height:${tam}px;object-fit:cover;border-radius:6px;border:1px solid var(--border);cursor:zoom-in;margin:3px 3px 0 0">`).join('');
@@ -1258,8 +1266,8 @@ function htmlMedicaoEquip(o,aps,periodoLabel){
   h2{font-size:12px;color:#1f6f4a;border-bottom:1px solid #ccc;padding-bottom:3px;margin:14px 0 6px}
   table{width:100%;border-collapse:collapse;margin-bottom:6px} td,th{border:1px solid #ccc;padding:4px 6px;text-align:left;font-size:10px}
   th{background:#f0efe9} tr.tot td{background:#eef5f0;font-weight:bold}
-  .sign{display:flex;gap:40px;margin-top:30px} .sign>div{flex:1;border-top:1px solid #333;padding-top:5px;text-align:center;font-size:10.5px}</style></head>
-  <body onload="window.print()">
+  .sign{display:flex;gap:40px;margin-top:30px} .sign>div{flex:1;border-top:1px solid #333;padding-top:5px;text-align:center;font-size:10.5px}</style>${scriptImprimir()}</head>
+  <body onload="aoCarregar()">
     <div class="hd"><img src="assets/logo_gestor.png" alt="">
       <div><h1>Medição Mensal de Equipamentos</h1>
       <div class="meta">${esc(o.contratada||'Gestor Engenharia')} · ${esc(o.contrato||'')}</div>
@@ -1454,7 +1462,7 @@ function htmlRDO(o,dd,numero){
   const linhasP=(dd.pessoal.length?dd.pessoal:[{funcao:'—',qtd:''}]).map(p=>`<tr><td>${esc(p.funcao)}</td><td style="text-align:right">${p.qtd||''}</td></tr>`).join('');
   const linhasE=(dd.equipamentos.length?dd.equipamentos:[{nome:'—',qtd:''}]).map(e=>`<tr><td>${esc(e.nome)}</td><td style="text-align:right">${e.qtd||''}</td></tr>`).join('');
   const linhasS=dd.servicos.length?dd.servicos.map(l=>`<tr><td>${esc(l.servico)}${l.avulso?' (avulso)':''}</td><td>${esc(l.rua)}</td><td>${esc(estacaTxt(l))||'—'}</td><td style="text-align:right">${fmtQtd(l.qtd)} ${esc(l.un)}</td></tr>`).join(''):`<tr><td colspan="4" style="text-align:center;color:#888">Sem serviços lançados</td></tr>`;
-  const fotosDoDia=[];dd.servicos.forEach(l=>(l.fotos||[]).forEach(f=>{const src=f.url||f.thumb;if(src)fotosDoDia.push({src,leg:l.servico+(estacaTxt(l)?' — '+estacaTxt(l):'')});}));
+  const fotosDoDia=[];dd.servicos.forEach(l=>(l.fotos||[]).forEach(f=>{const src=fotoSrcAlta(f);if(src)fotosDoDia.push({src,leg:l.servico+(estacaTxt(l)?' — '+estacaTxt(l):'')});}));
   return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>RDO ${numero} — ${dd.dataISO}</title>
   <style>@page{size:A4;margin:16mm} *{font-family:Arial,Helvetica,sans-serif;box-sizing:border-box}
   body{color:#111;font-size:12px;margin:0}@media screen{body{padding:16px 20px}} h1{font-size:16px;margin:0} .hd{display:flex;align-items:center;gap:14px;border-bottom:2px solid #1f6f4a;padding-bottom:10px;margin-bottom:14px}
@@ -1466,8 +1474,8 @@ function htmlRDO(o,dd,numero){
   .clima span{display:inline-block;background:#f0efe9;border:1px solid #ccc;border-radius:4px;padding:2px 8px;margin-right:6px}
   .fotos{display:flex;flex-wrap:wrap;gap:10px} .fotos figure{margin:0;width:31%;page-break-inside:avoid}
   .fotos img{width:100%;height:120px;object-fit:cover;border:1px solid #ccc;border-radius:4px;display:block}
-  .fotos figcaption{font-size:9px;color:#555;margin-top:3px;line-height:1.25}</style></head>
-  <body onload="window.print()">
+  .fotos figcaption{font-size:9px;color:#555;margin-top:3px;line-height:1.25}</style>${scriptImprimir()}</head>
+  <body onload="aoCarregar()">
     <div class="hd"><img src="assets/logo_gestor.png" alt="">
       <div><h1>Relatório Diário de Obra</h1><div class="meta">${esc(o.contratada||'Gestor Engenharia')} · ${esc(o.contrato||'')}</div>
       <div class="meta">${esc(o.nome)} — ${esc(o.local||'')}</div></div>
@@ -1524,8 +1532,8 @@ function htmlExecutivo(o){
   th{background:#f0efe9} .box{border:1px solid #ccc;border-radius:6px;padding:9px 12px}
   .cols{display:flex;gap:14px} .cols>div{flex:1}
   .sign{display:flex;gap:40px;margin-top:26px} .sign>div{flex:1;border-top:1px solid #333;padding-top:5px;text-align:center;font-size:10.5px}
-  .ft{margin-top:12px;border-top:1px solid #ddd;padding-top:6px;font-size:9px;color:#777;text-align:center}</style></head>
-  <body onload="window.print()">
+  .ft{margin-top:12px;border-top:1px solid #ddd;padding-top:6px;font-size:9px;color:#777;text-align:center}</style>${scriptImprimir()}</head>
+  <body onload="aoCarregar()">
     <div class="hd"><img src="assets/logo_gestor.png" alt="">
       <div><h1>Relatório Executivo de Obra</h1>
       <div class="meta">${esc(o.contratada||'Gestor Engenharia')} · ${esc(o.contrato||'')}</div>
@@ -1554,6 +1562,17 @@ function htmlExecutivo(o){
   </body></html>`;
 }
 function imprimirExecutivo(){abrirImpressao(htmlExecutivo(obra()));}
+function scriptImprimir(){return `<script>
+function aoCarregar(){
+  if(window.self!==window.top)return;                 // pre-visualizacao embutida: nao imprime
+  var faltam=[].slice.call(document.images).filter(function(i){return !i.complete;});
+  var imprimir=function(){setTimeout(function(){try{window.print();}catch(e){}},250);};
+  if(!faltam.length)return imprimir();
+  var n=faltam.length,pronto=function(){if(--n<=0)imprimir();};
+  faltam.forEach(function(i){i.addEventListener('load',pronto);i.addEventListener('error',pronto);});
+  setTimeout(imprimir,8000);                          // failsafe se alguma imagem travar
+}
+<\/script>`;}
 function abrirImpressao(html){const w=window.open('','_blank');if(!w){toast('Permita pop-ups para gerar o relatório');return;}w.document.write(html);w.document.close();}
 function imprimirRDO(){const o=obra();const dd=coletaDiario();dd.servicos=getLanc(o.id).filter(l=>l.dataISO===dd.dataISO);abrirImpressao(htmlRDO(o,dd,numeroRDO(o,dd.dataISO)));}
 function gerarPDFdia(dataISO){const o=obra();abrirImpressao(htmlRDO(o,montarRDO(o,dataISO),numeroRDO(o,dataISO)));}
@@ -1605,8 +1624,7 @@ function editarServ(id){
     <div class="row"><div class="field"><label class="fl">Data</label><input type="date" id="edData" value="${l.dataISO}"></div>
       <div class="field"><label class="fl">Rua</label><select id="edRua">${o.ruas.map(r=>`<option ${r===l.rua?'selected':''}>${esc(r)}</option>`).join('')}</select></div></div>
     <div class="field"><label class="fl">Serviço</label><input id="edServ" value="${esc(l.servico)}" ${l.avulso?'':'readonly style="opacity:.65"'}></div>
-    <div class="row"><div class="field"><label class="fl">Quantidade (${esc(l.un)})</label><input type="number" step="any" id="edQtd" value="${l.qtd}"></div>
-      <div class="field"><label class="fl">Efetivo</label><input type="number" id="edEfet" value="${l.efetivo||0}"></div></div>
+    <div class="field"><label class="fl">Quantidade (${esc(l.un)})</label><input type="number" step="any" id="edQtd" value="${l.qtd}"></div>
     <div class="row"><div class="field"><label class="fl">Estaca inicial</label><input id="edEi" value="${esc(l.estIni||'')}"></div>
       <div class="field"><label class="fl">Estaca final</label><input id="edEf" value="${esc(l.estFim||'')}"></div></div>
     <div class="field"><label class="fl">Clima</label><select id="edClima">${CLIMA_OPC.map(c=>`<option ${c===l.clima?'selected':''}>${c}</option>`).join('')}</select></div>
@@ -1617,7 +1635,7 @@ function editarServ(id){
 function salvarEdicao(id){
   const o=obra();const arr=getLanc(o.id);const l=arr.find(x=>x.id===id);if(!l)return;
   l.dataISO=el('edData').value||l.dataISO;l.rua=el('edRua').value;if(l.avulso)l.servico=el('edServ').value.trim();
-  l.qtd=+el('edQtd').value||0;l.efetivo=+el('edEfet').value||0;l.estIni=el('edEi').value.trim();l.estFim=el('edEf').value.trim();
+  l.qtd=+el('edQtd').value||0;l.estIni=el('edEi').value.trim();l.estFim=el('edEf').value.trim();
   l.clima=el('edClima').value;l.obs=el('edObs').value.trim();
   setLanc(o.id,arr);enfileirarUpdateRDO(o.id,l);fecharModal();render();toast('Serviço atualizado ✓');
 }
@@ -1673,7 +1691,7 @@ function salvar(){
     lanc={rua:s.rua,capId:s.capId,servico:s.servico,un:s.un};
   }
   const novo={id:uid(),dataISO:el('fData').value||hoje(),...lanc,
-    qtd,efetivo:+el('fEfet').value||0,estIni:el('fEstIni').value.trim(),estFim:el('fEstFim').value.trim(),
+    qtd,estIni:el('fEstIni').value.trim(),estFim:el('fEstFim').value.trim(),
     clima:el('fClima').value,obs:el('fObs').value.trim(),usuario:usuarioAtual(),
     fotos:_fotosRDO.map(f=>({thumb:f.thumb,url:''})),criadoEm:Date.now()};
   const arr=getLanc(o.id);arr.push(novo);setLanc(o.id,arr);
@@ -1686,7 +1704,7 @@ function salvar(){
     if(!pend)enviarFotos(o.id,novo.id,_fotosFull);
   }).catch(()=>{});
   toast(lanc.avulso?'Serviço avulso registrado ✓':'Apontamento salvo ✓');
-  el('fQtd').value='';el('fEfet').value='';el('fObs').value='';el('fEstIni').value='';el('fEstFim').value='';
+  el('fQtd').value='';el('fObs').value='';el('fEstIni').value='';el('fEstFim').value='';
   if(el('fAvDesc'))el('fAvDesc').value='';
   _fotosRDO=[];renderFotosPrev();
   el('ultimos').innerHTML=listaUltimos(o);mostraSaldo();
@@ -1769,7 +1787,7 @@ function apSlideHTML(sl){
   if(sl.tipo==='operacao'){
     const o=sl.o,lanc=getLanc(o.id),serv=o.servicos||[],av=avancoServ(o);
     const dias=[...new Set(lanc.map(l=>l.dataISO))].length;
-    const efet=lanc.reduce((a,l)=>a+(+l.efetivo||0),0);
+    const efet=getDiarios(o.id).reduce((a,d)=>a+totalPessoal(d.pessoal||[]),0);
     const top=serv.map(sv=>({s:sv,q:av[skeyS(sv)]||0,p:clamp(pctServ(sv,av))})).filter(x=>x.q>0).sort((a,b)=>b.p-a.p).slice(0,6);
     return `<div class="ap-slide"><div class="ap-kicker">${esc(o.nome)} · operação de campo</div>
       <h2>A obra em números</h2>
@@ -1777,7 +1795,7 @@ function apSlideHTML(sl){
         <div class="ap-k"><div class="l">Dias apontados</div><div class="v">${dias}</div></div>
         <div class="ap-k"><div class="l">Lançamentos (RDO)</div><div class="v">${lanc.length}</div></div>
         <div class="ap-k"><div class="l">Diários salvos</div><div class="v">${getDiarios(o.id).length}</div></div>
-        <div class="ap-k"><div class="l">Efetivo acumulado</div><div class="v">${efet}</div></div>
+        <div class="ap-k"><div class="l">Efetivo (diários)</div><div class="v">${efet}</div></div>
       </div>
       <div class="ap-kicker" style="margin:8px 0 2px">Serviços mais executados</div>
       <table class="ap-op"><tbody>${top.map(t=>`<tr><td>${ICONE[t.s.capId]||'•'} ${esc(t.s.servico)}</td><td class="n">${fmtQtd(t.q)} ${esc(t.s.un)}</td><td class="n" style="color:var(--accent-2)">${fmtPct(t.p)}</td></tr>`).join('')}</tbody></table></div>`;
@@ -1808,7 +1826,7 @@ function apSlideHTML(sl){
     const o=sl.o;
     const capa=`<div class="ap-kicker">${esc(o.nome)} · documento gerado</div>`;
     if(sl.doc==='exec'){
-      const execHtml=htmlExecutivo(o).replace('onload="window.print()"','');
+      const execHtml=htmlExecutivo(o).replace('onload="aoCarregar()"','');
       return `<div class="ap-slide">${capa}
         <h2 style="font-size:clamp(20px,3vw,32px);margin-bottom:6px">Relatório Executivo de Obra</h2>
         <div class="ap-sub" style="margin-bottom:12px">Indicadores, Curva S, análise de desvio por frente e pontos de atenção — em uma página, num clique.</div>
@@ -1817,7 +1835,7 @@ function apSlideHTML(sl){
     }
     if(sl.doc==='equip'){
       const aps=(EQUIP&&EQUIP.apontamentos)||[];
-      const medHtml=aps.length?htmlMedicaoEquip(o,aps,'Consolidado').replace('onload="window.print()"',''):'';
+      const medHtml=aps.length?htmlMedicaoEquip(o,aps,'Consolidado').replace('onload="aoCarregar()"',''):'';
       return `<div class="ap-slide">${capa}
         <h2 style="font-size:clamp(20px,3vw,32px);margin-bottom:6px">Medição Mensal de Equipamentos</h2>
         <div class="ap-sub" style="margin-bottom:12px">Resumo consolidado + diário por equipamento — paradas, horímetro, combustível e disponibilidade. Gerado em PDF e Excel.</div>
@@ -1827,7 +1845,7 @@ function apSlideHTML(sl){
     const diarios=getDiarios(o.id);let dRdo=null,best=-1;
     diarios.forEach(dd=>{const n=getLanc(o.id).filter(l=>l.dataISO===dd.dataISO).length;if(n>best){best=n;dRdo=dd.dataISO;}});
     if(!dRdo){const datas=todasDatas(o);dRdo=datas.length?datas[datas.length-1]:null;}
-    const rdoHtml=dRdo?htmlRDO(o,montarRDO(o,dRdo),numeroRDO(o,dRdo)).replace('onload="window.print()"',''):'';
+    const rdoHtml=dRdo?htmlRDO(o,montarRDO(o,dRdo),numeroRDO(o,dRdo)).replace('onload="aoCarregar()"',''):'';
     return `<div class="ap-slide">${capa}
       <h2 style="font-size:clamp(20px,3vw,32px);margin-bottom:6px">Relatório Diário de Obra (RDO)</h2>
       <div class="ap-sub" style="margin-bottom:12px">Efetivo, equipamentos, serviços executados por trecho e ocorrências — gerado em PDF e Excel, no padrão de obra pública.</div>
