@@ -13,6 +13,8 @@
   'use strict';
   var ROOT = document.documentElement;
   var BASE = 'intro/';
+  // Limite deliberado: quadros demais em alta resolução deixam a abertura sem fluidez.
+  var FRAME_COUNT = 18;
   var unlockApp = function () { ROOT.classList.remove('intro-pending'); };
 
   try {
@@ -106,7 +108,7 @@
     scroller = overlay.querySelector('.intro-scroller');
     track = overlay.querySelector('.intro-track');
     canvas = overlay.querySelector('#introCanvas');
-    ctx = canvas.getContext('2d');
+    ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
     loginPanel = overlay.querySelector('.intro-login');
     loader = overlay.querySelector('.intro-loader');
     loaderBar = loader.querySelector('.lb i');
@@ -151,7 +153,8 @@
   }
   function resize() {
     if (!canvas) return;
-    var dpr = Math.min(2, window.devicePixelRatio || 1);
+    // Um canvas 4K/Retina custa dezenas de MB por frame sem ganho visual perceptível aqui.
+    var dpr = Math.min(1.25, window.devicePixelRatio || 1);
     canvas.width = Math.floor(innerWidth * dpr);
     canvas.height = Math.floor(innerHeight * dpr);
     if (lastFrameDrawn) drawMedia(lastFrameDrawn);
@@ -175,39 +178,49 @@
 
   /* ---------- pré-carregamento e extração de quadros em fila (sequencial) ---------- */
   function extractFrames(vObj, count) {
-    count = count || 36;
+    count = count || FRAME_COUNT;
     var el = vObj.el;
     if (!el || !el.duration || el.duration <= 0) return Promise.resolve();
     vObj.frames = [];
     var dur = el.duration;
     var step = dur / count;
+    // Abertura em até 960px: suficiente para fundo e muito mais leve em memória/GPU.
+    var sourceW = el.videoWidth || 960, sourceH = el.videoHeight || 540;
+    var scale = Math.min(1, 960 / sourceW);
     var tmpC = document.createElement('canvas');
-    tmpC.width = Math.min(1280, el.videoWidth || 1280);
-    tmpC.height = Math.min(720, el.videoHeight || 720);
-    var tmpCtx = tmpC.getContext('2d');
+    tmpC.width = Math.max(1, Math.round(sourceW * scale));
+    tmpC.height = Math.max(1, Math.round(sourceH * scale));
+    var tmpCtx = tmpC.getContext('2d', { alpha: false });
 
     var p = Promise.resolve();
     for (var i = 0; i < count; i++) {
-      (function(idx) {
-        p = p.then(function() {
-          return new Promise(function(resolve) {
+      (function (idx) {
+        p = p.then(function () {
+          return new Promise(function (resolve) {
             var targetT = Math.min(dur - 0.04, idx * step);
-            var onSeeked = function() {
+            var finished = false;
+            var timeout;
+            var finish = function () {
+              if (finished) return;
+              finished = true;
+              clearTimeout(timeout);
+              el.removeEventListener('seeked', finish);
               try {
                 tmpCtx.drawImage(el, 0, 0, tmpC.width, tmpC.height);
                 if (window.createImageBitmap) {
-                  createImageBitmap(tmpC).then(function(bmp) {
+                  createImageBitmap(tmpC).then(function (bmp) {
                     vObj.frames[idx] = bmp;
                     resolve();
-                  }).catch(function() { resolve(); });
+                  }).catch(resolve);
                 } else {
                   resolve();
                 }
-              } catch(e) { resolve(); }
+              } catch (e) { resolve(); }
             };
-            el.addEventListener('seeked', onSeeked, { once: true });
-            setTimeout(onSeeked, 80);
-            try { el.currentTime = targetT; } catch(e) { resolve(); }
+            el.addEventListener('seeked', finish, { once: true });
+            // Fallback apenas se o navegador não emitir seeked; sem duplicar a captura.
+            timeout = setTimeout(finish, 700);
+            try { el.currentTime = targetT; } catch (e) { finish(); }
           });
         });
       })(i);
@@ -220,7 +233,7 @@
     var iv = setInterval(function () {
       var done = 0;
       videos.forEach(function (v) {
-        if (v.frames && v.frames.length > 0) done += v.frames.length / 36;
+        if (v.frames && v.frames.length > 0) done += v.frames.length / FRAME_COUNT;
         else if (v.ready || v.el.readyState >= 1) done += 0.3;
       });
       if (loaderBar) loaderBar.style.width = Math.min(100, Math.round((done / total) * 100)) + '%';
@@ -232,7 +245,7 @@
         return new Promise(function (res) {
           var startExtract = function () {
             v.ready = true;
-            extractFrames(v, 36).then(function () { res(); });
+            extractFrames(v, FRAME_COUNT).then(function () { res(); });
           };
           if (v.el.readyState >= 1) {
             startExtract();
@@ -435,3 +448,4 @@
     });
   }
 })();
+
