@@ -626,14 +626,13 @@ const NAV=[
     {id:'rdo',ic:'⊕',t:'Lançar serviços'},
     {id:'diario',ic:'📋',t:'Diário de Obra',badge:o=>getDiarios(o.id).length},
     {id:'equip',ic:'🚜',t:'Equipamentos'},
-    {id:'pendencias',ic:'⚠️',t:'Pendências'},
     {id:'historico',ic:'≡',t:'Histórico',badge:o=>getLanc(o.id).length},
   ]},
   {grupo:'Documentos',itens:[
     {id:'projetos',ic:'📐',t:'Projetos',badge:o=>(o.projetos||[]).length},
   ]},
 ];
-const TITULOS={executivo:'Painel Executivo',servicos:'Serviços',medicao:'Medição Física',rdo:'Lançar serviços',diario:'Diário de Obra',equip:'Equipamentos',pendencias:'Pendências de Campo',historico:'Histórico',projetos:'Projetos'};
+const TITULOS={executivo:'Painel Executivo',servicos:'Serviços',medicao:'Medição Física',rdo:'Lançar serviços',diario:'Diário de Obra',equip:'Equipamentos',historico:'Histórico',projetos:'Projetos'};
 
 function render(){
   const app=el('app');
@@ -669,14 +668,6 @@ function viewTela(o){
     case 'rdo':return viewRDO(o);
     case 'diario':return viewDiario(o);
     case 'equip':return viewEquip(o);
-    case 'pendencias': {
-      setTimeout(() => {
-        if (window.GestorPendenciasScreen) {
-          window.GestorPendenciasScreen.render('pendencias-container', [], o.nome);
-        }
-      }, 50);
-      return `<div id="pendencias-container"></div>`;
-    }
     case 'projetos':return viewProjetos(o);
     case 'historico':return viewHistorico(o);
     default:return viewExecutivo(o);
@@ -714,19 +705,8 @@ async function fazerLogin(){
   }catch(e){el('loginErro').textContent='Sem conexão com o servidor.';}
 }
 
-/* ---------- HOME ---------- */
+/* ---------- HOME (Painel Geral) ---------- */
 function viewHome(){
-  setTimeout(() => {
-    if (window.GestorCentralHoje) {
-      window.GestorCentralHoje.render('central-hoje-container', {
-        obraAtiva: estado.obraId ? OBRAS[estado.obraId].nome : 'Portfólio Completo',
-        rdo: getLanc(estado.obraId || 'tv'),
-        diario: getDiarios(estado.obraId || 'tv'),
-        equipamentos: [],
-        pendencias: []
-      });
-    }
-  }, 50);
   const cards=ORDEM.map(id=>{
     const o=OBRAS[id];
     if(o.externo){
@@ -772,7 +752,7 @@ function viewHome(){
       <button class="btn btn-sm btn-pri" onclick="abrirApresentacao()" title="Modo apresentação">▶ Apresentar</button>
       ${isDemo()?`<button class="btn btn-sm" style="border-color:var(--amarelo);color:var(--amarelo)" onclick="sairDemo()" title="Sair da demonstração">● Demo ativo</button>`:`<button class="btn btn-sm btn-ghost" onclick="carregarDemo()" title="Preencher com dados de demonstração (local)">🎬 Demo</button>`}
       <button class="btn btn-sm btn-ghost" onclick="toggleTema()" title="Tema">◐</button></header>
-    <div class="content"><div id="central-hoje-container"></div>${resumo}<div class="obras-grid">${cards}
+    <div class="content">${resumo}<div class="obras-grid">${cards}
       <div class="obra-card add"><div style="font-size:30px;margin-bottom:8px">＋</div>
         <div style="font-weight:600;color:var(--text-2)">Adicionar nova obra</div>
         <div class="obra-meta" style="margin-top:6px">Crie um arquivo em <b>dados/</b> e registre em <b>_index.js</b>.<br>Passo a passo no README.</div></div>
@@ -781,8 +761,18 @@ function viewHome(){
     </div></div></div>`;
 }
 
-/* ---------- PAINEL EXECUTIVO ---------- */
+/* ---------- PAINEL EXECUTIVO DA OBRA ---------- */
 function viewExecutivo(o){
+  setTimeout(() => {
+    if (window.GestorCentralHoje) {
+      window.GestorCentralHoje.render('central-hoje-container', {
+        obraAtiva: o.nome,
+        rdo: getLanc(o.id),
+        diario: getDiarios(o.id),
+        equipamentos: []
+      });
+    }
+  }, 50);
   const serv=o.servicos||[]; const av=avancoServ(o);
   const pf=mediaPct(serv,av);
   const concl=serv.filter(s=>pctServ(s,av)>=99.95).length;
@@ -808,6 +798,7 @@ function viewExecutivo(o){
       <td class="num" style="color:${CORD[nv]};font-weight:${nv==='crit'||nv==='aten'?'700':'400'}">${f.desvio==null?'—':(f.desvio>=0?'+':'')+fmtPct(f.desvio)}</td></tr>`;
   }).join('');
   return `
+  <div id="central-hoje-container"></div>
   <div class="row" style="margin-bottom:14px;align-items:center">
     <div class="chip">${serv.length} serviços · ${(o.frentes||[]).length} frentes</div>
     <button class="btn btn-sm" style="margin-left:auto" onclick="imprimirExecutivo()">📄 Relatório Executivo</button></div>

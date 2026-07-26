@@ -1,4 +1,4 @@
-// GESTOR OBRAS — COMPONENTE CENTRAL DE HOJE (DASHBOARD DA HOME)
+// GESTOR OBRAS — COMPONENTE CENTRAL DE HOJE (DASHBOARD DA OBRA)
 
 (function () {
   const CentralHoje = {
@@ -7,21 +7,18 @@
       if (!container) return;
 
       const hoje = new Date().toISOString().slice(0, 10);
-      const obra = stateData.obraAtiva || 'Todas as Obras';
-
-      const rdoHoje = (stateData.rdo || []).filter(x => (x.data || x.Data || '').slice(0, 10) === hoje);
-      const diarioHoje = (stateData.diario || []).filter(x => (x.data || x.Data || '').slice(0, 10) === hoje);
-      const equipSemApont = (stateData.equipamentos || []).length;
-      const pendenciasAbertas = (stateData.pendencias || []).filter(x => x.status === 'Aberto').length;
+      const rdoHoje = (stateData.rdo || []).filter(x => (x.data || x.Data || x.dataISO || '').slice(0, 10) === hoje);
+      const diarioHoje = (stateData.diario || []).filter(x => (x.data || x.Data || x.dataISO || '').slice(0, 10) === hoje);
+      const numEquip = (stateData.equipamentos || []).length;
 
       const html = `
-        <section class="central-hoje-card" aria-label="Central de Hoje">
+        <section class="central-hoje-card" aria-label="Central de Campo">
           <div class="central-hoje-header">
             <div>
               <span class="pill pill-acc">Central de Campo • ${hoje.split('-').reverse().join('/')}</span>
-              <h2 class="central-hoje-title">Obra Selecionada: <strong>${obra}</strong></h2>
+              <h2 class="central-hoje-title">Resumo Operacional do Dia</h2>
             </div>
-            <button id="btn-central-lancar" class="btn btn-primary btn-lg" onclick="window.navPara && window.navPara('rdo-form')">
+            <button id="btn-central-lancar" class="btn btn-primary btn-lg" onclick="ir('rdo')">
               🚜 Lançar Serviço
             </button>
           </div>
@@ -43,29 +40,20 @@
               </div>
             </div>
 
-            <div class="central-kpi-box ${pendenciasAbertas > 0 ? 'kpi-alert' : 'kpi-ok'}">
-              <span class="kpi-icon">⚠️</span>
-              <div class="kpi-info">
-                <span class="kpi-label">Pendências Abertas</span>
-                <span class="kpi-val">${pendenciasAbertas} item(ns) exigem atenção</span>
-              </div>
-            </div>
-
             <div class="central-kpi-box kpi-info-box">
               <span class="kpi-icon">🚜</span>
               <div class="kpi-info">
                 <span class="kpi-label">Equipamentos em Campo</span>
-                <span class="kpi-val">${equipSemApont} máquina(s) ativas</span>
+                <span class="kpi-val">${numEquip ? `${numEquip} máquina(s) ativas` : 'Acompanhamento de máquinas'}</span>
               </div>
             </div>
           </div>
 
-          <!-- Pares de Alertas Acionáveis -->
-          ${pendenciasAbertas > 0 || !rdoHoje.length ? `
+          ${!rdoHoje.length || !diarioHoje.length ? `
             <div class="central-alert-banner">
-              <strong>🔔 Alerta do Canteiro:</strong>
-              ${!rdoHoje.length ? '<span>• Nenhum lançamento de produção registrado hoje.</span> ' : ''}
-              ${pendenciasAbertas > 0 ? `<span>• Há ${pendenciasAbertas} pendência(s) de campo não resolvidas.</span>` : ''}
+              <strong>🔔 Lembrete do Canteiro:</strong>
+              ${!rdoHoje.length ? '<span>• Nenhum lançamento de produção registrado hoje nesta obra.</span> ' : ''}
+              ${!diarioHoje.length ? '<span>• Diário de obra de hoje pendente.</span>' : ''}
             </div>
           ` : ''}
         </section>

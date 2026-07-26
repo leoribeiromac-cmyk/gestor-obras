@@ -23,9 +23,9 @@
           <span class="nav-icon">📖</span>
           <span class="nav-label">Diário</span>
         </button>
-        <button class="bottom-nav-item" data-tab="pendencias" onclick="window.navPara && window.navPara('pendencias')">
-          <span class="nav-icon">⚠️</span>
-          <span class="nav-label">Pendências</span>
+        <button class="bottom-nav-item" data-tab="equipamentos" onclick="ir('equip')">
+          <span class="nav-icon">🚜</span>
+          <span class="nav-label">Equipamentos</span>
         </button>
       `;
       document.body.appendChild(nav);
