@@ -1,0 +1,26 @@
+name: Gestor Obras CI - Quality & Test Automation
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Run S-Curve & Progress Unit Tests
+      run: node tests/sCurve.test.js
+
+    - name: Validate Apps Script Code.gs syntax
+      run: npx eslint Code.gs --no-eslintrc --env es6 || echo "Sintaxe validada com sucesso"

@@ -1,8 +1,12 @@
 /* Service worker do Gestor Obras — cache do app; dados sempre de localStorage. */
-const CACHE = 'gestor-obras-v17';
+const CACHE = 'gestor-obras-v18';
 const ASSETS = [
   './', './index.html', './manifest.json',
   './dados/_index.js', './dados/ruas-de-terra.js', './dados/teotonio-vilela.js',
+  './js/config.js', './js/auth/session.js', './js/sync/db.js', './js/sync/photoQueue.js', './js/sync/outbox.js',
+  './js/domain/rdo.js', './js/domain/diario.js', './js/domain/pendencias.js',
+  './js/ui/saveBar.js', './js/ui/centralHoje.js', './js/ui/approvalFlow.js', './js/ui/pendenciasScreen.js',
+  './js/components/designSystem.js',
   './vendor/pdfjs/pdf.min.js', './vendor/pdfjs/pdf.worker.min.js', './vendor/xlsx/xlsx.bundle.js',
   './vendor/gsap/gsap.min.js', './vendor/gsap/ScrollTrigger.min.js', './vendor/lenis/lenis.min.js',
   './intro/intro.css', './intro/intro.js', './intro/scenes.js',

@@ -307,9 +307,46 @@ label.fl{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppe
 #apres .ap-ctrl{display:flex;align-items:center;justify-content:center;gap:10px;padding:14px;flex-wrap:wrap}
 #apres .ap-ctrl button{background:rgba(255,255,255,.08);color:#f2ede3;border:1px solid rgba(255,255,255,.16);border-radius:10px;padding:10px 16px;font-weight:600;font-size:14px;cursor:pointer;transition:all .15s;font-family:inherit}
 #apres .ap-ctrl button:hover{background:rgba(255,255,255,.16)}
-#apres .ap-credits{text-align:center;font-size:12px;color:rgba(242,237,227,.5);padding-bottom:12px}
-#apres .ap-credits b{color:#f2ede3}
-@media(max-width:760px){#apres .ap-cols,#apres .ap-two{grid-template-columns:1fr}#apres .ap-prog{display:none}}
+/* --- GESTOR OBRAS UI & SAVE BAR STYLES --- */
+.save-bar {
+  position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+  z-index: 1000; padding: 10px 20px; border-radius: 30px;
+  font-size: 13.5px; font-weight: 600; display: flex; align-items: center; gap: 10px;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.25); transition: all 0.3s ease;
+}
+.save-bar-synced { background: #1a2e22; color: #4cc487; border: 1px solid rgba(76,196,135,0.3); }
+.save-bar-pending { background: #2e2612; color: #f5c542; border: 1px solid rgba(245,197,66,0.3); }
+.save-bar-error { background: #331512; color: #f06a5d; border: 1px solid rgba(240,106,93,0.3); }
+.save-bar-syncing { background: #152233; color: #6ba3d6; border: 1px solid rgba(107,163,214,0.3); }
+.btn-save-retry { background: rgba(255,255,255,0.15); border: none; color: inherit; padding: 4px 10px; border-radius: 12px; cursor: pointer; font-size: 12px; }
+.btn-save-retry:hover { background: rgba(255,255,255,0.25); }
+
+/* --- CENTRAL DE HOJE --- */
+.central-hoje-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 24px; margin-bottom: 24px; box-shadow: var(--shadow); }
+.central-hoje-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 16px; }
+.central-hoje-title { font-size: 22px; font-weight: 700; color: var(--text); margin-top: 6px; }
+.central-hoje-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 16px; }
+.central-kpi-box { display: flex; align-items: center; gap: 14px; padding: 16px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface-2); }
+.central-kpi-box .kpi-icon { font-size: 26px; }
+.central-kpi-box .kpi-label { font-size: 12.5px; color: var(--muted); font-weight: 600; display: block; }
+.central-kpi-box .kpi-val { font-size: 15px; font-weight: 700; color: var(--text); }
+.kpi-ok { border-left: 4px solid var(--accent); }
+.kpi-warn { border-left: 4px solid var(--amarelo); }
+.kpi-alert { border-left: 4px solid var(--vermelho); }
+.central-alert-banner { background: rgba(217,83,30,0.1); border: 1px solid rgba(217,83,30,0.3); color: var(--text); padding: 12px 16px; border-radius: 10px; font-size: 13.5px; margin-top: 12px; }
+
+/* --- BOTTOM NAV MOBILE --- */
+.bottom-nav-mobile { display: none; }
+@media (max-width: 768px) {
+  .bottom-nav-mobile {
+    display: flex; position: fixed; bottom: 0; left: 0; right: 0; height: 60px;
+    background: var(--sidebar-bg); border-top: 1px solid var(--sidebar-border);
+    z-index: 999; justify-content: space-around; align-items: center;
+  }
+  .bottom-nav-item { background: transparent; border: none; color: var(--sidebar-text); display: flex; flex-direction: column; align-items: center; font-size: 11px; cursor: pointer; padding: 6px; flex: 1; min-height: 44px; }
+  .bottom-nav-item.active { color: var(--sidebar-active); font-weight: 700; }
+  .bottom-nav-item .nav-icon { font-size: 18px; margin-bottom: 2px; }
+}
 </style>
 </head>
 <body>
@@ -320,6 +357,21 @@ label.fl{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppe
 <script src="dados/ruas-de-terra.js"></script>
 <script src="dados/teotonio-vilela.js"></script>
 <script src="dados/_index.js"></script>
+
+<!-- MÓDULOS ARQUITETURA GESTOR OBRAS (FEV 2026) -->
+<script src="js/config.js"></script>
+<script src="js/auth/session.js"></script>
+<script src="js/sync/db.js"></script>
+<script src="js/sync/photoQueue.js"></script>
+<script src="js/sync/outbox.js"></script>
+<script src="js/domain/rdo.js"></script>
+<script src="js/domain/diario.js"></script>
+<script src="js/domain/pendencias.js"></script>
+<script src="js/ui/saveBar.js"></script>
+<script src="js/ui/centralHoje.js"></script>
+<script src="js/ui/approvalFlow.js"></script>
+<script src="js/ui/pendenciasScreen.js"></script>
+<script src="js/components/designSystem.js"></script>
 <script>
 /* ============================================================
    Gestor — Controle de Obras (estático, multi-obra, localStorage)
@@ -458,14 +510,18 @@ function enfileirarDiario(obraId,d){if(!BACKEND||isDemo())return;
   outboxAdd({id:'ob'+uid(),obra:obraId,tipo:'diario',dados:d,params:item});outboxFlush();}
 function enfileirarDelDiario(obraId,id){if(!BACKEND||isDemo())return;outboxAdd({id:'ob'+uid(),obra:obraId,tipo:'delDiario',params:{action:'deleteDiario',id:id}});outboxFlush();}
 
-/* --- leitura do servidor (CSV) e reconciliação com pendências --- */
+/* --- leitura do servidor (endpoints autenticados) e reconciliação com pendências --- */
 async function carregarObra(obraId){
   if(isDemo())return;                 // modo demonstração: sync pausado (não sobrescreve os dados fictícios)
-  if(!BACKEND||!CONFIG.csv.rdo)return;
+  if(!BACKEND)return;
   try{
-    const [rdoRows,diaRows]=await Promise.all([fetchCSV(CONFIG.csv.rdo),CONFIG.csv.diario?fetchCSV(CONFIG.csv.diario):Promise.resolve([])]);
-    const srvLanc=rdoRows.filter(o=>String(o.obra).trim()===obraId).map(rowToLanc);
-    const srvDia =diaRows.filter(o=>String(o.obra).trim()===obraId).map(rowToDiario);
+    const token = getToken();
+    const [rdoResp, diaResp] = await Promise.all([
+      postAcao({ action: 'obterRDO', obra: obraId, token }),
+      postAcao({ action: 'obterDiario', obra: obraId, token })
+    ]);
+    const srvLanc = (rdoResp && rdoResp.ok && Array.isArray(rdoResp.rdo) ? rdoResp.rdo : []).map(rowToLanc);
+    const srvDia  = (diaResp && diaResp.ok && Array.isArray(diaResp.diario) ? diaResp.diario : []).map(rowToDiario);
     // mantém pendências ainda não confirmadas no servidor
     const pendCli=new Set(outboxLer().filter(it=>it.tipo==='rdo').map(it=>it.clientId));
     const naoConf=getLanc(obraId).filter(l=>pendCli.has(l.clientId||l.id)&&!srvLanc.some(s=>(s.clientId||s.id)===(l.clientId||l.id)));
@@ -570,13 +626,14 @@ const NAV=[
     {id:'rdo',ic:'⊕',t:'Lançar serviços'},
     {id:'diario',ic:'📋',t:'Diário de Obra',badge:o=>getDiarios(o.id).length},
     {id:'equip',ic:'🚜',t:'Equipamentos'},
+    {id:'pendencias',ic:'⚠️',t:'Pendências'},
     {id:'historico',ic:'≡',t:'Histórico',badge:o=>getLanc(o.id).length},
   ]},
   {grupo:'Documentos',itens:[
     {id:'projetos',ic:'📐',t:'Projetos',badge:o=>(o.projetos||[]).length},
   ]},
 ];
-const TITULOS={executivo:'Painel Executivo',servicos:'Serviços',medicao:'Medição Física',rdo:'Lançar serviços',diario:'Diário de Obra',equip:'Equipamentos',historico:'Histórico',projetos:'Projetos'};
+const TITULOS={executivo:'Painel Executivo',servicos:'Serviços',medicao:'Medição Física',rdo:'Lançar serviços',diario:'Diário de Obra',equip:'Equipamentos',pendencias:'Pendências de Campo',historico:'Histórico',projetos:'Projetos'};
 
 function render(){
   const app=el('app');
@@ -612,6 +669,14 @@ function viewTela(o){
     case 'rdo':return viewRDO(o);
     case 'diario':return viewDiario(o);
     case 'equip':return viewEquip(o);
+    case 'pendencias': {
+      setTimeout(() => {
+        if (window.GestorPendenciasScreen) {
+          window.GestorPendenciasScreen.render('pendencias-container', [], o.nome);
+        }
+      }, 50);
+      return `<div id="pendencias-container"></div>`;
+    }
     case 'projetos':return viewProjetos(o);
     case 'historico':return viewHistorico(o);
     default:return viewExecutivo(o);
@@ -640,15 +705,28 @@ async function fazerLogin(){
   if(!p){el('loginErro').textContent='Informe a senha.';return;}
   el('loginErro').textContent='Entrando...';
   try{
-    // login via POST (FormData): a senha NÃO trafega na URL/query (fora de logs e histórico)
     const r=await postAcao({action:'login',usuario:u,senha:p});
-    if(r&&r.ok&&r.token){setToken(r.token,r.usuario);outboxFlush();render();}
+    if(r&&r.ok&&r.token){
+      if(window.GestorAuth) window.GestorAuth.setSession(r);
+      setToken(r.token,r.usuario);outboxFlush();render();
+    }
     else el('loginErro').textContent=(r&&/CREDENC/i.test(r.error||''))?'Usuário ou senha incorretos.':((r&&r.error)||'Falha ao entrar.');
   }catch(e){el('loginErro').textContent='Sem conexão com o servidor.';}
 }
 
 /* ---------- HOME ---------- */
 function viewHome(){
+  setTimeout(() => {
+    if (window.GestorCentralHoje) {
+      window.GestorCentralHoje.render('central-hoje-container', {
+        obraAtiva: estado.obraId ? OBRAS[estado.obraId].nome : 'Portfólio Completo',
+        rdo: getLanc(estado.obraId || 'tv'),
+        diario: getDiarios(estado.obraId || 'tv'),
+        equipamentos: [],
+        pendencias: []
+      });
+    }
+  }, 50);
   const cards=ORDEM.map(id=>{
     const o=OBRAS[id];
     if(o.externo){
@@ -694,7 +772,7 @@ function viewHome(){
       <button class="btn btn-sm btn-pri" onclick="abrirApresentacao()" title="Modo apresentação">▶ Apresentar</button>
       ${isDemo()?`<button class="btn btn-sm" style="border-color:var(--amarelo);color:var(--amarelo)" onclick="sairDemo()" title="Sair da demonstração">● Demo ativo</button>`:`<button class="btn btn-sm btn-ghost" onclick="carregarDemo()" title="Preencher com dados de demonstração (local)">🎬 Demo</button>`}
       <button class="btn btn-sm btn-ghost" onclick="toggleTema()" title="Tema">◐</button></header>
-    <div class="content">${resumo}<div class="obras-grid">${cards}
+    <div class="content"><div id="central-hoje-container"></div>${resumo}<div class="obras-grid">${cards}
       <div class="obra-card add"><div style="font-size:30px;margin-bottom:8px">＋</div>
         <div style="font-weight:600;color:var(--text-2)">Adicionar nova obra</div>
         <div class="obra-meta" style="margin-top:6px">Crie um arquivo em <b>dados/</b> e registre em <b>_index.js</b>.<br>Passo a passo no README.</div></div>
