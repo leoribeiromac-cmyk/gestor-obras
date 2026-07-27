@@ -309,8 +309,8 @@ label.fl{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppe
 #apres .ap-ctrl button:hover{background:rgba(255,255,255,.16)}
 /* --- GESTOR OBRAS UI & SAVE BAR STYLES --- */
 .save-bar {
-  position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
-  z-index: 1000; padding: 10px 20px; border-radius: 30px;
+  position: fixed; bottom: 20px; right: 20px;
+  z-index: 1000; padding: 10px 20px; border-radius: 30px; max-width: calc(100vw - 40px);
   font-size: 13.5px; font-weight: 600; display: flex; align-items: center; gap: 10px;
   box-shadow: 0 8px 30px rgba(0,0,0,0.25); transition: all 0.3s ease;
 }
@@ -359,19 +359,9 @@ label.fl{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppe
 <script src="dados/_index.js"></script>
 
 <!-- MÓDULOS ARQUITETURA GESTOR OBRAS (FEV 2026) -->
-<script src="js/config.js"></script>
 <script src="js/auth/session.js"></script>
-<script src="js/sync/db.js"></script>
-<script src="js/sync/photoQueue.js"></script>
-<script src="js/sync/outbox.js"></script>
-<script src="js/domain/rdo.js"></script>
-<script src="js/domain/diario.js"></script>
-<script src="js/domain/pendencias.js"></script>
 <script src="js/ui/saveBar.js"></script>
 <script src="js/ui/centralHoje.js"></script>
-<script src="js/ui/approvalFlow.js"></script>
-<script src="js/ui/pendenciasScreen.js"></script>
-<script src="js/components/designSystem.js"></script>
 <script>
 /* ============================================================
    Gestor — Controle de Obras (estático, multi-obra, localStorage)
@@ -431,6 +421,8 @@ const CONFIG = {
   usuarios: ['Leonardo', 'Wallace', 'Guilherme'],
   exigirLogin: true
 };
+window.CONFIG = CONFIG;   // fonte unica: os modulos leem este mesmo objeto
+setTimeout(()=>{window.outboxFlush=outboxFlush;},0);   // botao 'Enviar agora' da barra de status
 const BACKEND = !!CONFIG.appsScript;
 
 /* --- sessão/login --- */
@@ -472,7 +464,7 @@ function csvNum(v){if(typeof v==='number')return v;if(v==null||v==='')return 0;l
 function csvISO(v){if(!v)return '';v=String(v).trim();if(/^\d{4}-\d{2}-\d{2}/.test(v))return v.slice(0,10);const m=v.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);if(m)return m[3]+'-'+('0'+m[2]).slice(-2)+'-'+('0'+m[1]).slice(-2);return v.slice(0,10);}
 function csvBool(v){return v===true||String(v).toLowerCase()==='true';}
 function jparse(s,def){try{return JSON.parse(s||'');}catch(e){return def;}}
-function rowToLanc(o){return {id:o.id,clientId:o.clientid||o.id,dataISO:csvISO(o.data),rua:o.rua,capId:o.capid===''?null:parseInt(csvNum(o.capid),10),servico:o.servico,un:o.un,qtd:csvNum(o.qtd),efetivo:csvNum(o.efetivo),estIni:o.estini||'',estFim:o.estfim||'',clima:o.clima,obs:o.obs,avulso:csvBool(o.avulso),usuario:o.usuario||'',fotos:String(o.fotos||'').split(/[\s;]+/).filter(u=>/^https?:/.test(u)).map(u=>({thumb:'',url:u})),criadoEm:csvNum(o.criadoem)||Date.now()};}
+function rowToLanc(o){return {id:o.id,clientId:o.clientid||o.id,dataISO:csvISO(o.data),rua:o.rua,capId:o.capid===''?null:parseInt(csvNum(o.capid),10),servico:o.servico,un:o.un,qtd:csvNum(o.qtd),efetivo:csvNum(o.efetivo),estIni:o.estini||'',estFim:o.estfim||'',clima:o.clima,obs:o.obs,avulso:csvBool(o.avulso),usuario:o.usuario||'',fotos:String(o.fotos||'').split(/[\s;]+/).filter(u=>/^https?:/.test(u)||/^drive_id:/.test(u)).map(u=>({thumb:'',url:u})),criadoEm:csvNum(o.criadoem)||Date.now()};}
 function rowToDiario(o){return {id:o.id,dataISO:csvISO(o.data),climaManha:o.climamanha,climaTarde:o.climatarde,condicao:o.condicao,pessoal:jparse(o.pessoal,[]),equipamentos:jparse(o.equipamentos,[]),ocorrencias:o.ocorrencias,usuario:o.usuario||'',criadoEm:csvNum(o.criadoem)||Date.now()};}
 
 /* --- fila offline (outbox) --- */
@@ -492,12 +484,10 @@ async function outboxFlush(){
   }
 }
 function atualizaOutboxUI(){
-  let elx=el('outboxInd'); const n=outboxLer().length;
-  if(!n){if(elx)elx.remove();return;}
-  if(!elx){elx=document.createElement('div');elx.id='outboxInd';
-    elx.style.cssText='position:fixed;bottom:20px;right:20px;z-index:150;background:var(--amarelo);color:#fff;padding:9px 14px;border-radius:20px;font-size:12.5px;font-weight:700;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.3)';
-    elx.onclick=()=>outboxFlush(); document.body.appendChild(elx);}
-  elx.textContent='⇅ '+n+' p/ enviar';
+  // indicador unico: a barra de status (save-bar) reflete a fila real de envio.
+  const n=outboxLer().length;
+  const estadoSync=isDemo()?'demo':(!navigator.onLine&&n?'offline':(n?'pending':'synced'));
+  window.dispatchEvent(new CustomEvent('gestor:syncStateChange',{detail:{state:estadoSync,pendingCount:n}}));
 }
 
 /* --- envio (enfileira + tenta enviar) --- */
@@ -1040,14 +1030,36 @@ function enviarFotos(obraId,lancId,fulls){
 }
 // O link "drive.google.com/uc?id=" NAO renderiza em <img> (Google devolve pagina de
 // verificacao). O formato /thumbnail?id=...&sz= funciona para arquivos publicos.
-function fotoURL(u){
-  u=String(u||'');if(!u)return '';
-  if(!/drive\.google\.com/.test(u))return u;
-  const m=u.match(/[?&]id=([\w-]+)/)||u.match(/\/d\/([\w-]+)/);
-  return m?('https://drive.google.com/thumbnail?id='+m[1]+'&sz=w1600'):u;
+// As fotos ficam PRIVADAS no Drive e a planilha guarda "drive_id:<id>". Como um
+// arquivo privado nao abre em <img>, a imagem vem pelo backend (obterFoto) e fica
+// guardada como miniatura local. Links http antigos (fotos publicas) seguem valendo.
+function fotoFileId(f){
+  const u=String((f&&f.url)||'');
+  let m=u.match(/^drive_id:([\w-]+)/); if(m)return m[1];
+  m=u.match(/[?&]id=([\w-]+)/)||u.match(/\/d\/([\w-]+)/);
+  return (m&&/drive\.google\.com/.test(u))?m[1]:'';
 }
-function fotoSrc(f){return f.thumb||fotoURL(f.url);}        // tela: miniatura local (rapida, offline)
-function fotoSrcAlta(f){return fotoURL(f.url)||f.thumb||'';} // impressao: imagem grande do Drive
+function fotoHttp(f){const u=String((f&&f.url)||'');return /^https?:/.test(u)?u:'';}
+function fotoSrc(f){return f.thumb||fotoHttp(f);}
+function fotoSrcAlta(f){return f.thumb||fotoHttp(f);}
+// baixa as fotos que ainda nao tem miniatura local e guarda, para exibir e imprimir
+let _buscandoFotos=false;
+async function garantirFotos(obraId){
+  if(!BACKEND||isDemo()||_buscandoFotos||!getToken())return;
+  const arr=getLanc(obraId);
+  const faltando=[];
+  arr.forEach(l=>(l.fotos||[]).forEach(f=>{if(!f.thumb&&fotoFileId(f))faltando.push(f);}));
+  if(!faltando.length)return;
+  _buscandoFotos=true;
+  try{
+    for(const f of faltando.slice(0,12)){
+      try{const r=await postAcao({action:'obterFoto',fileId:fotoFileId(f)});
+        if(r&&r.ok&&r.dataUri)f.thumb=r.dataUri;}catch(e){break;}
+    }
+    setLanc(obraId,arr);
+    if(estado.obraId===obraId)render();
+  }finally{_buscandoFotos=false;}
+}
 function galeriaFotos(fotos,tam){
   tam=tam||58;
   return (fotos||[]).filter(f=>fotoSrc(f)).map(f=>`<img src="${esc(fotoSrc(f))}" alt="foto do serviço" loading="lazy" onclick="ampliarFoto('${esc(fotoSrc(f))}')" style="width:${tam}px;height:${tam}px;object-fit:cover;border-radius:6px;border:1px solid var(--border);cursor:zoom-in;margin:3px 3px 0 0">`).join('');
@@ -1714,7 +1726,7 @@ function enfileirarUpdateRDO(obraId,l){if(!BACKEND||isDemo())return;
 
 /* ============================================================ AÇÕES */
 function abrirObra(id){estado.obraId=id;estado.tela='executivo';estado.filtroRua='Todas';estado.mesMed='';estado.diarioData='';estado.projSel='';estado.painelFrente='Todas';estado.painelMes='Todos';_pdfDoc=null;_pdfUrl='';_pdfZoom=1;EQUIP=isDemo()?_demoEquip():{equipamentos:[],locadoras:[],apontamentos:[],carregado:false};render();
-  if(BACKEND)carregarObra(id).then(()=>{if(estado.obraId===id&&estado.tela!=='home')render();});}
+  if(BACKEND)carregarObra(id).then(()=>{if(estado.obraId===id&&estado.tela!=='home')render();garantirFotos(id);});}
 function abrirExterno(url){window.open(url,'_blank','noopener');}
 function setPFrente(v){estado.painelFrente=v;render();}
 function setPMes(v){estado.painelMes=v;render();}
@@ -2114,14 +2126,14 @@ function carregarDemo(){
   ORDEM.map(id=>OBRAS[id]).filter(o=>o&&!o.externo).forEach(o=>{const s=_demoSeed(o);setLanc(o.id,s.lanc);setDiarios(o.id,s.diarios);});
   EQUIP=_demoEquip();
   localStorage.setItem('gestor:demo',DEMO_VER);
-  toast('Modo demonstração ativado ✓');render();
+  toast('Modo demonstração ativado ✓');render();atualizaOutboxUI();
 }
 function sairDemo(){
   if(!confirm('Sair do modo demonstração e limpar os dados fictícios deste navegador?\n\nOs dados reais voltam a sincronizar da nuvem normalmente.'))return;
   ORDEM.map(id=>OBRAS[id]).filter(o=>o&&!o.externo).forEach(o=>{localStorage.removeItem(keyL(o.id));localStorage.removeItem('gestor:diario:'+o.id);});
   localStorage.removeItem('gestor:demo');
   EQUIP={equipamentos:[],locadoras:[],apontamentos:[],carregado:false};
-  estado.tela='home';estado.obraId=null;toast('Modo demonstração encerrado');render();outboxFlush();
+  estado.tela='home';estado.obraId=null;toast('Modo demonstração encerrado');render();atualizaOutboxUI();outboxFlush();
 }
 function atualizaDemoUI(){
   let b=el('demoBanner');
@@ -2146,7 +2158,9 @@ document.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&e.tar
 document.documentElement.setAttribute('data-theme',temaAtual());
 conferirDemoDesatualizada();
 render();
-if(BACKEND){atualizaOutboxUI();outboxFlush();window.addEventListener('online',outboxFlush);}
+if(BACKEND){atualizaOutboxUI();outboxFlush();
+  window.addEventListener('online',()=>{atualizaOutboxUI();outboxFlush();});
+  window.addEventListener('offline',atualizaOutboxUI);}
 if('serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(()=>{});}
 </script>
 <!-- Abertura cinematográfica (camada anterior ao login; sem assets em intro/frames/, o app segue como sempre) -->
