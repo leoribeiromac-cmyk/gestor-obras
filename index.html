@@ -376,7 +376,7 @@ const FUNCOES = ['Encarregado','Pedreiro','Servente','Operador de máquina','Mot
 const EQUIPS = ['Retroescavadeira','Escavadeira hidráulica','Pá-carregadeira','Motoniveladora','Rolo compactador','Placa vibratória','Caminhão basculante','Caminhão pipa','Vibroacabadora','Betoneira','Prancha/Guincho','Mini-carregadeira'];
 const CLIMA_OPC = ['Bom','Nublado','Chuva fraca','Chuva forte','Impraticável'];
 
-const estado = { obraId:null, tela:'home', filtroRua:'Todas', mesMed:'', diarioData:'', projSel:'', painelFrente:'Todas', painelMes:'Todos' };
+const estado = { obraId:null, tela:'home', filtroRua:'Todas', mesMed:'', diarioData:'', projSel:'', painelFrente:'Todas', painelMes:'Todos', galRua:'Todas', galMes:'Todos' };
 
 const el = id => document.getElementById(id);
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
@@ -510,8 +510,22 @@ async function carregarObra(obraId){
       postAcao({ action: 'obterRDO', obra: obraId, token }),
       postAcao({ action: 'obterDiario', obra: obraId, token })
     ]);
-    const srvLanc = (rdoResp && rdoResp.ok && Array.isArray(rdoResp.rdo) ? rdoResp.rdo : []).map(rowToLanc);
-    const srvDia  = (diaResp && diaResp.ok && Array.isArray(diaResp.diario) ? diaResp.diario : []).map(rowToDiario);
+    // O backend pode estar numa versao anterior (sem obterRDO/obterDiario). Nesse caso
+    // caimos no CSV publicado, como antes — a leitura continua funcionando ate a
+    // republicacao do Apps Script, em vez de falhar em silencio.
+    const semEndpoint = r => !r || (r.error && /desconhecida/i.test(r.error));
+    let srvLanc, srvDia;
+    if(semEndpoint(rdoResp)||semEndpoint(diaResp)){
+      console.warn('sync: backend antigo — usando CSV publicado');
+      const [rdoRows,diaRows]=await Promise.all([
+        CONFIG.csv&&CONFIG.csv.rdo?fetchCSV(CONFIG.csv.rdo):Promise.resolve([]),
+        CONFIG.csv&&CONFIG.csv.diario?fetchCSV(CONFIG.csv.diario):Promise.resolve([])]);
+      srvLanc=rdoRows.filter(o=>String(o.obra).trim()===obraId).map(rowToLanc);
+      srvDia =diaRows.filter(o=>String(o.obra).trim()===obraId).map(rowToDiario);
+    }else{
+      srvLanc = (rdoResp.ok && Array.isArray(rdoResp.rdo) ? rdoResp.rdo : []).map(rowToLanc);
+      srvDia  = (diaResp.ok && Array.isArray(diaResp.diario) ? diaResp.diario : []).map(rowToDiario);
+    }
     // mantém pendências ainda não confirmadas no servidor
     const pendCli=new Set(outboxLer().filter(it=>it.tipo==='rdo').map(it=>it.clientId));
     const naoConf=getLanc(obraId).filter(l=>pendCli.has(l.clientId||l.id)&&!srvLanc.some(s=>(s.clientId||s.id)===(l.clientId||l.id)));
@@ -619,10 +633,11 @@ const NAV=[
     {id:'historico',ic:'≡',t:'Histórico',badge:o=>getLanc(o.id).length},
   ]},
   {grupo:'Documentos',itens:[
+    {id:'galeria',ic:'📷',t:'Galeria de Fotos',badge:o=>getLanc(o.id).reduce((n,l)=>n+((l.fotos||[]).length),0)},
     {id:'projetos',ic:'📐',t:'Projetos',badge:o=>(o.projetos||[]).length},
   ]},
 ];
-const TITULOS={executivo:'Painel Executivo',servicos:'Serviços',medicao:'Medição Física',rdo:'Lançar serviços',diario:'Diário de Obra',equip:'Equipamentos',historico:'Histórico',projetos:'Projetos'};
+const TITULOS={executivo:'Painel Executivo',servicos:'Serviços',medicao:'Medição Física',rdo:'Lançar serviços',diario:'Diário de Obra',equip:'Equipamentos',historico:'Histórico',galeria:'Galeria de Fotos',projetos:'Projetos'};
 
 function render(){
   const app=el('app');
@@ -658,6 +673,7 @@ function viewTela(o){
     case 'rdo':return viewRDO(o);
     case 'diario':return viewDiario(o);
     case 'equip':return viewEquip(o);
+    case 'galeria':return viewGaleria(o);
     case 'projetos':return viewProjetos(o);
     case 'historico':return viewHistorico(o);
     default:return viewExecutivo(o);
@@ -753,16 +769,6 @@ function viewHome(){
 
 /* ---------- PAINEL EXECUTIVO DA OBRA ---------- */
 function viewExecutivo(o){
-  setTimeout(() => {
-    if (window.GestorCentralHoje) {
-      window.GestorCentralHoje.render('central-hoje-container', {
-        obraAtiva: o.nome,
-        rdo: getLanc(o.id),
-        diario: getDiarios(o.id),
-        equipamentos: []
-      });
-    }
-  }, 50);
   const serv=o.servicos||[]; const av=avancoServ(o);
   const pf=mediaPct(serv,av);
   const concl=serv.filter(s=>pctServ(s,av)>=99.95).length;
@@ -788,7 +794,6 @@ function viewExecutivo(o){
       <td class="num" style="color:${CORD[nv]};font-weight:${nv==='crit'||nv==='aten'?'700':'400'}">${f.desvio==null?'—':(f.desvio>=0?'+':'')+fmtPct(f.desvio)}</td></tr>`;
   }).join('');
   return `
-  <div id="central-hoje-container"></div>
   <div class="row" style="margin-bottom:14px;align-items:center">
     <div class="chip">${serv.length} serviços · ${(o.frentes||[]).length} frentes</div>
     <button class="btn btn-sm" style="margin-left:auto" onclick="imprimirExecutivo()">📄 Relatório Executivo</button></div>
@@ -949,7 +954,11 @@ function viewServicos(o){
 
 /* ---------- CAMPO / RDO ---------- */
 function viewRDO(o){
-  return `<div class="grid g2" style="grid-template-columns:1fr 1fr;align-items:start">
+  // A Central de Campo vive aqui: e a tela que o pessoal de obra abre todo dia.
+  setTimeout(()=>{ if(window.GestorCentralHoje) window.GestorCentralHoje.render('central-hoje-container',{
+    obraAtiva:o.nome, rdo:getLanc(o.id), diario:getDiarios(o.id), equipamentos:[] }); },50);
+  return `<div id="central-hoje-container" style="margin-bottom:16px"></div>
+  <div class="grid g2" style="grid-template-columns:1fr 1fr;align-items:start">
     <div class="card"><div class="card-h"><div class="card-t">⊕ Novo apontamento</div>
       <div class="card-st">Produção física do dia por serviço</div></div><div class="card-b">
       <div class="row"><div class="field"><label class="fl" for="fData">Data</label><input type="date" id="fData" value="${hoje()}"></div>
@@ -1369,6 +1378,139 @@ function imprimirMedicaoEquip(){
   if(!aps.length){toast('Nenhum apontamento para os filtros escolhidos');return;}
   const periodo=fMes==='Todos'?'Todos os meses':mesLabel(fMes+'-01');
   abrirImpressao(htmlMedicaoEquip(o,aps,periodo));
+}
+
+/* ---------- GALERIA DE FOTOS ---------- */
+// junta todas as fotos da obra com o contexto do lançamento (serviço, trecho, data, autor)
+function fotosDaObra(o){
+  const out=[];
+  getLanc(o.id).forEach(l=>(l.fotos||[]).forEach((f,i)=>{
+    if(!fotoSrc(f)&&!fotoFileId(f))return;
+    out.push({foto:f,idx:i,lanc:l,src:fotoSrc(f),
+      legenda:l.servico,rua:l.rua,frente:frenteNome(o,l.capId),trecho:estacaTxt(l),
+      dataISO:l.dataISO,usuario:l.usuario||'',qtd:l.qtd,un:l.un});
+  }));
+  return out.sort((a,b)=>b.dataISO.localeCompare(a.dataISO)||(b.lanc.criadoEm||0)-(a.lanc.criadoEm||0));
+}
+function viewGaleria(o){
+  const todas=fotosDaObra(o);
+  if(!todas.length)return `<div class="empty"><div class="ic">📷</div>Nenhuma foto registrada nesta obra.<br>
+    <span class="kpi-s">Anexe fotos ao lançar um serviço, em <b>Lançar serviços</b>.</span></div>`;
+  const meses=[...new Set(todas.map(f=>f.dataISO.slice(0,7)))].sort().reverse();
+  const fs=todas.filter(f=>(estado.galRua==='Todas'||f.rua===estado.galRua)&&(estado.galMes==='Todos'||f.dataISO.slice(0,7)===estado.galMes));
+  const semImagem=fs.filter(f=>!f.src).length;
+  const filtros=`<div class="row" style="align-items:flex-end;margin-bottom:16px">
+    <div class="field" style="margin:0;max-width:240px"><label class="fl" for="galRua">Rua</label>
+      <select id="galRua" onchange="setGalRua(this.value)">
+        <option value="Todas">Todas as ruas</option>
+        ${o.ruas.map(r=>`<option ${estado.galRua===r?'selected':''}>${esc(r)}</option>`).join('')}</select></div>
+    <div class="field" style="margin:0;max-width:200px"><label class="fl" for="galMes">Mês</label>
+      <select id="galMes" onchange="setGalMes(this.value)">
+        <option value="Todos">Todos os meses</option>
+        ${meses.map(m=>`<option value="${m}" ${estado.galMes===m?'selected':''}>${mesLabel(m+'-01')}</option>`).join('')}</select></div>
+    <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+      <span class="chip">${fs.length} foto(s)</span>
+      <button class="btn btn-sm" onclick="baixarGaleria()" ${fs.length?'':'disabled'}>⬇ Baixar todas com marca d'água</button></div></div>`;
+  const cards=fs.map((f,i)=>`<div class="card" style="overflow:hidden;padding:0">
+    <div style="position:relative;background:var(--surface-2);cursor:zoom-in" onclick="abrirFotoGaleria(${i})">
+      ${f.src?`<img src="${esc(f.src)}" alt="${esc(f.legenda)}" loading="lazy" style="width:100%;height:170px;object-fit:cover;display:block">`
+             :`<div class="empty" style="height:170px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:10px"><div class="ic">☁</div><span style="font-size:11.5px">Imagem no servidor</span></div>`}
+      <span class="pill pill-grn" style="position:absolute;top:8px;left:8px;background:rgba(0,0,0,.6);color:#fff">${new Date(f.dataISO+'T00:00:00').toLocaleDateString('pt-BR')}</span></div>
+    <div style="padding:11px 13px">
+      <div style="font-weight:600;font-size:13px;line-height:1.3">${esc(f.legenda)}</div>
+      <div class="kpi-s" style="margin-top:3px">${esc(f.rua)}${f.trecho?' · '+esc(f.trecho):''}</div>
+      <div class="kpi-s">${esc(f.frente)}${f.usuario?' · por '+esc(f.usuario):''}</div>
+      <button class="btn btn-sm" style="width:100%;justify-content:center;margin-top:9px" onclick="event.stopPropagation();baixarFoto(${i})" ${f.src?'':'disabled'}>⬇ Baixar com marca d'água</button>
+    </div></div>`).join('');
+  return `${filtros}
+    ${semImagem?`<div class="card" style="margin-bottom:14px;border-left:3px solid var(--amarelo)"><div class="card-b" style="padding:11px 16px">
+      <b>${semImagem} foto(s) ainda no servidor.</b> <span class="kpi-s">Elas são baixadas automaticamente quando o backend estiver atualizado.</span></div></div>`:''}
+    <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(230px,1fr))">${cards}</div>
+    <div class="kpi-s" style="margin-top:14px">A marca d'água traz obra, contrato, serviço, trecho, data e responsável — para uso em relatórios e prestação de contas.</div>`;
+}
+function setGalRua(v){estado.galRua=v;render();}
+function setGalMes(v){estado.galMes=v;render();}
+function galeriaFiltrada(){const o=obra();
+  return fotosDaObra(o).filter(f=>(estado.galRua==='Todas'||f.rua===estado.galRua)&&(estado.galMes==='Todos'||f.dataISO.slice(0,7)===estado.galMes));}
+function abrirFotoGaleria(i){
+  const f=galeriaFiltrada()[i];if(!f)return;
+  abrirModal(esc(f.legenda),`
+    ${f.src?`<img src="${esc(f.src)}" alt="" style="width:100%;border-radius:8px">`:'<div class="empty">Imagem ainda no servidor.</div>'}
+    <div style="margin-top:12px;font-size:13.5px;line-height:1.7">
+      <div><b>Rua:</b> ${esc(f.rua)}${f.trecho?' · <b>Trecho:</b> '+esc(f.trecho):''}</div>
+      <div><b>Frente:</b> ${esc(f.frente)}</div>
+      <div><b>Quantidade:</b> ${fmtQtd(f.qtd)} ${esc(f.un)}</div>
+      <div><b>Data:</b> ${new Date(f.dataISO+'T00:00:00').toLocaleDateString('pt-BR')}${f.usuario?' · <b>Registrado por:</b> '+esc(f.usuario):''}</div>
+    </div>
+    <button class="btn btn-pri" style="width:100%;justify-content:center;margin-top:14px" onclick="baixarFoto(${i})" ${f.src?'':'disabled'}>⬇ Baixar com marca d'água</button>`);
+}
+// desenha a foto com uma tarja de identificação e devolve o JPEG
+function comMarcaDagua(f,o){
+  return new Promise((res,rej)=>{
+    const img=new Image();
+    img.onload=()=>{
+      const W=img.naturalWidth||img.width,H=img.naturalHeight||img.height;
+      const c=document.createElement('canvas');c.width=W;c.height=H;const x=c.getContext('2d');
+      x.drawImage(img,0,0,W,H);
+      const k=Math.max(W,H)/1000;                        // tipografia proporcional a foto
+      const fs=Math.max(12,Math.round(15*k)), pad=Math.round(14*k), lh=fs*1.45;
+      const marca='Gestor \u2014 Controle de Obras';
+      const linhas=[
+        `${o.nome}${o.contrato?' \u2014 '+o.contrato:''}`,
+        `${f.legenda}${f.trecho?'  \u00b7  '+f.trecho:''}`,
+        `${f.rua}  \u00b7  ${f.frente}  \u00b7  ${fmtQtd(f.qtd)} ${f.un}`,
+        `${new Date(f.dataISO+'T00:00:00').toLocaleDateString('pt-BR')}${f.usuario?'  \u00b7  Registrado por '+f.usuario:''}`
+      ];
+      const banda=pad*2+linhas.length*lh;
+      const topo=H-banda;
+      // tarja solida (legibilidade garantida) + degrade acima para nao cortar seco
+      x.fillStyle='rgba(0,0,0,.78)';x.fillRect(0,topo,W,banda);
+      const g=x.createLinearGradient(0,topo-fs*2,0,topo);
+      g.addColorStop(0,'rgba(0,0,0,0)');g.addColorStop(1,'rgba(0,0,0,.78)');
+      x.fillStyle=g;x.fillRect(0,topo-fs*2,W,fs*2);
+      // largura reservada para a assinatura do app, na ultima linha
+      x.font='bold '+Math.round(fs*.86)+'px Arial, Helvetica, sans-serif';
+      const wMarca=x.measureText(marca).width;
+      const cortar=(t,max)=>{if(x.measureText(t).width<=max)return t;
+        while(t.length>4&&x.measureText(t+'\u2026').width>max)t=t.slice(0,-1);return t+'\u2026';};
+      x.textBaseline='top';
+      linhas.forEach((t,i)=>{
+        x.font=(i===0?'bold ':'')+Math.round(i===0?fs*1.06:fs)+'px Arial, Helvetica, sans-serif';
+        x.fillStyle=i===0?'#8ff0c0':(i===3?'rgba(255,255,255,.85)':'#fff');
+        const livre=W-pad*2-(i===linhas.length-1?wMarca+pad:0);
+        x.fillText(cortar(t,livre),pad,topo+pad+i*lh);
+      });
+      x.font='bold '+Math.round(fs*.86)+'px Arial, Helvetica, sans-serif';
+      x.fillStyle='rgba(255,255,255,.7)';x.textAlign='right';
+      x.fillText(marca,W-pad,topo+pad+(linhas.length-1)*lh);x.textAlign='left';
+      res(c.toDataURL('image/jpeg',.9));
+    };
+    img.onerror=rej;img.src=f.src;
+  });
+}
+function nomeArquivoFoto(f){
+  const lim=t=>String(t||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^\w]+/g,'-').replace(/^-|-$/g,'').slice(0,40);
+  return `foto_${f.dataISO}_${lim(f.rua)}_${lim(f.legenda)}.jpg`;
+}
+async function baixarFoto(i){
+  const f=galeriaFiltrada()[i];if(!f||!f.src){toast('Imagem ainda não disponível neste aparelho');return;}
+  try{const url=await comMarcaDagua(f,obra());
+    const a=document.createElement('a');a.href=url;a.download=nomeArquivoFoto(f);a.click();
+    toast('Foto baixada ✓');
+  }catch(e){toast('Não foi possível preparar a imagem');}
+}
+async function baixarGaleria(){
+  const fs=galeriaFiltrada().filter(f=>f.src);
+  if(!fs.length){toast('Nenhuma imagem disponível para baixar');return;}
+  if(!confirm(`Baixar ${fs.length} foto(s) com marca d'água?`))return;
+  const o=obra();let n=0;
+  for(const f of fs){
+    try{const url=await comMarcaDagua(f,o);
+      const a=document.createElement('a');a.href=url;a.download=nomeArquivoFoto(f);a.click();n++;
+      await new Promise(r=>setTimeout(r,320));   // respiro entre downloads
+    }catch(e){}
+  }
+  toast(n+' foto(s) baixada(s) ✓');
 }
 
 /* ---------- PROJETOS (PDFs) ---------- */
@@ -2148,6 +2290,7 @@ function toggleTema(){const t=temaAtual()==='dark'?'light':'dark';localStorage.s
 function toast(m){let t=el('toast');if(!t){t=document.createElement('div');t.id='toast';t.className='toast';document.body.appendChild(t);}
   t.textContent=m;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),2200);}
 function bind(){if(estado.tela==='rdo')atualizaServ();if(estado.tela==='projetos')renderPdfDoc(estado.projSel);
+  if(estado.tela==='galeria'&&estado.obraId)garantirFotos(estado.obraId);
   if(estado.tela==='equip'){if(BACKEND&&!EQUIP.carregado)carregarEquip();eqInitSign();eqCalcHoras();}
   atualizaDemoUI();}
 

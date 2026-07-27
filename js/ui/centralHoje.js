@@ -18,8 +18,8 @@
               <span class="pill pill-acc">Central de Campo • ${hoje.split('-').reverse().join('/')}</span>
               <h2 class="central-hoje-title">Resumo Operacional do Dia</h2>
             </div>
-            <button id="btn-central-lancar" class="btn btn-primary btn-lg" onclick="ir('rdo')">
-              🚜 Lançar Serviço
+            <button id="btn-central-lancar" class="btn btn-primary btn-lg" onclick="ir('diario')">
+              📋 Abrir Diário de Obra
             </button>
           </div>
 

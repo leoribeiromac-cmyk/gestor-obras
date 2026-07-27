@@ -24,14 +24,12 @@ var ABA_EQUIP      = 'Equipamentos';
 var ABA_LOCADORA   = 'Locadoras';
 var ABA_APONT      = 'ApontEquip';
 var ABA_AUDITORIA  = 'Auditoria';
-var ABA_PENDENCIAS = 'Pendencias';
 
 var HEADERS = {
   'Equipamentos': ['nome','tipo','vinculo','locadora','obra','ativo'],
   'Locadoras':    ['nome','observacoes','obra'],
   'ApontEquip':   ['carimbo','obra','data','turno','equipamento','operador','inicio','fim','horas','paradas','horimIni','horimFim','combustivel','situacao','observacoes','assinatura','clientId'],
-  'Auditoria':    ['carimbo','usuario','perfil','acao','obra','registroId','detalhesAnteriores','detalhesNovos'],
-  'Pendencias':   ['id','carimbo','obra','ruaEstaca','servico','responsavel','prazo','status','descricao','fotoUrl','usuario']
+  'Auditoria':    ['carimbo','usuario','perfil','acao','obra','registroId','detalhesAnteriores','detalhesNovos']
 };
 
 function doGet(e)  { return rotear(e); }
@@ -46,14 +44,14 @@ function rotear(e) {
       'obterRDO', 'obterDiario', 'addBatchRDO', 'deleteRDO', 'updateRDO', 'rdoFoto',
       'addDiario', 'updateDiario', 'deleteDiario',
       'equipListar', 'equipCadastrar', 'equipDesativar', 'locadoraCadastrar', 'equipApontar', 'equipApagar', 'equipApontamentos',
-      'obterFoto', 'aprovarRDO', 'fecharMedicao', 'cadastrarPendencia', 'listarPendencias', 'atualizarPendencia'
+      'obterFoto'
     ];
     if (PROTEGIDAS.indexOf(action) !== -1) {
       var falha = exigirTokenSeAtivo(p.token);
       if (falha) return responder(falha, p.callback);
     }
     switch (action) {
-      case 'ping':              resp = { ok: true, pong: true, abas: [ABA_RDO, ABA_DIARIO, ABA_EQUIP, ABA_PENDENCIAS] }; break;
+      case 'ping':              resp = { ok: true, pong: true, abas: [ABA_RDO, ABA_DIARIO, ABA_EQUIP] }; break;
       case 'login':             resp = loginUsuario(p.usuario, p.senha); break;
       case 'obterRDO':          resp = obterRDO(p.obra); break;
       case 'obterDiario':       resp = obterDiario(p.obra); break;
@@ -72,10 +70,6 @@ function rotear(e) {
       case 'equipApontar':      resp = equipApontar(p); break;
       case 'equipApagar':       resp = deleteLinhaPorId(ABA_APONT, p.carimbo, 'carimbo', p.token); break;
       case 'equipApontamentos': resp = equipApontamentos(p.obra, p.mes); break;
-      case 'aprovarRDO':        resp = aprovarRDO(p.id, p.statusAprovacao, p.token); break;
-      case 'cadastrarPendencia':resp = cadastrarPendencia(p); break;
-      case 'listarPendencias':  resp = listarPendencias(p.obra); break;
-      case 'atualizarPendencia':resp = atualizarPendencia(p); break;
       default:
         resp = { ok: false, error: 'Ação desconhecida: "' + action + '"' };
     }
@@ -467,13 +461,6 @@ function updateLinha(nomeAba, payloadJson, token) {
 }
 
 // -------------------- FLUXO DE APROVAÇÃO & MEDIÇÃO --------------------
-function aprovarRDO(id, statusAprovacao, token) {
-  var sess = sessaoDoToken(token);
-  if (!sess || (sess.perfil !== 'admin' && sess.perfil !== 'engenheiro')) {
-    return { ok: false, error: 'PERMISSAO_NEGADA', mensagem: 'Apenas engenheiros ou admins podem aprovar RDOs.' };
-  }
-  return updateLinha(ABA_RDO, JSON.stringify({ id: id, statusAprovacao: statusAprovacao || 'Aprovado' }), token);
-}
 
 // ==================== EQUIPAMENTOS ====================
 function getOrCreate(nomeAba) {
@@ -590,36 +577,8 @@ function equipApontamentos(obra, mes) {
 }
 
 // -------------------- MÓDULO DE PENDÊNCIAS (SNAG LIST) --------------------
-function cadastrarPendencia(p) {
-  var sess = sessaoDoToken(p.token) || { usuario: 'anonimo' };
-  var lock = LockService.getScriptLock(); lock.waitLock(30000);
-  try {
-    var id = 'PEND_' + Date.now();
-    appendObj(ABA_PENDENCIAS, {
-      id: id,
-      carimbo: Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm'),
-      obra: p.obra || '',
-      ruaEstaca: p.ruaEstaca || '',
-      servico: p.servico || '',
-      responsavel: p.responsavel || '',
-      prazo: p.prazo || '',
-      status: p.status || 'Aberto',
-      descricao: p.descricao || '',
-      fotoUrl: p.fotoUrl || '',
-      usuario: sess.usuario
-    });
-    return { ok: true, id: id };
-  } finally { lock.releaseLock(); }
-}
 
-function listarPendencias(obra) {
-  var list = linhasObj(ABA_PENDENCIAS, obra);
-  return { ok: true, pendencias: list };
-}
 
-function atualizarPendencia(p) {
-  return updateLinha(ABA_PENDENCIAS, JSON.stringify(p), p.token);
-}
 
 // -------------------- BACKUP DIÁRIO --------------------
 function configurarGatilhos() {
