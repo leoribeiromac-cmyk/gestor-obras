@@ -299,6 +299,12 @@ label.fl{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppe
 #apres .ap-doc-frame iframe.doc-a4{position:absolute;top:0;left:0;transform-origin:top left;pointer-events:none}
 #apres .ap-doc-frame iframe.proj{width:100%;height:100%;pointer-events:none}
 #apres .ap-doc-lbl{font-size:12.5px;color:rgba(242,237,227,.72);margin-top:9px;text-align:center;font-weight:600}
+#apres .ap-gal{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+#apres .ap-gal figure{margin:0;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:12px;overflow:hidden}
+#apres .ap-gal img{width:100%;height:16vh;min-height:96px;object-fit:cover;display:block}
+#apres .ap-gal figcaption{padding:7px 9px;font-size:11px;line-height:1.3;color:rgba(242,237,227,.78)}
+#apres .ap-gal figcaption b{display:block;color:#f2ede3;font-size:12.5px;margin-bottom:2px}
+@media(max-width:900px){#apres .ap-gal{grid-template-columns:repeat(2,1fr)}}
 #apres .ap-caps{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:13px;margin-top:24px}
 #apres .ap-cap{display:flex;gap:12px;align-items:flex-start;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.09);border-radius:12px;padding:13px 16px}
 #apres .ap-cap .ic{font-size:22px;line-height:1.1}#apres .ap-cap b{display:block;font-size:14.5px;margin-bottom:2px}#apres .ap-cap span{font-size:12.5px;color:rgba(242,237,227,.62);line-height:1.4}
@@ -2002,6 +2008,7 @@ function apMontarSlides(){
   const s=[{tipo:'capa'},{tipo:'capacidades'}];
   geridas.forEach(o=>{const tem=getLanc(o.id).length;s.push({tipo:'obra',o});
     if(tem){s.push({tipo:'operacao',o});s.push({tipo:'ruas',o});}
+    if(tem&&fotosDaObra(o).some(f=>f.src))s.push({tipo:'galeria',o});
     if((o.projetos||[]).length)s.push({tipo:'projetos',o});
     if(tem)s.push({tipo:'relatorios',o,doc:'exec'});
     if(tem)s.push({tipo:'relatorios',o,doc:'rdo'});
@@ -2022,6 +2029,7 @@ function apSlideHTML(sl){
       ['📋','Diário de Obra','Efetivo, equipamentos, clima e ocorrências — PDF pronto'],
       ['🚜','Equipamentos','Horas, paradas, horímetro, combustível e assinatura'],
       ['⌗','Medição Física','Produção do mês por serviço, com exportação'],
+      ['📷','Galeria de Fotos','Registro fotográfico com marca d\'água para prestação de contas'],
       ['📐','Projetos','Pranchas renderizadas offline, com zoom'],
       ['≡','Histórico','Consulta auditável por data, com edição'],
       ['☁','Sincronização','Nuvem com fila offline — funciona sem sinal no campo']
@@ -2075,6 +2083,15 @@ function apSlideHTML(sl){
       <h2>Avanço por estaca, rua a rua</h2>
       <div class="ap-sub" style="margin-bottom:16px">Cada barra é uma estaca; a altura mostra os serviços executados naquele trecho.</div>
       <div class="ap-two">${o.ruas.map((rua,ri)=>cena3D(o,rua,ri,lf,maxG)).join('')}</div></div>`;
+  }
+  if(sl.tipo==='galeria'){
+    const o=sl.o, fotos=fotosDaObra(o).filter(f=>f.src).slice(0,8);
+    const total=fotosDaObra(o).length;
+    return `<div class="ap-slide"><div class="ap-kicker">${esc(o.nome)} · registro fotográfico</div>
+      <h2>Cada serviço com prova de execução</h2>
+      <div class="ap-sub" style="margin-bottom:16px">${total} foto(s) anexadas no campo, organizadas por rua e por mês. O download sai com marca d'água — obra, serviço, trecho, data e responsável — pronto para prestação de contas.</div>
+      <div class="ap-gal">${fotos.map(f=>`<figure><img src="${esc(f.src)}" alt="${esc(f.legenda)}">
+        <figcaption><b>${esc(f.legenda)}</b>${esc(f.rua)}${f.trecho?' · '+esc(f.trecho):''}<br>${new Date(f.dataISO+'T00:00:00').toLocaleDateString('pt-BR')}${f.usuario?' · '+esc(f.usuario):''}</figcaption></figure>`).join('')}</div></div>`;
   }
   if(sl.tipo==='projetos'){
     const o=sl.o,projs=o.projetos||[];const porRua={};projs.forEach(p=>{(porRua[p.rua]=porRua[p.rua]||[]).push(p);});
