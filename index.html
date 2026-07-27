@@ -1498,7 +1498,7 @@ function comMarcaDagua(f,o,src){
       const linhas=[
         {t:o.nome, cor:'#8ff0c0', bold:true},
         {t:f.legenda+(f.trecho?'   \u00b7   '+f.trecho:''), cor:'#ffffff'},
-        {t:[f.rua,f.frente,fmtQtd(f.qtd)+' '+f.un].filter(Boolean).join('   \u00b7   '), cor:'rgba(255,255,255,.88)'},
+        {t:[f.rua,f.frente].filter(Boolean).join('   \u00b7   '), cor:'rgba(255,255,255,.88)'},
         {t:new Date(f.dataISO+'T00:00:00').toLocaleDateString('pt-BR')+(f.usuario?'   \u00b7   '+f.usuario:'')+(o.contrato?'   \u00b7   '+o.contrato:''), cor:'rgba(255,255,255,.7)'}
       ];
       const banda=pad*2+linhas.length*lh-(lh-fs);
