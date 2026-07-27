@@ -993,6 +993,42 @@ function viewRDO(o){
       <div class="card-st">${getLanc(o.id).length} no total</div></div>
       <div class="card-b" id="ultimos">${listaUltimos(o)}</div></div></div>`;
 }
+/* --- guarda a foto em resolucao boa no proprio aparelho (IndexedDB) ---
+   O localStorage e pequeno demais para imagens grandes; a miniatura continua
+   nele (rapida de desenhar) e a imagem cheia fica aqui, para download e impressao. */
+const IDB_NOME='gestorFotos', IDB_STORE='fotos';
+function idbAbrir(){
+  return new Promise((res,rej)=>{
+    const r=indexedDB.open(IDB_NOME,1);
+    r.onupgradeneeded=()=>{const d=r.result;if(!d.objectStoreNames.contains(IDB_STORE))d.createObjectStore(IDB_STORE);};
+    r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error);
+  });
+}
+async function fotoGuardarFull(chave,dataUrl){
+  try{const d=await idbAbrir();
+    await new Promise((res,rej)=>{const t=d.transaction(IDB_STORE,'readwrite');
+      t.objectStore(IDB_STORE).put(dataUrl,chave);t.oncomplete=res;t.onerror=()=>rej(t.error);});
+  }catch(e){/* sem IndexedDB: segue so com a miniatura */}
+}
+async function fotoLerFull(chave){
+  try{const d=await idbAbrir();
+    return await new Promise((res,rej)=>{const t=d.transaction(IDB_STORE,'readonly');
+      const q=t.objectStore(IDB_STORE).get(chave);q.onsuccess=()=>res(q.result||'');q.onerror=()=>rej(q.error);});
+  }catch(e){return '';}
+}
+function fotoChave(obraId,lancId,i){return obraId+':'+lancId+':'+i;}
+// melhor imagem disponivel: a cheia no aparelho > a do servidor > a miniatura
+async function fotoMelhorSrc(obraId,lanc,f,idx){
+  const full=await fotoLerFull(fotoChave(obraId,lanc.id,idx));
+  if(full)return full;
+  const id=fotoFileId(f);
+  if(id&&BACKEND&&!isDemo()&&getToken()){
+    try{const r=await postAcao({action:'obterFoto',fileId:id});
+      if(r&&r.ok&&r.dataUri){fotoGuardarFull(fotoChave(obraId,lanc.id,idx),r.dataUri);return r.dataUri;}}catch(e){}
+  }
+  return fotoSrc(f)||'';
+}
+
 /* ---------- FOTOS DO RDO (comprime no aparelho, envia ao Drive via backend) ---------- */
 const MAX_FOTOS=3;
 let _fotosRDO=[];   // {thumb, full}
@@ -1444,48 +1480,51 @@ function abrirFotoGaleria(i){
     </div>
     <button class="btn btn-pri" style="width:100%;justify-content:center;margin-top:14px" onclick="baixarFoto(${i})" ${f.src?'':'disabled'}>⬇ Baixar com marca d'água</button>`);
 }
-// desenha a foto com uma tarja de identificação e devolve o JPEG
-function comMarcaDagua(f,o){
+// desenha a foto com uma tarja de identificacao e devolve o JPEG
+function comMarcaDagua(f,o,src){
   return new Promise((res,rej)=>{
     const img=new Image();
     img.onload=()=>{
-      const W=img.naturalWidth||img.width,H=img.naturalHeight||img.height;
+      let W=img.naturalWidth||img.width, H=img.naturalHeight||img.height;
+      // fotos pequenas (so a miniatura disponivel) sao ampliadas para a tarja
+      // nao dominar a imagem; acima de 900px de largura fica como esta.
+      const alvo=1280, escala=W<900?Math.min(alvo/W,3):1;
+      W=Math.round(W*escala);H=Math.round(H*escala);
       const c=document.createElement('canvas');c.width=W;c.height=H;const x=c.getContext('2d');
+      x.imageSmoothingQuality='high';
       x.drawImage(img,0,0,W,H);
-      const k=Math.max(W,H)/1000;                        // tipografia proporcional a foto
-      const fs=Math.max(12,Math.round(15*k)), pad=Math.round(14*k), lh=fs*1.45;
-      const marca='Gestor \u2014 Controle de Obras';
+      const fs=Math.max(13,Math.round(W/46));            // proporcional a largura
+      const pad=Math.round(fs*0.9), lh=Math.round(fs*1.5);
       const linhas=[
-        `${o.nome}${o.contrato?' \u2014 '+o.contrato:''}`,
-        `${f.legenda}${f.trecho?'  \u00b7  '+f.trecho:''}`,
-        `${f.rua}  \u00b7  ${f.frente}  \u00b7  ${fmtQtd(f.qtd)} ${f.un}`,
-        `${new Date(f.dataISO+'T00:00:00').toLocaleDateString('pt-BR')}${f.usuario?'  \u00b7  Registrado por '+f.usuario:''}`
+        {t:o.nome, cor:'#8ff0c0', bold:true},
+        {t:f.legenda+(f.trecho?'   \u00b7   '+f.trecho:''), cor:'#ffffff'},
+        {t:[f.rua,f.frente,fmtQtd(f.qtd)+' '+f.un].filter(Boolean).join('   \u00b7   '), cor:'rgba(255,255,255,.88)'},
+        {t:new Date(f.dataISO+'T00:00:00').toLocaleDateString('pt-BR')+(f.usuario?'   \u00b7   '+f.usuario:'')+(o.contrato?'   \u00b7   '+o.contrato:''), cor:'rgba(255,255,255,.7)'}
       ];
-      const banda=pad*2+linhas.length*lh;
+      const banda=pad*2+linhas.length*lh-(lh-fs);
       const topo=H-banda;
-      // tarja solida (legibilidade garantida) + degrade acima para nao cortar seco
-      x.fillStyle='rgba(0,0,0,.78)';x.fillRect(0,topo,W,banda);
-      const g=x.createLinearGradient(0,topo-fs*2,0,topo);
-      g.addColorStop(0,'rgba(0,0,0,0)');g.addColorStop(1,'rgba(0,0,0,.78)');
-      x.fillStyle=g;x.fillRect(0,topo-fs*2,W,fs*2);
-      // largura reservada para a assinatura do app, na ultima linha
-      x.font='bold '+Math.round(fs*.86)+'px Arial, Helvetica, sans-serif';
-      const wMarca=x.measureText(marca).width;
+      x.fillStyle='rgba(0,0,0,.72)';x.fillRect(0,topo,W,banda);
+      const g=x.createLinearGradient(0,topo-fs*2.2,0,topo);
+      g.addColorStop(0,'rgba(0,0,0,0)');g.addColorStop(1,'rgba(0,0,0,.72)');
+      x.fillStyle=g;x.fillRect(0,topo-fs*2.2,W,fs*2.2);
       const cortar=(t,max)=>{if(x.measureText(t).width<=max)return t;
         while(t.length>4&&x.measureText(t+'\u2026').width>max)t=t.slice(0,-1);return t+'\u2026';};
-      x.textBaseline='top';
-      linhas.forEach((t,i)=>{
-        x.font=(i===0?'bold ':'')+Math.round(i===0?fs*1.06:fs)+'px Arial, Helvetica, sans-serif';
-        x.fillStyle=i===0?'#8ff0c0':(i===3?'rgba(255,255,255,.85)':'#fff');
-        const livre=W-pad*2-(i===linhas.length-1?wMarca+pad:0);
-        x.fillText(cortar(t,livre),pad,topo+pad+i*lh);
+      x.textBaseline='top';x.textAlign='left';
+      linhas.forEach((L,i)=>{
+        x.font=(L.bold?'bold ':'')+Math.round(i===0?fs*1.08:fs)+'px Arial, Helvetica, sans-serif';
+        x.fillStyle=L.cor;
+        x.fillText(cortar(L.t,W-pad*2),pad,topo+pad+i*lh);
       });
-      x.font='bold '+Math.round(fs*.86)+'px Arial, Helvetica, sans-serif';
-      x.fillStyle='rgba(255,255,255,.7)';x.textAlign='right';
-      x.fillText(marca,W-pad,topo+pad+(linhas.length-1)*lh);x.textAlign='left';
-      res(c.toDataURL('image/jpeg',.9));
+      // assinatura no canto superior direito: longe do texto, sem risco de colisao
+      x.font='bold '+Math.round(fs*.82)+'px Arial, Helvetica, sans-serif';
+      x.textAlign='right';
+      x.shadowColor='rgba(0,0,0,.65)';x.shadowBlur=Math.round(fs*.5);
+      x.fillStyle='rgba(255,255,255,.9)';
+      x.fillText('Gestor \u2014 Controle de Obras',W-pad,pad);
+      x.shadowBlur=0;x.textAlign='left';
+      res(c.toDataURL('image/jpeg',.92));
     };
-    img.onerror=rej;img.src=f.src;
+    img.onerror=rej;img.src=src;
   });
 }
 function nomeArquivoFoto(f){
@@ -1493,19 +1532,23 @@ function nomeArquivoFoto(f){
   return `foto_${f.dataISO}_${lim(f.rua)}_${lim(f.legenda)}.jpg`;
 }
 async function baixarFoto(i){
-  const f=galeriaFiltrada()[i];if(!f||!f.src){toast('Imagem ainda não disponível neste aparelho');return;}
-  try{const url=await comMarcaDagua(f,obra());
+  const f=galeriaFiltrada()[i];if(!f){return;}
+  const o=obra();
+  const src=await fotoMelhorSrc(o.id,f.lanc,f.foto,f.idx);
+  if(!src){toast('Imagem ainda não disponível neste aparelho');return;}
+  try{const url=await comMarcaDagua(f,o,src);
     const a=document.createElement('a');a.href=url;a.download=nomeArquivoFoto(f);a.click();
     toast('Foto baixada ✓');
   }catch(e){toast('Não foi possível preparar a imagem');}
 }
 async function baixarGaleria(){
-  const fs=galeriaFiltrada().filter(f=>f.src);
+  const fs=galeriaFiltrada();
   if(!fs.length){toast('Nenhuma imagem disponível para baixar');return;}
   if(!confirm(`Baixar ${fs.length} foto(s) com marca d'água?`))return;
   const o=obra();let n=0;
   for(const f of fs){
-    try{const url=await comMarcaDagua(f,o);
+    try{const src=await fotoMelhorSrc(o.id,f.lanc,f.foto,f.idx); if(!src)continue;
+      const url=await comMarcaDagua(f,o,src);
       const a=document.createElement('a');a.href=url;a.download=nomeArquivoFoto(f);a.click();n++;
       await new Promise(r=>setTimeout(r,320));   // respiro entre downloads
     }catch(e){}
@@ -1921,6 +1964,8 @@ function salvar(){
   // as fotos só sobem DEPOIS que a linha do lançamento existe no servidor —
   // senão o rdoFoto não acha a linha para anexar o link (a foto ia pro Drive e o link se perdia)
   const _fotosFull=_fotosRDO.map(f=>f.full);
+  // guarda a imagem cheia no aparelho: e ela que vai para download e impressao
+  _fotosFull.forEach((full,i)=>fotoGuardarFull(fotoChave(o.id,novo.id,i),full));
   Promise.resolve(enfileirarRDO(o.id,novo)).then(()=>{
     if(!_fotosFull.length)return;
     const pend=outboxLer().some(it=>it.clientId===novo.id);   // ainda na fila = servidor não confirmou
