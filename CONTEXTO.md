@@ -4,7 +4,7 @@
 > contexto do projeto sem precisar reler o histórico de conversa. Descreve o app, as
 > decisões tomadas, o que está pendente e como trabalhar no repositório.
 >
-> **Última atualização:** commit `5d6c02a` · Service Worker `v23`
+> **Última atualização:** módulo de Notas Fiscais (DANFE) · Service Worker `v24`
 
 ---
 
@@ -46,19 +46,22 @@ gestor-obras/
 │   ├── _index.js           window.OBRAS_ORDEM — ordem dos cards
 │   ├── ruas-de-terra.js    Obra 119 (56 serviços, 6 frentes, 2 ruas)
 │   └── teotonio-vilela.js  Obra externa (só encaminha)
-├── js/                     Só 3 módulos, todos realmente usados
+├── js/                     Módulos complementares, todos realmente usados
 │   ├── auth/session.js     GestorAuth.setSession (chamado no login)
 │   ├── ui/saveBar.js       Barra de status de sincronização
-│   └── ui/centralHoje.js   "Central de Campo" (topo do Lançar serviços)
+│   ├── ui/centralHoje.js   "Central de Campo" (topo do Lançar serviços)
+│   └── nf/notas.js         Notas Fiscais (DANFE): leitura, estoque, pedidos, painel
 ├── assets/                 Logo, ícones, favicon
 ├── projetos/               PDFs de projeto por rua
 ├── vendor/                 pdfjs, xlsx, gsap, lenis (vendorizados)
 ├── intro/                  Abertura cinematográfica (antes do login)
-├── tests/sCurve.test.js    Testes de cálculo (rodar: node tests/sCurve.test.js)
+├── tests/sCurve.test.js    ⚠ QUEBRADO desde `849e8e9` (pede js/domain/rdo.js, apagado)
+├── tests/notas.test.js     Testes das Notas Fiscais (rodar: node tests/notas.test.js)
 └── .github/workflows/ci.yml
 ```
 
-**O `index.html` é o app.** Quase tudo vive nele. Os `js/` são complementos.
+**O `index.html` é o app.** Quase tudo vive nele. Os `js/` são complementos — o de Notas
+Fiscais é o único grande, e ficou separado de propósito para o `index.html` não crescer mais.
 
 ---
 
@@ -105,7 +108,10 @@ Obra externa: `{id, externo:true, url, nome, contrato, local, valorGlobal}`.
 | `gestor:token` / `gestor:usuario` | sessão |
 | `gestor:tema` | light/dark |
 | `gestor:demo` | versão do modo demonstração (`DEMO_VER`) |
-| IndexedDB `gestorFotos` / store `fotos` | **imagens em resolução cheia** (1280px) |
+| `gestor:nf:<obraId>` | notas fiscais (com a miniatura da imagem) |
+| `gestor:nfmov:<obraId>` | movimentos de estoque gerados pelas notas |
+| `gestor:pedidos:<obraId>` | pedidos de compra |
+| IndexedDB `gestorFotos` / store `fotos` | **imagens em resolução cheia** — fotos do RDO (1280px) e notas fiscais (1600px, chave `nf:<obra>:<id>`) |
 
 **Por que IndexedDB:** o localStorage é pequeno demais para imagens. A miniatura (320px)
 fica no localStorage para desenhar rápido; a imagem grande vai para o IndexedDB e é usada
@@ -124,6 +130,7 @@ em download e impressão.
 | Operação | Diário de Obra | `diario` | Efetivo, equipamentos, clima, ocorrências, imprimir RDO |
 | Operação | Equipamentos | `equip` | Apontamento (horas/paradas/horímetro/combustível/assinatura), cadastros, medição Excel e PDF |
 | Operação | Histórico | `historico` | RDOs por data, editar/excluir, PDF e Excel |
+| Suprimentos | **Notas Fiscais** | `notas` | Sub-abas Notas / Estoque / Pedidos / Painel. Fotografa a DANFE e preenche sozinho |
 | Documentos | **Galeria de Fotos** | `galeria` | Grade de fotos, filtros rua/mês, download com marca d'água |
 | Documentos | Projetos | `projetos` | PDFs renderizados com PDF.js, zoom |
 
@@ -227,11 +234,17 @@ Planilha única para todas as obras. Abas: `RDO`, `Diario`, `Equipamentos`, `Loc
 | `obterFoto` | devolve a imagem privada como data URI |
 | `addDiario` / `updateDiario` / `deleteDiario` | diário (upsert por obra+data) |
 | `equipListar`, `equipCadastrar`, `equipDesativar`, `locadoraCadastrar`, `equipApontar`, `equipApagar`, `equipApontamentos` | equipamentos |
+| `nfListar` / `nfSalvar` / `nfExcluir` | notas fiscais (upsert por `clientId`) |
+| `nfImagem` | imagem da nota no Drive, em `Notas Fiscais/<obra>/<ano>/<mês>` |
+| `nfLerIA` | OCR + interpretação da DANFE via Gemini (chave em `GEMINI_API_KEY`) |
+| `pedidoSalvar` / `pedidoExcluir` | pedidos de compra |
 
 Segurança: senha com **hash SHA-256** (aceita texto puro para compatibilidade), **bloqueio
 após 5 tentativas** (15 min), token em cache, aba de **Auditoria**, e `EXIGIR_TOKEN`.
 
-Propriedades do script: `USUARIOS` (JSON) e `EXIGIR_TOKEN=true`.
+Propriedades do script: `USUARIOS` (JSON), `EXIGIR_TOKEN=true` e — só para a leitura da
+nota por imagem — `GEMINI_API_KEY` (e `GEMINI_MODEL`, opcional). Sem a chave da IA o
+módulo de notas continua funcionando pelo código de barras e pela digitação.
 
 ### ⚠️ Como publicar (só o Leonardo consegue)
 Existe a skill **`publicar-backend-gestor`** com o passo a passo e verificação.
@@ -280,13 +293,17 @@ Fotos tiradas antes do commit `b21f7bf` não têm a imagem cheia no aparelho. Sa
 | **Excel sem fotos** | Decisão explícita do usuário |
 | Central de Campo em **Lançar serviços** | O Painel Executivo é da diretoria; a Central é do campo |
 | Endpoints de pendências/aprovação **removidos** | Existiam no backend sem nenhuma tela |
+| Nota fiscal lida por **código de barras → chave → IA → digitação** | A chave tem dígito verificador: é o único caminho sem chance de erro de leitura |
+| **Sem consulta à SEFAZ** | O XML oficial exige certificado A1/A3, que o Apps Script não usa |
+| Catálogo de materiais **aprendido das notas** | Não existe cadastro de material no app, e obrigar a cadastrar antes de usar mataria o módulo |
+| Módulo de notas em **arquivo próprio** | O `index.html` já tem 2.400 linhas |
 
 ---
 
 ## 9. Como trabalhar neste repositório
 
 ### Git
-- Branch de trabalho: **`claude/bold-wozniak-fmedci`**
+- Branch de trabalho atual: **`claude/leia-contexto-md-vbnhc2`** (antes: `claude/bold-wozniak-fmedci`)
 - O usuário quer o **merge em `main`** a cada entrega (o Pages publica de `main`).
   Fluxo usado:
   ```bash
@@ -300,7 +317,7 @@ Fotos tiradas antes do commit `b21f7bf` não têm a imagem cheia no aparelho. Sa
 
 ### Sempre que mudar arquivos servidos
 **Suba a versão do cache** em `sw.js` (`gestor-obras-vNN`), senão o usuário continua vendo
-a versão antiga. Hoje: **v23**. E oriente o **Ctrl/Cmd+Shift+R**.
+a versão antiga. Hoje: **v24**. E oriente o **Ctrl/Cmd+Shift+R**.
 
 ### Testar (o ambiente tem Playwright + Chromium)
 ```bash
@@ -320,7 +337,10 @@ while((m=re.exec(h))){i++;try{new Function(m[1]);}catch(e){console.log('ERRO',i,
 console.log('ok',i)"
 ```
 
-Testes de cálculo: `node tests/sCurve.test.js` (é assim que o CI roda).
+Testes: `node tests/notas.test.js` (passa) e `node tests/sCurve.test.js` (**quebrado desde
+`849e8e9`** — pede `js/domain/rdo.js`, que foi apagado na limpeza dos módulos órfãos, e
+testa um modelo com R$ que o app não usa). O CI roda os dois, então está vermelho por
+causa do segundo. Decidir com o Leonardo: consertar ou apagar.
 
 ### Cuidados aprendidos (erros já cometidos)
 - **`pkill` mata o próprio shell** deste ambiente (exit 144). Evite.
@@ -361,6 +381,7 @@ Em ordem cronológica, do mais antigo ao mais recente:
 | `b21f7bf` | Imagem cheia no IndexedDB + marca d'água proporcional |
 | `ffaff22` | Quantidade fora da marca d'água |
 | `5d6c02a` | Cena da Galeria na apresentação |
+| _atual_ | **Controle de Notas Fiscais (DANFE)**: leitura por código de barras/chave/IA, imagem no Drive por obra→ano→mês, estoque com lote e rastreabilidade, pedidos de compra com baixa automática, painel, pesquisa, status e auditoria |
 
 ### Sobre a revisão do "antigravity"
 Outra ferramenta de IA gerou ~1.400 linhas. Trouxe coisas boas (**leitura privada**, **hash
@@ -381,6 +402,8 @@ navegador e conferir 404 + erros de console + módulos órfãos** antes de segui
 
 | Ideia | Impacto | Esforço |
 |---|---|---|
+| Cena de Notas Fiscais no Modo Apresentação | O módulo é vendável e hoje não aparece na apresentação | Baixo |
+| Saída de material do estoque (hoje só entra) | Fecha o ciclo do almoxarifado | Médio |
 | Resumo diário automático por e-mail (Apps Script) | Gestor recebe sem abrir o app | Baixo-médio |
 | Assinatura digital no RDO (reusar o canvas dos equipamentos) | Fecha o documento | Baixo |
 | Busca e filtros no Histórico | Hoje são 81 RDOs em lista corrida | Baixo |

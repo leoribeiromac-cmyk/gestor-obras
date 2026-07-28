@@ -2,7 +2,7 @@
 
 Sistema **único e multi-obra** da Gestor Engenharia para acompanhamento **físico** de obras
 públicas (SIURB/PMSP): painel executivo, serviços, RDO de campo, **diário de obra**, medição
-física e histórico.
+física, **controle de notas fiscais de material** e histórico.
 O acompanhamento é por **serviço físico** (quantidade × unidade) e **percentual de avanço** —
 **sem valores em R$** e **sem itens indiretos** (transporte, taxas, ensaios, mão de obra de
 projeto, locações etc. ficam de fora).
@@ -21,6 +21,7 @@ Ata 079/SMSUB/COGEL).
 ```
 gestor-obras/
   index.html            App completo (telas + lógica)
+  js/nf/notas.js        Módulo de Notas Fiscais (DANFE): leitura, estoque, pedidos, painel
   dados/
     _index.js           Lista/ordem das obras exibidas
     ruas-de-terra.js    Dados da obra 119 (identidade + frentes + serviços + cronograma)
@@ -147,3 +148,54 @@ Enquanto o `CONFIG.appsScript` estiver vazio, o backend fica desligado e nada mu
   edite/adicione serviços em `servicos` no arquivo da obra.
 - A **data de início** (`inicioISO`) da obra 119 está provisória; ajuste para a data real da
   ordem de serviço em `dados/ruas-de-terra.js`.
+
+---
+
+## Notas Fiscais (DANFE)
+
+Aba **Suprimentos ▸ Notas Fiscais**. Feita para o apontador em campo: o caminho
+normal é **fotografar a nota e conferir** — não digitar.
+
+### Como o apontador usa
+1. **Nova nota fiscal** → **Fotografar a nota** (ou escolher da galeria).
+2. O app comprime a imagem, guarda a versão grande no aparelho e manda para o
+   Drive **em segundo plano**.
+3. Enquanto isso, tenta ler os dados nesta ordem:
+   1. **Código de barras / QR da DANFE** → chave de acesso;
+   2. **Chave de acesso** → número, série, CNPJ do emitente, UF e mês de emissão
+      (conferidos pelo dígito verificador, então não tem erro de leitura);
+   3. **Leitura da imagem (OCR + IA)** no backend → fornecedor, valores e produtos;
+   4. o que faltar, **digita**.
+4. A tela de conferência abre preenchida. Campo que a leitura não teve certeza
+   vem **marcado em amarelo com "confira"** — e tudo é editável.
+5. **Salvar**. Nada trava se a leitura falhar: dá para salvar só com o número e o valor.
+
+O leitor de código de barras é o do próprio navegador (`BarcodeDetector`),
+disponível no **Chrome do Android** — que é o aparelho do campo. Em aparelho sem
+suporte o app avisa e segue pela leitura da imagem ou pela digitação da chave.
+
+### O que o módulo faz junto
+- **Fornecedor** reconhecido pelo CNPJ: da segunda nota em diante já vem preenchido,
+  sem cadastrar duas vezes. O CNPJ é validado pelo dígito verificador.
+- **Materiais**: o catálogo é aprendido das próprias notas. O app sugere o vínculo
+  quando a descrição bate (e **não** confunde bitolas — "DN 400" não casa com "DN 600").
+- **Estoque**: ao salvar, gera a entrada com **lote** (`NF <número>/<série>`), atualiza
+  saldo e mantém o caminho de volta até a nota que originou cada movimento.
+- **Pedido de compra**: cadastre o pedido e, quando a nota chegar, os itens são
+  **baixados sozinhos**; o pedido vira Parcial ou Atendido. Reenviar a mesma nota
+  não baixa em dobro.
+- **Divergências**: aponta itens + frete que não fecham com o total, CNPJ inválido,
+  chave inválida e nota sem número.
+- **Painel**: valor recebido, notas por mês, principais fornecedores, materiais mais
+  recebidos, notas por obra e situação da conferência.
+- **Pesquisa** por número, fornecedor, CNPJ, material, responsável, valor, status e período.
+- **Auditoria**: quem cadastrou, quem alterou, o que mudou e como a nota foi lida.
+
+### Status
+`Recebida → Em análise → Conferida → Divergência encontrada → Integrada ao estoque →
+Integrada ao pedido de compra → Cancelada`
+
+### Sem backend
+Funciona igual, só que as notas ficam **no aparelho** (como o RDO) e a imagem não
+sobe para o Drive. Para ligar a sincronização e a leitura por imagem, veja
+**SETUP-BACKEND.md**.

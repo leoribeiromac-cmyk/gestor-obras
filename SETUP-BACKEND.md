@@ -90,3 +90,73 @@ Em ~1 minuto o app passa a **pedir login** e a **gravar/ler do Sheets**.
 - Troque as senhas do `USUARIOS`. Com `EXIGIR_TOKEN=true`, quem não tem senha **não grava**.
 - A leitura é pública (CSV) — os dados de produção da obra ficam visíveis para quem tiver a URL
   do CSV. Não coloque dados sensíveis nas abas.
+
+---
+
+# Notas Fiscais (DANFE) — o que o backend precisa
+
+O módulo **Notas Fiscais** funciona sozinho no aparelho. Para as notas
+sincronizarem entre celulares e a imagem ir para o Drive, o `Code.gs` deste
+repositório precisa estar publicado (é o mesmo arquivo — basta republicar).
+
+## Abas
+Não precisa criar nada à mão: o script cria as abas **`NotasFiscais`** e
+**`Pedidos`** na primeira vez que forem usadas, já com os cabeçalhos certos.
+Se preferir criar antes:
+
+```
+NotasFiscais: id | clientId | obra | numero | serie | chave | dataEmissao | dataEntrada |
+              cnpj | razaoSocial | nomeFantasia | municipio | uf | vProd | vFrete | vTotal |
+              vBaseICMS | vICMS | itens | obs | responsavel | status | driveId | driveLink |
+              leitura | historico | usuario | criadoEm | atualizadoEm
+
+Pedidos:      id | obra | numero | data | fornecedor | cnpj | itens | status | usuario | criadoEm
+```
+
+## Onde as imagens ficam no Drive
+O script cria e organiza sozinho, tudo **privado**:
+
+```
+Notas Fiscais Gestor Obras (Privado)/
+└── <id da obra>/
+    └── <ano>/
+        └── <mês por extenso>/
+            └── NF-<número>_<id>.jpg
+```
+
+Refotografar a mesma nota **substitui** o arquivo, não acumula cópias.
+
+## Leitura automática da nota (OCR + IA) — opcional
+Sem isso o app continua funcionando: ele lê o **código de barras da DANFE** e a
+**chave de acesso** (que já dá número, série, CNPJ do emitente e UF com certeza)
+e o restante é digitado. Ligando a leitura por imagem, o resto vem preenchido
+também.
+
+Em **⚙ Configurações do projeto ▸ Propriedades do script**:
+
+| Propriedade | Valor |
+|---|---|
+| `GEMINI_API_KEY` | a chave da API (pegue em https://aistudio.google.com/apikey) |
+| `GEMINI_MODEL` | `gemini-2.5-flash` — opcional, é o padrão |
+
+Escolhi o Gemini porque o backend já é Google (Apps Script + Sheets + Drive):
+basta a chave numa propriedade, sem conta de serviço, sem projeto no Google
+Cloud e sem biblioteca nova. **A chave nunca aparece no app** — quem chama a API
+é o Apps Script.
+
+Para conferir se pegou, abra no navegador:
+`SUA_URL_EXEC?action=nfListar&obra=ruas-de-terra`
+
+- `TOKEN_INVALIDO` → ✅ a versão nova está no ar
+- `Ação desconhecida: "nfListar"` → ❌ faltou republicar
+
+> **Por que não consultar a SEFAZ pela chave?** A consulta oficial do XML exige
+> certificado digital A1/A3 da empresa, que o Apps Script não consegue usar. Por
+> isso a ordem é: código de barras → chave de acesso → leitura da imagem →
+> digitação. A chave sozinha já entrega os campos que mais dão erro de digitação.
+
+## Segurança
+- Todas as ações de nota fiscal exigem token (login), como as demais.
+- As imagens ficam **privadas** no Drive; o app as busca pelo backend.
+- Toda gravação, alteração, exclusão e leitura automática entra na aba
+  **`Auditoria`**, com usuário, data e o que mudou.

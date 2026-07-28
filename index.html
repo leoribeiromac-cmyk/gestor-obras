@@ -353,6 +353,40 @@ label.fl{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppe
   .bottom-nav-item.active { color: var(--sidebar-active); font-weight: 700; }
   .bottom-nav-item .nav-icon { font-size: 18px; margin-bottom: 2px; }
 }
+
+/* --- NOTAS FISCAIS --- */
+.nf-grid{grid-template-columns:repeat(auto-fill,minmax(280px,1fr))}
+.nf-card{overflow:hidden;padding:0;display:flex;flex-direction:column;transition:all .2s cubic-bezier(.2,0,0,1)}
+.nf-card:hover{transform:translateY(-3px);box-shadow:var(--sh-md);border-color:var(--border-strong)}
+.nf-card-img{position:relative;background:var(--surface-2);cursor:zoom-in;height:150px;overflow:hidden}
+.nf-card-img img{width:100%;height:150px;object-fit:cover;object-position:top center;display:block}
+.nf-card-sem{height:150px;display:flex;align-items:center;justify-content:center;font-size:40px;opacity:.35}
+.nf-card-st{position:absolute;top:8px;left:8px;background:rgba(0,0,0,.62);color:#fff;backdrop-filter:blur(3px)}
+.nf-card-b{padding:12px 14px 13px;flex:1;display:flex;flex-direction:column}
+.nf-sep{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);
+  margin:18px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--border)}
+.nf-alerta{border-radius:var(--r-sm);padding:10px 13px;font-size:12.5px;line-height:1.45;margin-bottom:13px}
+.nf-alerta-red{background:rgba(217,100,90,.13);border:1px solid rgba(217,100,90,.34);color:var(--text)}
+.nf-alerta-ylw{background:rgba(217,165,51,.13);border:1px solid rgba(217,165,51,.34);color:var(--text)}
+input.nf-confira,select.nf-confira,textarea.nf-confira{border-color:var(--amarelo);background:rgba(217,165,51,.07)}
+.nf-tag-confira{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:20px;font-size:9px;
+  font-weight:700;letter-spacing:.06em;background:rgba(217,165,51,.18);color:var(--amarelo)}
+.nf-item{border:1px solid var(--border);border-radius:var(--r-sm);padding:10px 11px 8px;margin-bottom:9px;background:var(--surface-2)}
+.nf-vinc{font-size:11.5px;color:var(--muted);line-height:1.6;padding:2px 0}
+.nf-vinc b{color:var(--text-2)}
+.nf-chip-sug{cursor:pointer;padding:2px 9px;font-size:11px;margin:2px 3px 2px 0;border-style:dashed}
+.nf-chip-sug:hover{background:var(--accent);color:#fff;border-color:var(--accent)}
+.nf-passo{display:flex;gap:10px;align-items:flex-start;padding:7px 0;font-size:13.5px}
+.nf-1linha{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media(max-width:700px){
+  .nf-grid{grid-template-columns:1fr}
+  .nf-card-img,.nf-card-img img,.nf-card-sem{height:180px}
+  .nf-item .row>.field{min-width:0}
+  /* o apontador entra aqui para lançar: o botão vem primeiro e inteiro */
+  .nf-topo{flex-direction:column-reverse;align-items:stretch;gap:12px}
+  .nf-topo .nf-nova{margin-left:0;width:100%;justify-content:center;padding:13px 16px;font-size:15px}
+  .nf-topo>div{justify-content:center}
+}
 </style>
 </head>
 <body>
@@ -368,6 +402,7 @@ label.fl{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppe
 <script src="js/auth/session.js"></script>
 <script src="js/ui/saveBar.js"></script>
 <script src="js/ui/centralHoje.js"></script>
+<script src="js/nf/notas.js"></script>
 <script>
 /* ============================================================
    Gestor — Controle de Obras (estático, multi-obra, localStorage)
@@ -382,7 +417,8 @@ const FUNCOES = ['Encarregado','Pedreiro','Servente','Operador de máquina','Mot
 const EQUIPS = ['Retroescavadeira','Escavadeira hidráulica','Pá-carregadeira','Motoniveladora','Rolo compactador','Placa vibratória','Caminhão basculante','Caminhão pipa','Vibroacabadora','Betoneira','Prancha/Guincho','Mini-carregadeira'];
 const CLIMA_OPC = ['Bom','Nublado','Chuva fraca','Chuva forte','Impraticável'];
 
-const estado = { obraId:null, tela:'home', filtroRua:'Todas', mesMed:'', diarioData:'', projSel:'', painelFrente:'Todas', painelMes:'Todos', galRua:'Todas', galMes:'Todos' };
+const estado = { obraId:null, tela:'home', filtroRua:'Todas', mesMed:'', diarioData:'', projSel:'', painelFrente:'Todas', painelMes:'Todos', galRua:'Todas', galMes:'Todos',
+  nfTab:'notas', nfBusca:'', nfStatus:'Todos', nfMes:'Todos', nfLimite:24 };
 
 const el = id => document.getElementById(id);
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
@@ -638,12 +674,15 @@ const NAV=[
     {id:'equip',ic:'🚜',t:'Equipamentos'},
     {id:'historico',ic:'≡',t:'Histórico',badge:o=>getLanc(o.id).length},
   ]},
+  {grupo:'Suprimentos',itens:[
+    {id:'notas',ic:'🧾',t:'Notas Fiscais',badge:o=>nfTotal(o.id)},
+  ]},
   {grupo:'Documentos',itens:[
     {id:'galeria',ic:'📷',t:'Galeria de Fotos',badge:o=>getLanc(o.id).reduce((n,l)=>n+((l.fotos||[]).length),0)},
     {id:'projetos',ic:'📐',t:'Projetos',badge:o=>(o.projetos||[]).length},
   ]},
 ];
-const TITULOS={executivo:'Painel Executivo',servicos:'Serviços',medicao:'Medição Física',rdo:'Lançar serviços',diario:'Diário de Obra',equip:'Equipamentos',historico:'Histórico',galeria:'Galeria de Fotos',projetos:'Projetos'};
+const TITULOS={executivo:'Painel Executivo',servicos:'Serviços',medicao:'Medição Física',rdo:'Lançar serviços',diario:'Diário de Obra',equip:'Equipamentos',historico:'Histórico',notas:'Notas Fiscais',galeria:'Galeria de Fotos',projetos:'Projetos'};
 
 function render(){
   const app=el('app');
@@ -679,6 +718,7 @@ function viewTela(o){
     case 'rdo':return viewRDO(o);
     case 'diario':return viewDiario(o);
     case 'equip':return viewEquip(o);
+    case 'notas':return viewNotas(o);
     case 'galeria':return viewGaleria(o);
     case 'projetos':return viewProjetos(o);
     case 'historico':return viewHistorico(o);
@@ -870,11 +910,11 @@ function detalheEstaca(ri,i){
     :`<div class="empty" style="padding:30px"><div class="ic">◔</div>Nenhum serviço lançado nesta estaca${(estado.painelFrente!=='Todas'||estado.painelMes!=='Todos')?' com os filtros atuais':''}.</div>`;
   abrirModal(`Estaca E${i} — ${esc(rua)}`,`<div class="kpi-s" style="margin-bottom:4px">${ls.length} serviço(s) executado(s) no trecho da estaca</div>${body}`);
 }
-function abrirModal(titulo,html){
+function abrirModal(titulo,html,larg){
   fecharModal();
   const bg=document.createElement('div');bg.className='modal-bg';bg.id='modalBg';
   bg.onclick=e=>{if(e.target===bg)fecharModal();};
-  bg.innerHTML=`<div class="modal"><div class="modal-h"><div class="card-t">${titulo}</div>
+  bg.innerHTML=`<div class="modal"${larg?` style="max-width:${+larg}px"`:''}><div class="modal-h"><div class="card-t">${titulo}</div>
     <button class="btn btn-sm btn-ghost" onclick="fecharModal()">✕</button></div>
     <div style="padding:14px 20px 20px">${html}</div></div>`;
   document.body.appendChild(bg);
@@ -2222,13 +2262,13 @@ function apFechar(){
 /* ============================================================ MODO DEMONSTRAÇÃO
    Carrega dados FICTÍCIOS só neste navegador (sem sincronizar com a nuvem), para
    apresentar o sistema completo. Pausa o sync (carregarObra) enquanto ativo. */
-const DEMO_VER='2';   // suba a versão sempre que o conteúdo da demo mudar
+const DEMO_VER='3';   // suba a versão sempre que o conteúdo da demo mudar
 function isDemo(){return !!localStorage.getItem('gestor:demo');}
 // Se a demo já estava ligada com um conteúdo antigo (ex.: antes das fotos), regenera
 // sozinha ao abrir — senão o usuário veria a demo velha achando que o app não atualizou.
 function conferirDemoDesatualizada(){
   if(!isDemo()||localStorage.getItem('gestor:demo')===DEMO_VER)return;
-  ORDEM.map(id=>OBRAS[id]).filter(o=>o&&!o.externo).forEach(o=>{const d=_demoSeed(o);setLanc(o.id,d.lanc);setDiarios(o.id,d.diarios);});
+  ORDEM.map(id=>OBRAS[id]).filter(o=>o&&!o.externo).forEach(o=>{const d=_demoSeed(o);setLanc(o.id,d.lanc);setDiarios(o.id,d.diarios);nfDemoCarregar(o);});
   EQUIP=_demoEquip();
   localStorage.setItem('gestor:demo',DEMO_VER);
 }
@@ -2327,14 +2367,14 @@ function _demoSeed(o){
 }
 function carregarDemo(){
   if(!confirm('Carregar DADOS DE DEMONSTRAÇÃO (fictícios)?\n\nPreenche as obras com lançamentos, diários e equipamentos de exemplo — só neste navegador, para apresentação. A sincronização com a nuvem fica pausada até você sair da demonstração.'))return;
-  ORDEM.map(id=>OBRAS[id]).filter(o=>o&&!o.externo).forEach(o=>{const s=_demoSeed(o);setLanc(o.id,s.lanc);setDiarios(o.id,s.diarios);});
+  ORDEM.map(id=>OBRAS[id]).filter(o=>o&&!o.externo).forEach(o=>{const s=_demoSeed(o);setLanc(o.id,s.lanc);setDiarios(o.id,s.diarios);nfDemoCarregar(o);});
   EQUIP=_demoEquip();
   localStorage.setItem('gestor:demo',DEMO_VER);
   toast('Modo demonstração ativado ✓');render();atualizaOutboxUI();
 }
 function sairDemo(){
   if(!confirm('Sair do modo demonstração e limpar os dados fictícios deste navegador?\n\nOs dados reais voltam a sincronizar da nuvem normalmente.'))return;
-  ORDEM.map(id=>OBRAS[id]).filter(o=>o&&!o.externo).forEach(o=>{localStorage.removeItem(keyL(o.id));localStorage.removeItem('gestor:diario:'+o.id);});
+  ORDEM.map(id=>OBRAS[id]).filter(o=>o&&!o.externo).forEach(o=>{localStorage.removeItem(keyL(o.id));localStorage.removeItem('gestor:diario:'+o.id);nfDemoLimpar(o);});
   localStorage.removeItem('gestor:demo');
   EQUIP={equipamentos:[],locadoras:[],apontamentos:[],carregado:false};
   estado.tela='home';estado.obraId=null;toast('Modo demonstração encerrado');render();atualizaOutboxUI();outboxFlush();
@@ -2354,6 +2394,7 @@ function toast(m){let t=el('toast');if(!t){t=document.createElement('div');t.id=
 function bind(){if(estado.tela==='rdo')atualizaServ();if(estado.tela==='projetos')renderPdfDoc(estado.projSel);
   if(estado.tela==='galeria'&&estado.obraId)garantirFotos(estado.obraId);
   if(estado.tela==='equip'){if(BACKEND&&!EQUIP.carregado)carregarEquip();eqInitSign();eqCalcHoras();}
+  if(estado.tela==='notas'&&estado.obraId)nfCarregar(estado.obraId);
   atualizaDemoUI();}
 
 if(window.pdfjsLib)window.pdfjsLib.GlobalWorkerOptions.workerSrc='vendor/pdfjs/pdf.worker.min.js';

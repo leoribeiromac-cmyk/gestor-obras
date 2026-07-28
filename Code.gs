@@ -24,12 +24,16 @@ var ABA_EQUIP      = 'Equipamentos';
 var ABA_LOCADORA   = 'Locadoras';
 var ABA_APONT      = 'ApontEquip';
 var ABA_AUDITORIA  = 'Auditoria';
+var ABA_NF         = 'NotasFiscais';
+var ABA_PEDIDO     = 'Pedidos';
 
 var HEADERS = {
   'Equipamentos': ['nome','tipo','vinculo','locadora','obra','ativo'],
   'Locadoras':    ['nome','observacoes','obra'],
   'ApontEquip':   ['carimbo','obra','data','turno','equipamento','operador','inicio','fim','horas','paradas','horimIni','horimFim','combustivel','situacao','observacoes','assinatura','clientId'],
-  'Auditoria':    ['carimbo','usuario','perfil','acao','obra','registroId','detalhesAnteriores','detalhesNovos']
+  'Auditoria':    ['carimbo','usuario','perfil','acao','obra','registroId','detalhesAnteriores','detalhesNovos'],
+  'NotasFiscais': ['id','clientId','obra','numero','serie','chave','dataEmissao','dataEntrada','cnpj','razaoSocial','nomeFantasia','municipio','uf','vProd','vFrete','vTotal','vBaseICMS','vICMS','itens','obs','responsavel','status','driveId','driveLink','leitura','historico','usuario','criadoEm','atualizadoEm'],
+  'Pedidos':      ['id','obra','numero','data','fornecedor','cnpj','itens','status','usuario','criadoEm']
 };
 
 function doGet(e)  { return rotear(e); }
@@ -44,7 +48,8 @@ function rotear(e) {
       'obterRDO', 'obterDiario', 'addBatchRDO', 'deleteRDO', 'updateRDO', 'rdoFoto',
       'addDiario', 'updateDiario', 'deleteDiario',
       'equipListar', 'equipCadastrar', 'equipDesativar', 'locadoraCadastrar', 'equipApontar', 'equipApagar', 'equipApontamentos',
-      'obterFoto'
+      'obterFoto',
+      'nfListar', 'nfSalvar', 'nfExcluir', 'nfImagem', 'nfLerIA', 'pedidoSalvar', 'pedidoExcluir'
     ];
     if (PROTEGIDAS.indexOf(action) !== -1) {
       var falha = exigirTokenSeAtivo(p.token);
@@ -70,6 +75,13 @@ function rotear(e) {
       case 'equipApontar':      resp = equipApontar(p); break;
       case 'equipApagar':       resp = deleteLinhaPorId(ABA_APONT, p.carimbo, 'carimbo', p.token); break;
       case 'equipApontamentos': resp = equipApontamentos(p.obra, p.mes); break;
+      case 'nfListar':          resp = nfListar(p.obra); break;
+      case 'nfSalvar':          resp = nfSalvar(p); break;
+      case 'nfExcluir':         resp = nfExcluir(p.obra, p.id, p.token); break;
+      case 'nfImagem':          resp = nfImagem(p); break;
+      case 'nfLerIA':           resp = nfLerIA(p); break;
+      case 'pedidoSalvar':      resp = pedidoSalvar(p); break;
+      case 'pedidoExcluir':     resp = pedidoExcluir(p.obra, p.id, p.token); break;
       default:
         resp = { ok: false, error: 'Ação desconhecida: "' + action + '"' };
     }
@@ -601,4 +613,310 @@ function backupDiario() {
   copias.sort(function (a, b) { return b.getDateCreated() - a.getDateCreated(); });
   for (var i = 14; i < copias.length; i++) copias[i].setTrashed(true);
   return { ok: true, backup: nome };
+}
+
+// ============================================================
+// NOTAS FISCAIS (DANFE) — armazenamento, imagem no Drive e leitura por IA
+// ============================================================
+
+// Pasta no Drive: Notas Fiscais Gestor Obras (Privado) / <obra> / <ano> / <mes>
+var NF_MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+
+function nfPastaRaiz() {
+  var nome = 'Notas Fiscais Gestor Obras (Privado)';
+  var it = DriveApp.getFoldersByName(nome);
+  return it.hasNext() ? it.next() : DriveApp.createFolder(nome);
+}
+
+function nfSubpasta(pai, nome) {
+  var it = pai.getFoldersByName(nome);
+  return it.hasNext() ? it.next() : pai.createFolder(nome);
+}
+
+// competencia no formato YYYY-MM; devolve a pasta do mes daquela obra
+function nfPastaDaNota(obra, competencia) {
+  var comp = String(competencia || '');
+  if (!/^\d{4}-\d{2}$/.test(comp)) {
+    comp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM');
+  }
+  var ano = comp.slice(0, 4);
+  var mes = NF_MESES[parseInt(comp.slice(5, 7), 10) - 1] || comp.slice(5, 7);
+  var pObra = nfSubpasta(nfPastaRaiz(), String(obra || 'obra'));
+  return nfSubpasta(nfSubpasta(pObra, ano), mes);
+}
+
+function nfListar(obra) {
+  var notas = linhasObj(ABA_NF, obra).map(function (n) {
+    n.dataEmissao = normData(n.dataEmissao);
+    n.dataEntrada = normData(n.dataEntrada);
+    return n;
+  });
+  var pedidos = linhasObj(ABA_PEDIDO, obra).map(function (p) {
+    p.data = normData(p.data);
+    return p;
+  });
+  return { ok: true, notas: notas, pedidos: pedidos };
+}
+
+// upsert pelo clientId — reenviar a mesma nota nunca duplica a linha
+function nfSalvar(p) {
+  var a = getOrCreate(ABA_NF);
+  var cab = cabecalho(a);
+  var dados = a.getDataRange().getValues();
+  var iCli = idxCol(cab, 'clientid');
+  var clientId = String(p.clientId || p.id || '').trim();
+  if (!clientId) return { ok: false, error: 'clientId não informado' };
+
+  var reg = {
+    id: p.id || clientId,
+    clientid: clientId,
+    obra: p.obra || '',
+    numero: p.numero || '',
+    serie: p.serie || '',
+    chave: "'" + String(p.chave || ''),          // apóstrofo: a planilha não converte 44 dígitos em notação científica
+    dataemissao: normData(p.dataemissao),
+    dataentrada: normData(p.dataentrada),
+    cnpj: "'" + String(p.cnpj || ''),
+    razaosocial: p.razaosocial || '',
+    nomefantasia: p.nomefantasia || '',
+    municipio: p.municipio || '',
+    uf: p.uf || '',
+    vprod: Number(p.vprod || 0),
+    vfrete: Number(p.vfrete || 0),
+    vtotal: Number(p.vtotal || 0),
+    vbaseicms: Number(p.vbaseicms || 0),
+    vicms: Number(p.vicms || 0),
+    itens: p.itens || '[]',
+    obs: p.obs || '',
+    responsavel: p.responsavel || '',
+    status: p.status || 'Recebida',
+    driveid: p.driveid || '',
+    drivelink: p.drivelink || '',
+    leitura: p.leitura || '{}',
+    historico: p.historico || '[]',
+    usuario: p.usuario || usuarioDoToken(p.token) || '',
+    criadoem: p.criadoem || Date.now(),
+    atualizadoem: Date.now()
+  };
+
+  var linha = cab.map(function (nc) { return reg.hasOwnProperty(nc) ? reg[nc] : ''; });
+  var achou = -1;
+  if (iCli !== -1) {
+    for (var i = 1; i < dados.length; i++) {
+      if (String(dados[i][iCli]).trim() === clientId) { achou = i; break; }
+    }
+  }
+  if (achou > -1) {
+    // preserva o arquivo do Drive quando o app reenvia a nota sem essa informação
+    var iDid = idxCol(cab, 'driveid'), iDlk = idxCol(cab, 'drivelink');
+    if (iDid !== -1 && !reg.driveid) linha[iDid] = dados[achou][iDid];
+    if (iDlk !== -1 && !reg.drivelink) linha[iDlk] = dados[achou][iDlk];
+    a.getRange(achou + 1, 1, 1, cab.length).setValues([linha]);
+  } else {
+    a.getRange(a.getLastRow() + 1, 1, 1, cab.length).setValues([linha]);
+  }
+  registrarAuditoria(reg.usuario, 'app', achou > -1 ? 'nfAlterar' : 'nfCadastrar', reg.obra, clientId, '', 'NF ' + reg.numero + ' · ' + reg.status + ' · R$ ' + reg.vtotal);
+  return { ok: true, id: reg.id, clientId: clientId, atualizado: achou > -1 };
+}
+
+function nfExcluir(obra, id, token) {
+  var a = getOrCreate(ABA_NF);
+  var dados = a.getDataRange().getValues();
+  var cab = dados[0].map(function (h) { return String(h).trim().toLowerCase(); });
+  var iId = idxCol(cab, 'id'), iCli = idxCol(cab, 'clientid');
+  for (var i = dados.length - 1; i >= 1; i--) {
+    var bate = (iId !== -1 && String(dados[i][iId]).trim() === String(id).trim()) ||
+               (iCli !== -1 && String(dados[i][iCli]).trim() === String(id).trim());
+    if (bate) {
+      a.deleteRow(i + 1);
+      registrarAuditoria(usuarioDoToken(token), 'app', 'nfExcluir', obra, id, '', '');
+      return { ok: true, removido: true };
+    }
+  }
+  return { ok: true, removido: false };
+}
+
+// guarda a imagem da nota no Drive, organizada por Obra -> Ano -> Mes
+function nfImagem(p) {
+  var b64 = String(p.foto || '');
+  if (b64.indexOf('data:image') !== 0) return { ok: false, error: 'Imagem inválida' };
+  var nome = 'NF-' + (p.numero || p.id || Date.now()) + '_' + (p.id || '') + '.jpg';
+  var blob = Utilities.newBlob(Utilities.base64Decode(b64.split(',')[1]), 'image/jpeg', nome);
+  var pasta = nfPastaDaNota(p.obra, p.competencia);
+
+  // se a mesma nota ja tem arquivo, substitui em vez de acumular copias
+  var antigos = pasta.getFilesByName(nome);
+  while (antigos.hasNext()) { try { antigos.next().setTrashed(true); } catch (e) {} }
+
+  var f = pasta.createFile(blob);
+  f.setSharing(DriveApp.Access.PRIVATE, DriveApp.Permission.NONE);
+  var fileId = f.getId();
+
+  // grava o arquivo na linha da nota, se ela ja existir
+  try {
+    var a = getOrCreate(ABA_NF);
+    var dados = a.getDataRange().getValues();
+    var cab = dados[0].map(function (h) { return String(h).trim().toLowerCase(); });
+    var iId = idxCol(cab, 'id'), iCli = idxCol(cab, 'clientid');
+    var iDid = idxCol(cab, 'driveid'), iDlk = idxCol(cab, 'drivelink');
+    for (var i = 1; i < dados.length; i++) {
+      var bate = (iId !== -1 && String(dados[i][iId]).trim() === String(p.id || '').trim()) ||
+                 (iCli !== -1 && String(dados[i][iCli]).trim() === String(p.id || '').trim());
+      if (bate) {
+        if (iDid !== -1) a.getRange(i + 1, iDid + 1).setValue(fileId);
+        if (iDlk !== -1) a.getRange(i + 1, iDlk + 1).setValue(f.getUrl());
+        break;
+      }
+    }
+  } catch (e) {}
+
+  return { ok: true, fileId: fileId, link: f.getUrl(), pasta: pasta.getName() };
+}
+
+// ------------------------------------------------------------
+// LEITURA DA IMAGEM DA NOTA (OCR + interpretação) via Gemini
+//
+// Escolhido por ser o que encaixa nesta arquitetura sem obra nova:
+// o backend ja e Google (Apps Script/Sheets/Drive) e basta uma
+// chave de API nas Propriedades do script — sem conta de servico,
+// sem projeto no GCP, sem biblioteca externa.
+//
+// Propriedades do script:
+//   GEMINI_API_KEY = <chave da API>            (obrigatoria)
+//   GEMINI_MODEL   = gemini-2.5-flash          (opcional)
+//
+// Sem a chave, o app continua funcionando: cai na chave de acesso
+// lida do codigo de barras e na digitacao.
+// ------------------------------------------------------------
+function nfLerIA(p) {
+  var props = PropertiesService.getScriptProperties();
+  var key = props.getProperty('GEMINI_API_KEY');
+  if (!key) return { ok: false, motivo: 'sem_ia' };
+
+  var b64 = String(p.foto || '');
+  if (b64.indexOf('data:image') !== 0) return { ok: false, motivo: 'imagem_invalida' };
+  var modelo = props.getProperty('GEMINI_MODEL') || 'gemini-2.5-flash';
+
+  var prompt =
+    'Você está lendo a imagem de uma DANFE (Documento Auxiliar da Nota Fiscal Eletrônica) brasileira, ' +
+    'recebida por uma construtora de obras públicas.\n' +
+    'Extraia os campos abaixo e responda SOMENTE com um objeto JSON, sem texto em volta e sem cercas de código.\n\n' +
+    'Formato exigido:\n' +
+    '{\n' +
+    '  "dados": {\n' +
+    '    "numero": "", "serie": "", "chave": "", "dataEmissao": "AAAA-MM-DD", "dataEntrada": "AAAA-MM-DD",\n' +
+    '    "cnpj": "", "razaoSocial": "", "nomeFantasia": "", "municipio": "", "uf": "",\n' +
+    '    "vProd": 0, "vFrete": 0, "vTotal": 0, "vBaseICMS": 0, "vICMS": 0,\n' +
+    '    "itens": [{"codigo":"","descricao":"","qtd":0,"un":"","vUnit":0,"vTotal":0}]\n' +
+    '  },\n' +
+    '  "confianca": { "numero":0.0, "serie":0.0, "chave":0.0, "dataEmissao":0.0, "cnpj":0.0, "razaoSocial":0.0, "vTotal":0.0, "itens":0.0 },\n' +
+    '  "confiancaGeral": 0.0\n' +
+    '}\n\n' +
+    'Regras:\n' +
+    '- Emitente é quem VENDEU (o fornecedor), não o destinatário. Use o CNPJ e a razão social do emitente.\n' +
+    '- Valores numéricos em ponto decimal, sem "R$" e sem separador de milhar. 1.234,56 vira 1234.56.\n' +
+    '- Datas sempre em AAAA-MM-DD. Se só houver dia/mês/ano na imagem, converta.\n' +
+    '- Campo que você não conseguir ler: string vazia "" ou número 0, e confiança 0.\n' +
+    '- NUNCA invente número, valor ou CNPJ. Prefira deixar vazio a chutar.\n' +
+    '- Confiança de 0 a 1 por campo, refletindo o quanto o texto estava legível.\n' +
+    (p.chave ? '- A chave de acesso já foi lida do código de barras e é: ' + String(p.chave).replace(/\D/g, '') + '. Use-a e mantenha coerência com número, série e CNPJ dela.\n' : '');
+
+  var payload = {
+    contents: [{
+      role: 'user',
+      parts: [
+        { text: prompt },
+        { inline_data: { mime_type: 'image/jpeg', data: b64.split(',')[1] } }
+      ]
+    }],
+    generationConfig: { temperature: 0, maxOutputTokens: 4096, responseMimeType: 'application/json' }
+  };
+
+  var url = 'https://generativelanguage.googleapis.com/v1beta/models/' +
+            encodeURIComponent(modelo) + ':generateContent?key=' + encodeURIComponent(key);
+  var res;
+  try {
+    res = UrlFetchApp.fetch(url, {
+      method: 'post', contentType: 'application/json',
+      payload: JSON.stringify(payload), muteHttpExceptions: true
+    });
+  } catch (e) {
+    return { ok: false, motivo: 'rede', error: String(e && e.message ? e.message : e) };
+  }
+  if (res.getResponseCode() !== 200) {
+    return { ok: false, motivo: 'api', codigo: res.getResponseCode(), error: String(res.getContentText()).slice(0, 300) };
+  }
+
+  var txt = '';
+  try {
+    var j = JSON.parse(res.getContentText());
+    var partes = j.candidates && j.candidates[0] && j.candidates[0].content && j.candidates[0].content.parts;
+    txt = (partes || []).map(function (x) { return x.text || ''; }).join('');
+  } catch (e) {
+    return { ok: false, motivo: 'resposta' };
+  }
+  txt = String(txt).replace(/^\s*```(?:json)?/i, '').replace(/```\s*$/, '').trim();
+  var out;
+  try { out = JSON.parse(txt); } catch (e) {
+    var m = txt.match(/\{[\s\S]*\}/);
+    if (!m) return { ok: false, motivo: 'resposta' };
+    try { out = JSON.parse(m[0]); } catch (e2) { return { ok: false, motivo: 'resposta' }; }
+  }
+  if (!out || !out.dados) return { ok: false, motivo: 'resposta' };
+
+  registrarAuditoria(usuarioDoToken(p.token), 'app', 'nfLeituraIA', p.obra || '', String(out.dados.numero || ''), modelo,
+    'confiança ' + (out.confiancaGeral == null ? '?' : out.confiancaGeral));
+
+  return {
+    ok: true, modelo: modelo,
+    dados: out.dados,
+    confianca: out.confianca || {},
+    confiancaGeral: typeof out.confiancaGeral === 'number' ? out.confiancaGeral : 0.6
+  };
+}
+
+// -------------------- PEDIDOS DE COMPRA --------------------
+function pedidoSalvar(p) {
+  var a = getOrCreate(ABA_PEDIDO);
+  var cab = cabecalho(a);
+  var dados = a.getDataRange().getValues();
+  var iId = idxCol(cab, 'id');
+  var reg = {
+    id: p.id || gerarId(new Date(), 'pd'),
+    obra: p.obra || '',
+    numero: p.numero || '',
+    data: normData(p.data),
+    fornecedor: p.fornecedor || '',
+    cnpj: "'" + String(p.cnpj || ''),
+    itens: p.itens || '[]',
+    status: p.status || 'Em aberto',
+    usuario: p.usuario || usuarioDoToken(p.token) || '',
+    criadoem: p.criadoem || Date.now()
+  };
+  var linha = cab.map(function (nc) { return reg.hasOwnProperty(nc) ? reg[nc] : ''; });
+  var achou = -1;
+  if (iId !== -1) {
+    for (var i = 1; i < dados.length; i++) {
+      if (String(dados[i][iId]).trim() === String(reg.id).trim()) { achou = i; break; }
+    }
+  }
+  if (achou > -1) a.getRange(achou + 1, 1, 1, cab.length).setValues([linha]);
+  else a.getRange(a.getLastRow() + 1, 1, 1, cab.length).setValues([linha]);
+  registrarAuditoria(reg.usuario, 'app', achou > -1 ? 'pedidoAlterar' : 'pedidoCadastrar', reg.obra, reg.id, '', 'Pedido ' + reg.numero);
+  return { ok: true, id: reg.id };
+}
+
+function pedidoExcluir(obra, id, token) {
+  var a = getOrCreate(ABA_PEDIDO);
+  var dados = a.getDataRange().getValues();
+  var cab = dados[0].map(function (h) { return String(h).trim().toLowerCase(); });
+  var iId = idxCol(cab, 'id');
+  for (var i = dados.length - 1; i >= 1; i--) {
+    if (iId !== -1 && String(dados[i][iId]).trim() === String(id).trim()) {
+      a.deleteRow(i + 1);
+      registrarAuditoria(usuarioDoToken(token), 'app', 'pedidoExcluir', obra, id, '', '');
+      return { ok: true, removido: true };
+    }
+  }
+  return { ok: true, removido: false };
 }

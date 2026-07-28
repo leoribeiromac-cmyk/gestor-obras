@@ -19,6 +19,9 @@ jobs:
       with:
         node-version: '20'
 
+    - name: Run Notas Fiscais (DANFE) Unit Tests
+      run: node tests/notas.test.js
+
     - name: Run S-Curve & Progress Unit Tests
       run: node tests/sCurve.test.js
 
