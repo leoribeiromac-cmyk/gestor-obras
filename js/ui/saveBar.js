@@ -13,7 +13,7 @@
     div.setAttribute('aria-live', 'polite');
     div.innerHTML = `
       <div class="save-bar-content">
-        <span class="save-bar-icon" id="save-bar-icon">🟢</span>
+        <span class="save-bar-icon" id="save-bar-icon">${window.ic ? ic('syncOk') : ''}</span>
         <span class="save-bar-text" id="save-bar-text">Todos os dados salvos e sincronizados</span>
         <button id="save-bar-btn" class="btn-save-retry" style="display:none;" aria-label="Tentar sincronizar novamente">Sincronizar Agora</button>
       </div>
@@ -45,17 +45,17 @@
 
     if (detail.state === 'syncing') {
       elem.className = 'save-bar save-bar-syncing';
-      icon.textContent = '🔄';
+      icon.innerHTML = window.ic ? ic('syncPend') : '';
       text.textContent = `Enviando ${n} item(ns)…`;
       btn.style.display = 'none';
     } else if (detail.state === 'offline') {
       elem.className = 'save-bar save-bar-pending';
-      icon.textContent = '📴';
+      icon.innerHTML = window.ic ? ic('syncOff') : '';
       text.textContent = `Sem conexão — ${n} item(ns) salvos no aparelho`;
       btn.style.display = 'none';
     } else if (detail.state === 'error') {
       elem.className = 'save-bar save-bar-error';
-      icon.textContent = '🔴';
+      icon.innerHTML = window.ic ? ic('syncErro') : '';
       text.textContent = `Falha ao enviar ${n} item(ns)`;
       btn.style.display = 'inline-block';
       btn.textContent = 'Tentar de novo';

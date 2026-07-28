@@ -556,13 +556,13 @@ function nfAbrirNova() {
   abrirModal('Nova nota fiscal', `
     <div id="nfPasso">
       <div class="empty" style="padding:14px 6px 18px">
-        <div class="ic">🧾</div>
+        ${ic('notas')}
         <div style="font-size:14px;color:var(--text-2);line-height:1.5">Fotografe a DANFE inteira, de frente e sem sombra.<br>
         O sistema lê o código de barras, a chave de acesso e o restante dos dados sozinho.</div>
       </div>
-      <label class="btn btn-pri" style="width:100%;justify-content:center;margin-bottom:9px;cursor:pointer">📷 Fotografar a nota
+      <label class="btn btn-pri" style="width:100%;justify-content:center;margin-bottom:9px;cursor:pointer">${ic('camera')} Fotografar a nota
         <input type="file" accept="image/*" capture="environment" onchange="nfArquivoSelecionado(this)" style="display:none"></label>
-      <label class="btn" style="width:100%;justify-content:center;margin-bottom:4px;cursor:pointer">📄 Escolher arquivo (PDF ou imagem)
+      <label class="btn" style="width:100%;justify-content:center;margin-bottom:4px;cursor:pointer">${ic('arquivo')} Escolher arquivo (PDF ou imagem)
         <input type="file" accept="image/*,application/pdf,.pdf" onchange="nfArquivoSelecionado(this)" style="display:none"></label>
       <div class="kpi-s" style="text-align:center;margin-bottom:14px">Se você tem o <b>PDF da DANFE</b>, use-o: o texto vem direto do arquivo e a leitura sai certa.</div>
       <div class="card" style="box-shadow:none"><div class="card-b" style="padding:13px 15px">
@@ -579,7 +579,7 @@ function nfPassoUI(linhas) {
   const box = el('nfPasso'); if (!box) return;
   box.innerHTML = `<div class="card" style="box-shadow:none"><div class="card-b" style="padding:16px 18px">
     ${linhas.map(l => `<div style="display:flex;gap:10px;align-items:flex-start;padding:7px 0;font-size:13.5px">
-      <span style="width:20px;text-align:center">${l.ic}</span>
+      <span class="nf-passo-ic ${l.st === 'ok' ? 'ok' : ''}">${l.ic === 'traco' ? '—' : (l.ic ? ic(l.ic) : '·')}</span>
       <span style="flex:1;color:${l.st === 'ok' ? 'var(--text)' : 'var(--muted)'}">${l.t}</span></div>`).join('')}
     </div></div>`;
 }
@@ -641,9 +641,9 @@ async function nfArquivoSelecionado(inp) {
   if (!f || (!ehPDF && !/^image\//.test(f.type))) { toast('Escolha o PDF ou uma foto da nota'); return; }
   const o = obra(); if (!o) return;
   const passos = [
-    { ic: '⏳', t: ehPDF ? 'Abrindo o PDF…' : 'Preparando a imagem…', st: '' },
-    { ic: '·', t: ehPDF ? 'Procurando a chave de acesso no arquivo' : 'Procurando o código de barras da DANFE', st: '' },
-    { ic: '·', t: 'Lendo os dados da nota', st: '' }
+    { ic: 'ampulheta', t: ehPDF ? 'Abrindo o PDF…' : 'Preparando a imagem…', st: '' },
+    { ic: '', t: ehPDF ? 'Procurando a chave de acesso no arquivo' : 'Procurando o código de barras da DANFE', st: '' },
+    { ic: '', t: 'Lendo os dados da nota', st: '' }
   ];
   nfPassoUI(passos);
 
@@ -653,15 +653,15 @@ async function nfArquivoSelecionado(inp) {
       const p = await nfLerPDF(f);
       thumb = p.thumb; full = p.full; textoPDF = p.texto;
     } catch (e) { toast('Não consegui abrir esse PDF'); nfAbrirNova(); return; }
-    passos[0] = { ic: '✓', t: textoPDF.length > 200 ? 'PDF lido — texto disponível' : 'PDF aberto (parece ser digitalizado)', st: 'ok' };
+    passos[0] = { ic: 'check', t: textoPDF.length > 200 ? 'PDF lido — texto disponível' : 'PDF aberto (parece ser digitalizado)', st: 'ok' };
   } else {
     try {
       const r = await Promise.all([comprimirImg(f, 320, .55), comprimirImg(f, NF_MAX_LADO, .88)]);
       thumb = r[0]; full = r[1];
     } catch (e) { toast('Não consegui ler essa imagem'); nfAbrirNova(); return; }
-    passos[0] = { ic: '✓', t: 'Imagem pronta', st: 'ok' };
+    passos[0] = { ic: 'check', t: 'Imagem pronta', st: 'ok' };
   }
-  passos[1].ic = '⏳'; nfPassoUI(passos);
+  passos[1].ic = 'ampulheta'; nfPassoUI(passos);
 
   _nfRascunho.thumb = thumb; _nfFull = full;
 
@@ -680,14 +680,14 @@ async function nfArquivoSelecionado(inp) {
   }
   const daChave = chaveAchada ? nfDaChave(chaveAchada) : null;
   passos[1] = daChave
-    ? { ic: '✓', t: comoAchou, st: 'ok' }
-    : { ic: '—', t: ehPDF ? 'Sem chave de acesso legível no arquivo' : (cod.suportado ? 'Sem código legível na foto' : 'Este aparelho não lê código de barras'), st: '' };
-  passos[2].ic = '⏳'; nfPassoUI(passos);
+    ? { ic: 'check', t: comoAchou, st: 'ok' }
+    : { ic: 'traco', t: ehPDF ? 'Sem chave de acesso legível no arquivo' : (cod.suportado ? 'Sem código legível na foto' : 'Este aparelho não lê código de barras'), st: '' };
+  passos[2].ic = 'ampulheta'; nfPassoUI(passos);
 
   // 2) com a chave em mãos, buscar a nota oficial antes de tentar ler imagem
   let consulta = null;
   if (daChave) {
-    passos[2] = { ic: '⏳', t: 'Buscando a nota pela chave de acesso', st: '' };
+    passos[2] = { ic: 'ampulheta', t: 'Buscando a nota pela chave de acesso', st: '' };
     nfPassoUI(passos);
     consulta = await nfConsultarPelaChave(daChave.chave);
   }
@@ -695,7 +695,7 @@ async function nfArquivoSelecionado(inp) {
   // 3) só se a consulta não resolveu é que se recorre ao texto/imagem
   let ia = null;
   if (consulta && consulta.ok) {
-    passos[2] = { ic: '✓', t: 'Nota obtida pela chave — dados oficiais da NF-e', st: 'ok' };
+    passos[2] = { ic: 'check', t: 'Nota obtida pela chave — dados oficiais da NF-e', st: 'ok' };
     // a consulta devolve o DANFE oficial em PDF: vale mais como arquivo da
     // nota do que a foto tirada no barracão
     if (consulta.pdf) {
@@ -705,11 +705,11 @@ async function nfArquivoSelecionado(inp) {
       } catch (e) { /* fica com a imagem que o apontador enviou */ }
     }
   } else {
-    passos[2] = { ic: '⏳', t: textoPDF.length > 200 ? 'Lendo os dados do texto do PDF' : 'Lendo os dados da imagem', st: '' };
+    passos[2] = { ic: 'ampulheta', t: textoPDF.length > 200 ? 'Lendo os dados do texto do PDF' : 'Lendo os dados da imagem', st: '' };
     nfPassoUI(passos);
     ia = await nfLerImagemIA(full, daChave ? daChave.chave : '', textoPDF);
-    if (ia && ia.ok) passos[2] = { ic: '✓', t: textoPDF.length > 200 ? 'Dados extraídos do PDF' : 'Dados extraídos da imagem', st: 'ok' };
-    else passos[2] = { ic: '—', t: nfMotivoTxt(ia), st: '' };
+    if (ia && ia.ok) passos[2] = { ic: 'check', t: textoPDF.length > 200 ? 'Dados extraídos do PDF' : 'Dados extraídos da imagem', st: 'ok' };
+    else passos[2] = { ic: 'traco', t: nfMotivoTxt(ia), st: '' };
   }
   nfPassoUI(passos);
   const fonte = (consulta && consulta.ok) ? consulta : ia;
@@ -745,8 +745,8 @@ async function nfUsarChaveDigitada() {
   if (ch.length !== 44) { toast('A chave tem 44 caracteres'); return; }
   if (!nfChaveValida(ch)) { toast('Chave inválida — confira os caracteres'); return; }
   nfPassoUI([
-    { ic: '✓', t: 'Chave de acesso conferida', st: 'ok' },
-    { ic: '⏳', t: 'Buscando a nota pela chave', st: '' }
+    { ic: 'check', t: 'Chave de acesso conferida', st: 'ok' },
+    { ic: 'ampulheta', t: 'Buscando a nota pela chave', st: '' }
   ]);
   const consulta = await nfConsultarPelaChave(ch);
   if (consulta && consulta.ok && consulta.pdf) {
@@ -821,7 +821,7 @@ function nfMotivoTxt(ia) {
 async function nfTestarLeitura() {
   if (isDemo()) { toast('Saia do modo demonstração para testar'); return; }
   if (!BACKEND) { abrirModal('Teste da leitura', `<div class="nf-alerta nf-alerta-ylw">O app está sem servidor configurado. A leitura da nota funciona pelo código de barras e pela chave de acesso; os demais campos são digitados.</div>`, 560); return; }
-  abrirModal('Teste da leitura', `<div class="empty"><div class="ic">⏳</div>Conversando com o servidor…</div>`, 560);
+  abrirModal('Teste da leitura', `<div class="empty">${ic('ampulheta')}Conversando com o servidor…</div>`, 560);
   let r = null;
   try { r = await postAcao({ action: 'nfDiag' }); } catch (e) { r = null; }
 
@@ -850,7 +850,7 @@ async function nfTestarLeitura() {
     return;
   }
   if (r.leituraOk) {
-    abrirModal('Teste da leitura', bloco('grn', 'Leitura automática funcionando ✓',
+    abrirModal('Teste da leitura', bloco('grn', ic('checkCirculo') + ' Leitura automática funcionando',
       esc(r.mensagem || ''),
       `Modelo: <b>${esc(r.modelo || '')}</b>`), 560);
     return;
@@ -883,7 +883,7 @@ async function nfTestarLeitura() {
   abrirModal('Teste da leitura', bloco('ylw', 'A leitura por imagem não está funcionando.',
     esc(r.mensagem || 'Motivo não informado.'), extra) +
     `<div class="kpi-s" style="margin-top:12px">O cadastro de notas continua funcionando: o código de barras e a chave de acesso já preenchem número, série, CNPJ e UF.</div>
-     ${tec.length ? `<details style="margin-top:12px"><summary class="kpi-s" style="cursor:pointer">Detalhes técnicos (para mandar a quem der suporte)</summary>
+     ${tec.length ? `<details style="margin-top:12px"><summary class="kpi-s" style="cursor:pointer">${ic('ajustes')} Detalhes técnicos (para mandar a quem der suporte)</summary>
        <pre class="mono" style="font-size:11px;white-space:pre-wrap;word-break:break-word;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:10px;margin-top:8px">${esc(tec.join('\n'))}</pre></details>` : ''}`, 620);
 }
 
@@ -906,7 +906,7 @@ function nfConferir() {
       <div style="flex:1;min-width:0">
         <div class="kpi-s">${nfLeituraTxt(n)}</div>
         ${n.chave ? `<div class="mono nf-extra" style="font-size:10.5px;word-break:break-all;margin-top:6px;color:var(--text-2)">${esc(n.chave)}</div>` : ''}
-        <button class="btn btn-sm btn-ghost" style="margin-top:6px;padding-left:0" onclick="nfVerImagem('${n.id}')">🔍 Ver a nota</button>
+        <button class="btn btn-sm btn-ghost" style="margin-top:6px;padding-left:0" onclick="nfVerImagem('${n.id}')">${ic('lupa')} Ver a nota</button>
       </div></div>` : ''}
     ${dup ? `<div class="nf-alerta nf-alerta-red">Já existe a nota <b>${esc(dup.numero || '—')}</b> deste fornecedor no sistema. Salvar vai criar uma segunda.</div>` : ''}
     ${difer ? `<div class="nf-alerta nf-alerta-ylw">A soma dos itens + frete (${fmtBRL(totItens + nfNum(n.vFrete))}) não bate com o valor total da nota (${fmtBRL(nfNum(n.vTotal))}).</div>` : ''}
@@ -959,14 +959,14 @@ function nfConferir() {
     </div>
 
     <button class="btn btn-ghost btn-sm" id="nfBtnCampos" style="width:100%;justify-content:center;margin:4px 0 14px" onclick="nfAlternarCampos()">
-      ${_nfModoSimples ? '⌄ Mostrar todos os campos' : '⌃ Mostrar só o essencial'}</button>
+      ${_nfModoSimples ? ic('chevronBaixo') + ' Mostrar todos os campos' : ic('chevronCima') + ' Mostrar só o essencial'}</button>
 
     </div>
 
     <div style="display:flex;gap:9px">
       <button class="btn" style="flex:1;justify-content:center" onclick="fecharModal()">Cancelar</button>
       <button class="btn btn-pri" style="flex:2;justify-content:center" onclick="nfSalvarForm()">Salvar nota</button></div>
-    ${(n.historico || []).length ? `<button class="btn btn-ghost btn-sm" style="width:100%;justify-content:center;margin-top:10px" onclick="nfVerHistorico('${n.id}')">🕘 Histórico de alterações (${n.historico.length})</button>` : ''}
+    ${(n.historico || []).length ? `<button class="btn btn-ghost btn-sm" style="width:100%;justify-content:center;margin-top:10px" onclick="nfVerHistorico('${n.id}')">${ic('relogio')} Histórico de alterações (${n.historico.length})</button>` : ''}
   `, 680);
   nfRenderItens();
   nfCnpjNoForm();
@@ -978,7 +978,7 @@ function nfAlternarCampos() {
   _nfModoSimples = !_nfModoSimples;
   const f = el('nfForm'), b = el('nfBtnCampos');
   if (f) f.classList.toggle('nf-simples', _nfModoSimples);
-  if (b) b.textContent = _nfModoSimples ? '⌄ Mostrar todos os campos' : '⌃ Mostrar só o essencial';
+  if (b) b.innerHTML = _nfModoSimples ? ic('chevronBaixo') + ' Mostrar todos os campos' : ic('chevronCima') + ' Mostrar só o essencial';
   nfRenderItens();
 }
 
@@ -1018,9 +1018,9 @@ function nfRenderItens() {
           <div class="field nf-extra" style="margin:0;max-width:78px"><input value="${esc(it.un)}" placeholder="Un" oninput="nfItemCampo(${i},'un',this.value)" style="text-transform:uppercase"></div>
           <div class="field nf-extra" style="margin:0;max-width:96px"><input class="num" inputmode="decimal" value="${it.vUnit ? fmtNum(it.vUnit) : ''}" placeholder="V. unit." oninput="nfItemCampo(${i},'vUnit',this.value)"></div>
           <div class="field" style="margin:0;max-width:118px"><input class="num" inputmode="decimal" value="${it.vTotal ? fmtNum(it.vTotal) : ''}" placeholder="Valor do item" oninput="nfItemCampo(${i},'vTotal',this.value)"></div>
-          <button class="btn btn-sm btn-ghost" onclick="nfDelItem(${i})" title="Remover">✕</button></div>
-        ${mat ? `<div class="nf-vinc">🔗 Material <b>${esc(mat.descricao)}</b> · ${mat.notas} nota(s) <button class="btn btn-sm btn-ghost" onclick="nfItemCampo(${i},'materialId','');nfRenderItens()">desvincular</button></div>` : ''}
-        ${ped ? `<div class="nf-vinc">📦 Pedido <b>${esc(ped.pedido.numero)}</b> · ${esc(ped.item.descricao)} (falta ${fmtQtd(nfNum(ped.item.qtd) - nfNum(ped.item.qtdAtendida))} ${esc(ped.item.un || '')}) <button class="btn btn-sm btn-ghost" onclick="nfItemCampo(${i},'pedidoItemId','');nfRenderItens()">desvincular</button></div>` : ''}
+          <button class="btn btn-sm btn-ghost" onclick="nfDelItem(${i})" title="Remover">${ic('fechar')}</button></div>
+        ${mat ? `<div class="nf-vinc">${ic('vinculo')} Material <b>${esc(mat.descricao)}</b> · ${mat.notas} nota(s) <button class="btn btn-sm btn-ghost" onclick="nfItemCampo(${i},'materialId','');nfRenderItens()">desvincular</button></div>` : ''}
+        ${ped ? `<div class="nf-vinc">${ic('pedido')} Pedido <b>${esc(ped.pedido.numero)}</b> · ${esc(ped.item.descricao)} (falta ${fmtQtd(nfNum(ped.item.qtd) - nfNum(ped.item.qtdAtendida))} ${esc(ped.item.un || '')}) <button class="btn btn-sm btn-ghost" onclick="nfItemCampo(${i},'pedidoItemId','');nfRenderItens()">desvincular</button></div>` : ''}
         ${sugM.length ? `<div class="nf-vinc">Material parecido: ${sugM.map(s => `<button class="chip nf-chip-sug" onclick="nfItemCampo(${i},'materialId','${esc(s.material.id).replace(/'/g, '')}');nfRenderItens()">${esc(s.material.descricao)} · ${Math.round(s.score * 100)}%</button>`).join(' ')}</div>` : ''}
         ${sugP.length ? `<div class="nf-vinc">Pedido em aberto: ${sugP.map(s => `<button class="chip nf-chip-sug" onclick="nfItemCampo(${i},'pedidoItemId','${esc(s.item.id)}');nfRenderItens()">${esc(s.pedido.numero)} · ${esc(s.item.descricao)}</button>`).join(' ')}</div>` : ''}
       </div>`;
@@ -1197,11 +1197,11 @@ async function nfVerImagem(id) {
   }
   if (!src) src = n.thumb || '';
   abrirModal('Nota fiscal ' + esc(n.numero || ''), `
-    ${src ? `<img src="${esc(src)}" alt="nota fiscal" style="width:100%;border-radius:8px">` : '<div class="empty"><div class="ic">🧾</div>Imagem não disponível neste aparelho.</div>'}
+    ${src ? `<img src="${esc(src)}" alt="nota fiscal" style="width:100%;border-radius:8px">` : `<div class="empty">${ic('notas')}Imagem não disponível neste aparelho.</div>`}
     <div style="display:flex;gap:9px;margin-top:12px;flex-wrap:wrap">
-      ${n.drive && n.drive.link ? `<a class="btn" href="${esc(n.drive.link)}" target="_blank" rel="noopener">📁 Abrir no Google Drive</a>` : ''}
-      ${src ? `<a class="btn" href="${esc(src)}" download="NF-${esc(n.numero || n.id)}.jpg">⬇ Baixar imagem</a>` : ''}
-      <button class="btn btn-ghost" onclick="nfEditar('${n.id}')">✎ Editar dados</button></div>`, 720);
+      ${n.drive && n.drive.link ? `<a class="btn" href="${esc(n.drive.link)}" target="_blank" rel="noopener">${ic('pasta')} Abrir no Google Drive</a>` : ''}
+      ${src ? `<a class="btn" href="${esc(src)}" download="NF-${esc(n.numero || n.id)}.jpg">${ic('baixar')} Baixar imagem</a>` : ''}
+      <button class="btn btn-ghost" onclick="nfEditar('${n.id}')">${ic('editar')} Editar dados</button></div>`, 720);
 }
 function nfVerHistorico(id) {
   const o = obra();
@@ -1220,12 +1220,12 @@ function nfVerHistorico(id) {
    TELAS
    ============================================================ */
 function viewNotas(o) {
-  const abas = [['notas', '🧾 Notas'], ['estoque', '📦 Estoque'], ['pedidos', '📋 Pedidos'], ['painel', '📊 Painel']];
+  const abas = [['notas', 'notas', 'Notas'], ['estoque', 'caixa', 'Estoque'], ['pedidos', 'pedido', 'Pedidos'], ['painel', 'grafico', 'Painel']];
   const tab = estado.nfTab || 'notas';
   const topo = `<div class="row nf-topo" style="align-items:center;margin-bottom:16px;gap:9px">
-    <div style="display:flex;gap:7px;flex-wrap:wrap">${abas.map(a => `<button class="chip ${tab === a[0] ? 'on' : ''}" onclick="nfTab('${a[0]}')">${a[1]}</button>`).join('')}</div>
-    <button class="btn btn-ghost btn-sm nf-teste" style="margin-left:auto" onclick="nfTestarLeitura()" title="Conferir se a leitura automática está no ar">🔎 Testar leitura</button>
-    <button class="btn btn-pri nf-nova" onclick="nfAbrirNova()">📷 Nova nota fiscal</button></div>`;
+    <div style="display:flex;gap:7px;flex-wrap:wrap">${abas.map(a => `<button class="chip ${tab === a[0] ? 'on' : ''}" onclick="nfTab('${a[0]}')">${ic(a[1])} ${a[2]}</button>`).join('')}</div>
+    <button class="btn btn-ghost btn-sm nf-teste" style="margin-left:auto" onclick="nfTestarLeitura()" title="Conferir se a leitura automática está no ar">${ic('lupa')} Testar leitura</button>
+    <button class="btn btn-pri nf-nova" onclick="nfAbrirNova()">${ic('camera')} Nova nota fiscal</button></div>`;
   const corpo = tab === 'estoque' ? nfViewEstoque(o) : tab === 'pedidos' ? nfViewPedidos(o) : tab === 'painel' ? nfViewPainel(o) : nfViewLista(o);
   return topo + corpo;
 }
@@ -1267,17 +1267,17 @@ function nfViewLista(o) {
           ${meses.map(m => `<option value="${m}" ${estado.nfMes === m ? 'selected' : ''}>${mesLabel(m + '-01')}</option>`).join('')}</select></div>
       <div style="margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <span class="chip">${fs.length} de ${todas.length}</span>
-        <button class="btn btn-sm" onclick="nfExportarCSV()" ${fs.length ? '' : 'disabled'}>⬇ CSV</button></div></div></div></div>`;
+        <button class="btn btn-sm" onclick="nfExportarCSV()" ${fs.length ? '' : 'disabled'}>${ic('baixar')} CSV</button></div></div></div></div>`;
 
-  if (!todas.length) return filtros + `<div class="empty"><div class="ic">🧾</div>Nenhuma nota fiscal registrada nesta obra.<br>
+  if (!todas.length) return filtros + `<div class="empty">${ic('notas')}Nenhuma nota fiscal registrada nesta obra.<br>
     <span class="kpi-s">Toque em <b>Nova nota fiscal</b> e fotografe a DANFE — o resto o sistema preenche.</span></div>`;
-  if (!fs.length) return filtros + `<div class="empty"><div class="ic">🔍</div>Nenhuma nota encontrada com esse filtro.</div>`;
+  if (!fs.length) return filtros + `<div class="empty">${ic('lupa')}Nenhuma nota encontrada com esse filtro.</div>`;
 
   const cards = mostra.map(n => {
     const div = nfDivergencia(n);
     return `<div class="card nf-card">
       <div class="nf-card-img" onclick="nfVerImagem('${n.id}')">
-        ${n.thumb ? `<img src="${esc(n.thumb)}" alt="nota ${esc(n.numero)}" loading="lazy">` : `<div class="nf-card-sem">🧾</div>`}
+        ${n.thumb ? `<img src="${esc(n.thumb)}" alt="nota ${esc(n.numero)}" loading="lazy">` : `<div class="nf-card-sem">${ic('notas', 40)}</div>`}
         <span class="pill ${NF_STATUS_COR[n.status] || 'pill-blu'} nf-card-st">${esc(n.status)}</span></div>
       <div class="nf-card-b">
         <div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline">
@@ -1288,10 +1288,10 @@ function nfViewLista(o) {
         <div class="kpi-s nf-1linha" title="${esc(o.nome)}">${esc(o.nome)}</div>
         ${div ? `<div class="nf-alerta nf-alerta-ylw" style="margin:8px 0 0;padding:7px 10px;font-size:11.5px">${esc(div)}</div>` : ''}
         <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">
-          <button class="btn btn-sm" onclick="nfEditar('${n.id}')">✎ Conferir</button>
-          <button class="btn btn-sm btn-ghost" onclick="nfVerImagem('${n.id}')">🔍 Nota</button>
-          ${n.drive && n.drive.link ? `<a class="btn btn-sm btn-ghost" href="${esc(n.drive.link)}" target="_blank" rel="noopener" title="Abrir no Google Drive">📁</a>` : ''}
-          <button class="btn btn-sm btn-ghost" onclick="nfExcluir('${n.id}')" title="Excluir">✕</button></div>
+          <button class="btn btn-sm" onclick="nfEditar('${n.id}')">${ic('editar')} Conferir</button>
+          <button class="btn btn-sm btn-ghost" onclick="nfVerImagem('${n.id}')">${ic('lupa')} Nota</button>
+          ${n.drive && n.drive.link ? `<a class="btn btn-sm btn-ghost" href="${esc(n.drive.link)}" target="_blank" rel="noopener" title="Abrir no Google Drive">${ic('pasta')}</a>` : ''}
+          <button class="btn btn-sm btn-ghost" onclick="nfExcluir('${n.id}')" title="Excluir">${ic('fechar')}</button></div>
       </div></div>`;
   }).join('');
 
@@ -1341,7 +1341,7 @@ function nfExportarCSV() {
 function nfViewEstoque(o) {
   const saldos = nfSaldos(o.id);
   const movs = nfMovGet(o.id).slice().sort((a, b) => (b.dataISO || '').localeCompare(a.dataISO || '') || b.criadoEm - a.criadoEm);
-  if (!saldos.length) return `<div class="empty"><div class="ic">📦</div>Nada no estoque ainda.<br>
+  if (!saldos.length) return `<div class="empty">${ic('caixa')}Nada no estoque ainda.<br>
     <span class="kpi-s">A entrada é gerada quando você salva uma nota com os produtos preenchidos.</span></div>`;
   const total = saldos.reduce((a, s) => a + s.valor, 0);
   const kpis = `<div class="grid g4" style="margin-bottom:18px">
@@ -1379,7 +1379,7 @@ function nfViewPedidos(o) {
   const topo = `<div class="row" style="align-items:center;margin-bottom:16px">
     <div class="kpi-s" style="flex:1;min-width:220px">Cadastre o pedido de compra e o sistema baixa os itens sozinho quando a nota daquele fornecedor chegar.</div>
     <button class="btn" onclick="nfPedidoModal()">+ Pedido de compra</button></div>`;
-  if (!peds.length) return topo + `<div class="empty"><div class="ic">📋</div>Nenhum pedido de compra cadastrado.</div>`;
+  if (!peds.length) return topo + `<div class="empty">${ic('pedido')}Nenhum pedido de compra cadastrado.</div>`;
   const cards = peds.map(p => {
     const itens = p.itens || [];
     const at = itens.reduce((a, i) => a + nfNum(i.qtdAtendida), 0), tt = itens.reduce((a, i) => a + nfNum(i.qtd), 0);
@@ -1389,7 +1389,7 @@ function nfViewPedidos(o) {
         <div class="card-st">${esc(p.fornecedor || nfCNPJfmt(p.cnpj) || '—')} · ${nfDataBR(p.dataISO)}</div></div>
       <div style="display:flex;gap:8px;align-items:center">
         <span class="pill ${p.status === 'Atendido' ? 'pill-grn' : p.status === 'Parcial' ? 'pill-ylw' : 'pill-blu'}">${esc(p.status || 'Em aberto')}</span>
-        <button class="btn btn-sm btn-ghost" onclick="nfPedidoExcluir('${p.id}')" title="Excluir">✕</button></div></div>
+        <button class="btn btn-sm btn-ghost" onclick="nfPedidoExcluir('${p.id}')" title="Excluir">${ic('fechar')}</button></div></div>
       <div class="card-b" style="padding:14px 20px">
         <div class="bar" style="margin:0 0 12px"><i style="width:${pct.toFixed(1)}%"></i></div>
         <table class="t" style="font-size:12.5px"><thead><tr><th>Item</th><th class="num">Pedido</th><th class="num">Entregue</th><th class="num">Falta</th></tr></thead>
@@ -1397,7 +1397,7 @@ function nfViewPedidos(o) {
       const falta = nfNum(i.qtd) - nfNum(i.qtdAtendida);
       return `<tr><td>${esc(i.descricao)}</td><td class="num">${fmtQtd(i.qtd)} ${esc(i.un || '')}</td>
         <td class="num">${fmtQtd(i.qtdAtendida)}</td>
-        <td class="num" style="color:${falta > 0.0001 ? 'var(--amarelo)' : 'var(--accent)'};font-weight:700">${falta > 0.0001 ? fmtQtd(falta) : '✓'}</td></tr>`;
+        <td class="num" style="color:${falta > 0.0001 ? 'var(--amarelo)' : 'var(--accent)'};font-weight:700">${falta > 0.0001 ? fmtQtd(falta) : ic('check')}</td></tr>`;
     }).join('')}</tbody></table></div></div>`;
   }).join('');
   return topo + cards;
@@ -1427,7 +1427,7 @@ function nfPedAddItem() {
   row.innerHTML = `<div class="field" style="margin:0;flex:3;min-width:150px"><input class="pd-desc" placeholder="Descrição do material"></div>
     <div class="field" style="margin:0;max-width:88px"><input class="pd-qtd num" inputmode="decimal" placeholder="Qtd"></div>
     <div class="field" style="margin:0;max-width:80px"><input class="pd-un" placeholder="Un" style="text-transform:uppercase"></div>
-    <button class="btn btn-sm btn-ghost" onclick="this.closest('.pd-row').remove()">✕</button>`;
+    <button class="btn btn-sm btn-ghost" onclick="this.closest('.pd-row').remove()" title="Remover">${ic('fechar')}</button>`;
   box.appendChild(row);
 }
 function nfPedidoSalvar() {
@@ -1468,7 +1468,7 @@ function nfPedidoExcluir(id) {
 /* ---------- painel ---------- */
 function nfViewPainel(o) {
   const notas = nfGet(o.id).filter(n => n.status !== 'Cancelada');
-  if (!notas.length) return `<div class="empty"><div class="ic">📊</div>Sem notas para consolidar ainda.</div>`;
+  if (!notas.length) return `<div class="empty">${ic('grafico')}Sem notas para consolidar ainda.</div>`;
   const total = notas.reduce((a, n) => a + nfNum(n.vTotal), 0);
   const frete = notas.reduce((a, n) => a + nfNum(n.vFrete), 0);
   const pend = notas.filter(n => n.status === 'Recebida' || n.status === 'Em análise').length;

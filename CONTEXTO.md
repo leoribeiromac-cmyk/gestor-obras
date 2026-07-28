@@ -4,7 +4,7 @@
 > contexto do projeto sem precisar reler o histórico de conversa. Descreve o app, as
 > decisões tomadas, o que está pendente e como trabalhar no repositório.
 >
-> **Última atualização:** Notas Fiscais — PDF, consulta pela chave e formulário enxuto · Service Worker `v28`
+> **Última atualização:** Notas Fiscais — PDF, consulta pela chave e formulário enxuto · Service Worker `v29`
 
 ---
 
@@ -50,6 +50,7 @@ gestor-obras/
 │   ├── auth/session.js     GestorAuth.setSession (chamado no login)
 │   ├── ui/saveBar.js       Barra de status de sincronização
 │   ├── ui/centralHoje.js   "Central de Campo" (topo do Lançar serviços)
+│   ├── ui/icones.js        **Ícones do app** — conjunto próprio, ver abaixo
 │   └── nf/notas.js         Notas Fiscais (DANFE): leitura, estoque, pedidos, painel
 ├── assets/                 Logo, ícones, favicon
 ├── projetos/               PDFs de projeto por rua
@@ -321,7 +322,7 @@ Fotos tiradas antes do commit `b21f7bf` não têm a imagem cheia no aparelho. Sa
 
 ### Sempre que mudar arquivos servidos
 **Suba a versão do cache** em `sw.js` (`gestor-obras-vNN`), senão o usuário continua vendo
-a versão antiga. Hoje: **v28**. E oriente o **Ctrl/Cmd+Shift+R**.
+a versão antiga. Hoje: **v29**. E oriente o **Ctrl/Cmd+Shift+R**.
 
 ### Testar (o ambiente tem Playwright + Chromium)
 ```bash
@@ -346,7 +347,36 @@ Testes: `node tests/notas.test.js` (passa) e `node tests/sCurve.test.js` (**queb
 testa um modelo com R$ que o app não usa). O CI roda os dois, então está vermelho por
 causa do segundo. Decidir com o Leonardo: consertar ou apagar.
 
+### Ícones — `js/ui/icones.js`
+**Não use emoji na interface.** Cada aparelho desenha o emoji do seu jeito (o 🚜 do
+Android não é o do iPhone), o tamanho varia e a cor é fixa — o resultado fica genérico.
+
+O app tem conjunto próprio: 63 ícones de traço único, grade de 24, espessura 1,7,
+pontas arredondadas e `currentColor` (acompanham o tema claro/escuro sozinhos).
+
+```js
+ic('notas')            // <svg> de 1em, alinhado ao texto
+ic('camera', 20)       // 20px
+icFrente('Drenagem')   // devolve o nome do ícone da frente, PELO NOME dela
+```
+
+- `ic(...)` devolve string, então funciona dentro de template literal, em
+  `innerHTML` e também nos relatórios impressos (SVG imprime bem).
+- Em `textContent` **não** funciona — troque para `innerHTML`.
+- Onde o ícone fica guardado numa variável (NAV, passos da leitura da nota),
+  guarde o **nome** e chame `ic()` na hora de montar o HTML.
+- Classes de apoio: `.ic-tx` (ícone antes de um texto), `.ic-ap` (apresentação),
+  `.empty>svg.ic` (estado vazio, 38px).
+- **Frentes de serviço:** o desenho sai do NOME da frente via `icFrente()`, então
+  obra nova já entra com o ícone certo. Não há mais tabela por id.
+- Emoji que **devem** continuar: os que citam a interface do Google no passo a
+  passo do Apps Script (▸, ✏️, ▶, ⚙) — são o que a pessoa vê na tela do Google.
+
 ### Cuidados aprendidos (erros já cometidos)
+- **Substituição em massa por texto:** um `replace` de um trecho que aparece em
+  dois contextos (template literal e string com aspas) quebra o segundo. Sempre
+  rodar a validação de sintaxe depois — foi assim que apareceu um `${...}` dentro
+  de aspas simples na troca dos ícones.
 - **`pkill` mata o próprio shell** deste ambiente (exit 144). Evite.
 - Scripts Python de edição: o `open(...).write()` no fim **não roda se um `assert`
   anterior falhar** — já causou uma edição "fantasma" (função chamada mas não definida).

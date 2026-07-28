@@ -236,6 +236,19 @@ label.fl{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppe
 
 .empty{text-align:center;color:var(--muted);padding:40px 20px}
 .empty .ic{font-size:38px;opacity:.5;margin-bottom:10px}
+
+/* ---------- ÍCONES (js/ui/icones.js) ----------
+   Um traço só, grade de 24, cor herdada do texto: acompanham o tema
+   claro/escuro sozinhos e ficam iguais em qualquer aparelho. */
+svg.ic{width:1em;height:1em;display:inline-block;vertical-align:-.14em;flex:none;overflow:visible}
+.empty>svg.ic{display:block;margin:0 auto 10px;width:38px;height:38px;opacity:.45;stroke-width:1.4}
+.ic-tx{display:inline-flex;margin-right:7px;vertical-align:-.14em;opacity:.72}
+.ic-tx svg.ic{width:1.05em;height:1.05em}
+.btn svg.ic{width:1.15em;height:1.15em;margin-right:-1px}
+.nav-ic svg.ic{width:18px;height:18px}
+.ic-ap{display:inline-flex;font-size:22px;line-height:1.1;color:var(--accent-2)}
+table.t td .ic-tx{opacity:.6}
+@media print{svg.ic{stroke-width:1.9}}
 .hide{display:none!important}
 
 @media (max-width:860px){
@@ -402,6 +415,7 @@ input.nf-confira,select.nf-confira,textarea.nf-confira{border-color:var(--amarel
 <script src="dados/_index.js"></script>
 
 <!-- MÓDULOS ARQUITETURA GESTOR OBRAS (FEV 2026) -->
+<script src="js/ui/icones.js"></script>
 <script src="js/auth/session.js"></script>
 <script src="js/ui/saveBar.js"></script>
 <script src="js/ui/centralHoje.js"></script>
@@ -415,7 +429,8 @@ input.nf-confira,select.nf-confira,textarea.nf-confira{border-color:var(--amarel
 const OBRAS = window.OBRAS || {};
 const ORDEM = (window.OBRAS_ORDEM || Object.keys(OBRAS)).filter(id => OBRAS[id]);
 const MESES = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
-const ICONE = {1:'▣',2:'▤',3:'▥',4:'✖',5:'◇',6:'✎',7:'≈',8:'⛰'};
+// o desenho da frente sai do NOME dela (ver js/ui/icones.js), então obra
+// nova já entra com o ícone certo sem ninguém cadastrar nada
 const FUNCOES = ['Encarregado','Pedreiro','Servente','Operador de máquina','Motorista','Carpinteiro','Armador','Sinalizador','Auxiliar geral','Topógrafo','Vigia','Ajudante'];
 const EQUIPS = ['Retroescavadeira','Escavadeira hidráulica','Pá-carregadeira','Motoniveladora','Rolo compactador','Placa vibratória','Caminhão basculante','Caminhão pipa','Vibroacabadora','Betoneira','Prancha/Guincho','Mini-carregadeira'];
 const CLIMA_OPC = ['Bom','Nublado','Chuva fraca','Chuva forte','Impraticável'];
@@ -646,18 +661,18 @@ function alertasCard(o){
   const aten=fs.filter(f=>nivelDesvio(f.desvio)==='aten').sort((a,b)=>a.desvio-b.desvio);
   const probl=[...crit,...aten];
   const linha=(f,cor)=>`<div style="display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--border)">
-    <span style="font-size:15px">${ICONE[f.id]||'•'}</span>
+    <span style="font-size:17px;color:var(--muted);display:flex">${ic(icFrente(f.nome))}</span>
     <div style="flex:1;min-width:0"><div style="font-weight:600;font-size:13.5px">${esc(f.nome)}</div>
       <div class="kpi-s">previsto ${fmtPct(f.prev)} · realizado ${fmtPct(f.real)} · ${f.n} serviço(s)</div></div>
     <span class="pill ${cor}" style="white-space:nowrap">${f.desvio>=0?'+':''}${fmtPct(f.desvio)}</span></div>`;
   if(!probl.length){
     const ad=fs.filter(f=>nivelDesvio(f.desvio)==='bom').length;
     return `<div class="card" style="margin-bottom:18px;border-left:3px solid var(--accent)"><div class="card-b" style="padding:14px 20px;display:flex;align-items:center;gap:12px">
-      <span style="font-size:20px">✓</span><div><div style="font-weight:700;font-size:14px">Todas as frentes dentro do previsto</div>
+      <span style="font-size:22px;color:var(--accent);display:flex">${ic('checkCirculo')}</span><div><div style="font-weight:700;font-size:14px">Todas as frentes dentro do previsto</div>
       <div class="kpi-s">Nenhuma frente com atraso relevante face ao cronograma${ad?' · '+ad+' adiantada(s)':''}.</div></div></div></div>`;
   }
   return `<div class="card" style="margin-bottom:18px;border-left:3px solid ${crit.length?'var(--vermelho)':'var(--amarelo)'}">
-    <div class="card-h"><div><div class="card-t">⚠ Alertas de desvio</div>
+    <div class="card-h"><div><div class="card-t"><span class="ic-tx">${ic('alerta')}</span>Alertas de desvio</div>
       <div class="card-st">frentes abaixo do previsto no cronograma (acumulado até ${mesLabel(pontos(o)[mesIdxHoje(o)].mes+'-01')})</div></div>
       <div style="display:flex;gap:7px">${crit.length?`<span class="pill pill-red">${crit.length} crítica(s)</span>`:''}${aten.length?`<span class="pill pill-ylw">${aten.length} em atenção</span>`:''}</div></div>
     <div class="card-b" style="padding:6px 22px 14px">
@@ -667,22 +682,22 @@ function alertasCard(o){
 /* ============================================================ RENDER */
 const NAV=[
   {grupo:'Análise',itens:[
-    {id:'executivo',ic:'◆',t:'Painel Executivo'},
-    {id:'servicos',ic:'▤',t:'Serviços'},
-    {id:'medicao',ic:'⌗',t:'Medição Física'},
+    {id:'executivo',ic:'painel',t:'Painel Executivo'},
+    {id:'servicos',ic:'servicos',t:'Serviços'},
+    {id:'medicao',ic:'medicao',t:'Medição Física'},
   ]},
   {grupo:'Operação',itens:[
-    {id:'rdo',ic:'⊕',t:'Lançar serviços'},
-    {id:'diario',ic:'📋',t:'Diário de Obra',badge:o=>getDiarios(o.id).length},
-    {id:'equip',ic:'🚜',t:'Equipamentos'},
-    {id:'historico',ic:'≡',t:'Histórico',badge:o=>getLanc(o.id).length},
+    {id:'rdo',ic:'lancar',t:'Lançar serviços'},
+    {id:'diario',ic:'diario',t:'Diário de Obra',badge:o=>getDiarios(o.id).length},
+    {id:'equip',ic:'equipamentos',t:'Equipamentos'},
+    {id:'historico',ic:'historico',t:'Histórico',badge:o=>getLanc(o.id).length},
   ]},
   {grupo:'Suprimentos',itens:[
-    {id:'notas',ic:'🧾',t:'Notas Fiscais',badge:o=>nfTotal(o.id)},
+    {id:'notas',ic:'notas',t:'Notas Fiscais',badge:o=>nfTotal(o.id)},
   ]},
   {grupo:'Documentos',itens:[
-    {id:'galeria',ic:'📷',t:'Galeria de Fotos',badge:o=>getLanc(o.id).reduce((n,l)=>n+((l.fotos||[]).length),0)},
-    {id:'projetos',ic:'📐',t:'Projetos',badge:o=>(o.projetos||[]).length},
+    {id:'galeria',ic:'galeria',t:'Galeria de Fotos',badge:o=>getLanc(o.id).reduce((n,l)=>n+((l.fotos||[]).length),0)},
+    {id:'projetos',ic:'projetos',t:'Projetos',badge:o=>(o.projetos||[]).length},
   ]},
 ];
 const TITULOS={executivo:'Painel Executivo',servicos:'Serviços',medicao:'Medição Física',rdo:'Lançar serviços',diario:'Diário de Obra',equip:'Equipamentos',historico:'Histórico',notas:'Notas Fiscais',galeria:'Galeria de Fotos',projetos:'Projetos'};
@@ -702,12 +717,12 @@ function sidebar(o){
     <nav class="nav">${NAV.map(g=>`<div class="nav-label">${g.grupo}</div>${g.itens.map(it=>{
       const b=it.badge?it.badge(o):0;
       return `<div class="nav-item ${estado.tela===it.id?'active':''}" role="button" tabindex="0" onclick="ir('${it.id}')">
-        <span class="nav-ic">${it.ic}</span><span class="nav-txt">${it.t}</span>${b?`<span class="nav-badge">${b}</span>`:''}</div>`;
+        <span class="nav-ic">${ic(it.ic)}</span><span class="nav-txt">${it.t}</span>${b?`<span class="nav-badge">${b}</span>`:''}</div>`;
     }).join('')}`).join('')}</nav>
     <div class="side-foot"><button class="btn btn-sm btn-ghost" onclick="irHome()">← Obras</button>
-      <button class="btn btn-sm btn-ghost" onclick="abrirApresentacao()" title="Modo apresentação">▶</button>
-      <button class="btn btn-sm btn-ghost" onclick="toggleTema()" title="Tema">◐</button>
-      ${BACKEND&&getToken()?`<button class="btn btn-sm btn-ghost" onclick="sair()" title="Sair (${esc(usuarioAtual())})">⇥ Sair</button>`:''}
+      <button class="btn btn-sm btn-ghost" onclick="abrirApresentacao()" title="Modo apresentação">${ic('apresentar')}</button>
+      <button class="btn btn-sm btn-ghost" onclick="toggleTema()" title="Tema">${ic('tema')}</button>
+      ${BACKEND&&getToken()?`<button class="btn btn-sm btn-ghost" onclick="sair()" title="Sair (${esc(usuarioAtual())})">${ic('voltar')} Sair</button>`:''}
       <div style="width:100%;font-size:11px;color:var(--muted);margin-top:6px;padding-top:6px;border-top:1px solid var(--border);text-align:center">Criado e desenvolvido por <b>Leonardo Maciel</b></div></div></aside>`;
 }
 function topbar(o){
@@ -804,9 +819,9 @@ function viewHome(){
     <header class="topbar">
       <img src="assets/logo_gestor.png" style="width:40px;height:40px;border-radius:9px;background:#fff;object-fit:contain" alt="Gestor">
       <div style="flex:1"><h1>Gestor — Controle de Obras</h1><div class="sub">Selecione uma obra para acompanhar</div></div>
-      <button class="btn btn-sm btn-pri" onclick="abrirApresentacao()" title="Modo apresentação">▶ Apresentar</button>
+      <button class="btn btn-sm btn-pri" onclick="abrirApresentacao()" title="Modo apresentação">${ic('apresentar')} Apresentar</button>
       ${isDemo()?`<button class="btn btn-sm" style="border-color:var(--amarelo);color:var(--amarelo)" onclick="sairDemo()" title="Sair da demonstração">● Demo ativo</button>`:`<button class="btn btn-sm btn-ghost" onclick="carregarDemo()" title="Preencher com dados de demonstração (local)">🎬 Demo</button>`}
-      <button class="btn btn-sm btn-ghost" onclick="toggleTema()" title="Tema">◐</button></header>
+      <button class="btn btn-sm btn-ghost" onclick="toggleTema()" title="Tema">${ic('tema')}</button></header>
     <div class="content">${resumo}<div class="obras-grid">${cards}
       <div class="obra-card add"><div style="font-size:30px;margin-bottom:8px">＋</div>
         <div style="font-weight:600;color:var(--text-2)">Adicionar nova obra</div>
@@ -837,7 +852,7 @@ function viewExecutivo(o){
   const CORD={crit:'var(--vermelho)',aten:'var(--amarelo)',bom:'var(--accent)',ok:'var(--text-2)',na:'var(--muted)'};
   const linhasFrente=frenteStats(o).map(f=>{
     const nv=nivelDesvio(f.desvio);
-    return `<tr><td>${ICONE[f.id]||'•'} ${esc(f.nome)}</td><td class="num">${f.n}</td>
+    return `<tr><td><span class="ic-tx">${ic(icFrente(f.nome))}</span>${esc(f.nome)}</td><td class="num">${f.n}</td>
       <td class="num">${f.concl}</td><td><span class="minibar"><i style="width:${clamp(f.real).toFixed(1)}%"></i></span></td>
       <td class="num">${fmtPct(f.real)}</td><td class="num" style="color:var(--muted)">${f.prev==null?'—':fmtPct(f.prev)}</td>
       <td class="num" style="color:${CORD[nv]};font-weight:${nv==='crit'||nv==='aten'?'700':'400'}">${f.desvio==null?'—':(f.desvio>=0?'+':'')+fmtPct(f.desvio)}</td></tr>`;
@@ -845,7 +860,7 @@ function viewExecutivo(o){
   return `
   <div class="row" style="margin-bottom:14px;align-items:center">
     <div class="chip">${serv.length} serviços · ${(o.frentes||[]).length} frentes</div>
-    <button class="btn btn-sm" style="margin-left:auto" onclick="imprimirExecutivo()">📄 Relatório Executivo</button></div>
+    <button class="btn btn-sm" style="margin-left:auto" onclick="imprimirExecutivo()">${ic('arquivo')} Relatório Executivo</button></div>
   <div class="grid g4" style="margin-bottom:18px">
     ${kpis.map(k=>`<div class="kpi"><div class="kpi-l">${k.l}</div><div class="kpi-v">${k.v}</div>
       <div class="kpi-s">${k.s}</div>${k.bar!=null?`<div class="bar"><i style="width:${clamp(k.bar).toFixed(1)}%"></i></div>`:''}</div>`).join('')}
@@ -855,7 +870,7 @@ function viewExecutivo(o){
     <div class="card"><div class="card-h"><div><div class="card-t">Curva S — Avanço físico</div>
       <div class="card-st">Previsto (cronograma) × Realizado (RDO) — % médio acumulado</div></div>
       <div style="display:flex;gap:14px;font-size:11.5px;font-weight:600">
-        <span style="color:var(--azul)">■ Previsto</span><span style="color:var(--accent)">■ Realizado</span></div></div>
+        <span style="color:var(--azul)"><b style="display:inline-block;width:9px;height:9px;border-radius:2px;background:currentColor;margin-right:5px"></b>Previsto</span><span style="color:var(--accent)"><b style="display:inline-block;width:9px;height:9px;border-radius:2px;background:currentColor;margin-right:5px"></b>Realizado</span></div></div>
       <div class="card-b">${curvaSVG(pts,prev,real)}</div></div>
     <div class="card"><div class="card-h"><div class="card-t">Avanço por rua</div></div><div class="card-b">
       ${o.ruas.map(ru=>{const sr=serv.filter(s=>s.rua===ru);const p=mediaPct(sr,av);
@@ -863,7 +878,7 @@ function viewExecutivo(o){
           <span>${esc(ru)}</span><span class="mono">${fmtPct(p)}</span></div>
           <div class="bar" style="margin:0"><i style="width:${clamp(p).toFixed(1)}%"></i></div>
           <div class="kpi-s" style="margin-top:5px">${sr.length} serviços</div></div>`;}).join('')}
-      ${getLanc(o.id).length===0?`<div class="empty" style="padding:14px"><div class="ic">◔</div>Nenhum apontamento ainda. Registre no <b>Lançar serviços</b>.</div>`:''}
+      ${getLanc(o.id).length===0?`<div class="empty" style="padding:14px">${ic('vazio')}Nenhum apontamento ainda. Registre no <b>Lançar serviços</b>.</div>`:''}
     </div></div>
   </div>
   <div class="card"><div class="card-h"><div class="card-t">Avanço por frente de serviço</div>
@@ -910,7 +925,7 @@ function detalheEstaca(ri,i){
       <div><div style="font-weight:600;font-size:14px">${esc(l.servico)} ${l.avulso?'<span class="chip" style="padding:0 6px;font-size:10px">avulso</span>':''}</div>
       <div class="kpi-s">${esc(frenteNome(o,l.capId))} · ${new Date(l.dataISO+'T00:00:00').toLocaleDateString('pt-BR')} · trecho ${esc(estacaTxt(l))}</div></div>
       <div class="num" style="font-weight:700">${fmtQtd(l.qtd)} ${esc(l.un)}</div></div>`).join('')
-    :`<div class="empty" style="padding:30px"><div class="ic">◔</div>Nenhum serviço lançado nesta estaca${(estado.painelFrente!=='Todas'||estado.painelMes!=='Todos')?' com os filtros atuais':''}.</div>`;
+    :`<div class="empty" style="padding:30px">${ic('vazio')}Nenhum serviço lançado nesta estaca${(estado.painelFrente!=='Todas'||estado.painelMes!=='Todos')?' com os filtros atuais':''}.</div>`;
   abrirModal(`Estaca E${i} — ${esc(rua)}`,`<div class="kpi-s" style="margin-bottom:4px">${ls.length} serviço(s) executado(s) no trecho da estaca</div>${body}`);
 }
 function abrirModal(titulo,html,larg){
@@ -918,7 +933,7 @@ function abrirModal(titulo,html,larg){
   const bg=document.createElement('div');bg.className='modal-bg';bg.id='modalBg';
   bg.onclick=e=>{if(e.target===bg)fecharModal();};
   bg.innerHTML=`<div class="modal"${larg?` style="max-width:${+larg}px"`:''}><div class="modal-h"><div class="card-t">${titulo}</div>
-    <button class="btn btn-sm btn-ghost" onclick="fecharModal()">✕</button></div>
+    <button class="btn btn-sm btn-ghost" onclick="fecharModal()" aria-label="Fechar">${ic('fechar')}</button></div>
     <div style="padding:14px 20px 20px">${html}</div></div>`;
   document.body.appendChild(bg);
 }
@@ -989,7 +1004,7 @@ function viewServicos(o){
         <td><span class="minibar"><i style="width:${clamp(p).toFixed(1)}%"></i></span></td>
         <td class="num" style="color:${p>=99.95?'var(--accent)':p>0?'var(--text)':'var(--muted)'}">${fmtPct(p)}</td></tr>`;}).join('');
     return `<div class="card" style="margin-bottom:16px"><div class="card-h">
-      <div class="card-t">${ICONE[f.id]||'•'} ${f.id}. ${esc(f.nome)}</div>
+      <div class="card-t"><span class="ic-tx">${ic(icFrente(f.nome))}</span>${f.id}. ${esc(f.nome)}</div>
       <span class="chip">${sf.length} serviços · ${fmtPct(mediaPct(sf,av))}</span></div>
       <div class="tbl-wrap" style="border:none"><table class="t">
       <thead><tr><th>Serviço</th><th class="num">Un</th><th class="num">Prevista</th><th class="num">Executada</th><th>Avanço</th><th class="num">%</th></tr></thead>
@@ -1016,14 +1031,14 @@ function viewRDO(o){
       <div class="field"><label class="fl" for="fFrente">Frente</label><select id="fFrente" onchange="atualizaServ()">
         <option value="">Todas as frentes</option>
         ${(o.frentes||[]).map(f=>`<option value="${f.id}">${f.id}. ${esc(f.nome)}</option>`).join('')}
-        <option value="OUTRO">➕ Outro serviço (avulso)</option></select></div>
+        <option value="OUTRO">+ Outro serviço (avulso)</option></select></div>
       <div class="field" id="servBox"><label class="fl" for="fServ">Serviço</label><select id="fServ" onchange="mostraSaldo()"></select></div>
       <div id="avulsoBox" style="display:none">
         <div class="field"><label class="fl" for="fAvDesc">Descrição do serviço avulso</label>
           <input id="fAvDesc" placeholder="Ex.: apoio, remoção pontual, serviço não previsto..."></div>
         <div class="field" style="max-width:140px"><label class="fl" for="fAvUn">Unidade</label>
           <input id="fAvUn" placeholder="un, m², vb..."></div>
-        <div class="kpi-s" style="margin:-4px 0 12px;color:var(--amarelo)">⚠ Serviço avulso: fica registrado no histórico, mas <b>não conta no avanço nem na medição</b>.</div>
+        <div class="kpi-s" style="margin:-4px 0 12px;color:var(--amarelo)"><span class="ic-tx">${ic('alerta')}</span>Serviço avulso: fica registrado no histórico, mas <b>não conta no avanço nem na medição</b>.</div>
       </div>
       <div class="field"><label class="fl" for="fQtd">Quantidade executada</label><input type="number" step="any" id="fQtd" placeholder="0,00" oninput="mostraSaldo()"></div>
       <div id="saldoBox" class="kpi-s" style="margin:-6px 0 12px"></div>
@@ -1032,7 +1047,7 @@ function viewRDO(o){
       <div class="field"><label class="fl" for="fClima">Clima</label><select id="fClima">
         <option>Bom</option><option>Nublado</option><option>Chuva fraca</option><option>Chuva forte</option><option>Impraticável</option></select></div>
       <div class="field"><label class="fl" for="fObs">Observações</label><textarea id="fObs" rows="2" placeholder="Trecho, estaca, ocorrências..."></textarea></div>
-      <div class="field"><label class="fl" for="fFotos">📷 Fotos do serviço (até ${MAX_FOTOS}) <span id="fotosCount" class="kpi-s" style="text-transform:none;letter-spacing:0"></span></label>
+      <div class="field"><label class="fl" for="fFotos"><span class="ic-tx">${ic('camera')}</span>Fotos do serviço (até ${MAX_FOTOS}) <span id="fotosCount" class="kpi-s" style="text-transform:none;letter-spacing:0"></span></label>
         <input type="file" id="fFotos" accept="image/*" capture="environment" multiple onchange="fotosSelecionadas(this)">
         <div id="fotosPrev" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:9px"></div>
         <div class="kpi-s" style="margin-top:5px">Comprovação de execução — a foto vai no histórico e no RDO impresso.</div></div>
@@ -1110,7 +1125,7 @@ function renderFotosPrev(){
   const box=el('fotosPrev');if(!box)return;
   box.innerHTML=_fotosRDO.map((f,i)=>`<div style="position:relative">
     <img src="${f.thumb}" alt="foto ${i+1}" style="width:74px;height:74px;object-fit:cover;border-radius:8px;border:1px solid var(--border-strong)">
-    <button class="btn btn-sm" onclick="removerFoto(${i})" title="Remover" style="position:absolute;top:-7px;right:-7px;padding:1px 7px;border-radius:50%;background:var(--vermelho);color:#fff;border-color:var(--vermelho)">✕</button></div>`).join('');
+    <button class="btn btn-sm" onclick="removerFoto(${i})" title="Remover" aria-label="Remover foto" style="position:absolute;top:-7px;right:-7px;padding:1px 7px;border-radius:50%;background:var(--vermelho);color:#fff;border-color:var(--vermelho)">✕</button></div>`).join('');
   const c=el('fotosCount');if(c)c.textContent=_fotosRDO.length?`${_fotosRDO.length}/${MAX_FOTOS} foto(s)`:'';
 }
 function enviarFotos(obraId,lancId,fulls){
@@ -1162,7 +1177,7 @@ function ampliarFoto(src){abrirModal('Foto do serviço',`<img src="${esc(src)}" 
 
 function listaUltimos(o){
   const arr=getLanc(o.id).slice().sort((a,b)=>b.criadoEm-a.criadoEm).slice(0,8);
-  if(!arr.length)return `<div class="empty"><div class="ic">◔</div>Nada apontado ainda.</div>`;
+  if(!arr.length)return `<div class="empty">${ic('vazio')}Nada apontado ainda.</div>`;
   return arr.map(l=>`<div style="padding:10px 0;border-bottom:1px solid var(--border);display:flex;gap:12px;align-items:flex-start">
     <div style="flex:1"><div style="font-weight:600;font-size:13.5px">${esc(l.servico)} ${l.avulso?'<span class="chip" style="padding:1px 7px;font-size:10px;background:var(--surface-2)">avulso</span>':''}</div>
     <div class="kpi-s">${new Date(l.dataISO+'T00:00:00').toLocaleDateString('pt-BR')} · ${esc(l.rua)}${estacaTxt(l)?' · '+esc(estacaTxt(l)):''} · ${esc(l.clima||'')}${l.usuario?' · '+esc(l.usuario):''}</div>
@@ -1187,23 +1202,23 @@ function viewMedicao(o){
       <select onchange="setMes(this.value)">${meses.length?meses.map(m=>`<option value="${m}" ${m===mes?'selected':''}>${mesLabel(m+'-01')}</option>`).join(''):'<option>—</option>'}</select></div>
     <div style="margin-left:auto;text-align:right"><div class="kpi-l">Serviços com produção</div>
       <div class="mono" style="font-size:26px;font-weight:700">${linhas.length}</div></div>
-    <button class="btn btn-sm" onclick="exportaCSV()" ${linhas.length?'':'disabled'}>⬇ Exportar CSV</button></div>
+    <button class="btn btn-sm" onclick="exportaCSV()" ${linhas.length?'':'disabled'}>${ic('baixar')} Exportar CSV</button></div>
   ${linhas.length?`<div class="tbl-wrap"><table class="t">
     <thead><tr><th>Serviço</th><th>Frente / Rua</th><th class="num">Un</th><th class="num">Qtd no mês</th><th class="num">Acum.</th><th class="num">% acum.</th></tr></thead>
     <tbody>${linhas.map(r=>{const qa=av[skeyS(r.s)]||0;const p=r.s.qtdPrev?qa/r.s.qtdPrev*100:0;
       return `<tr><td>${esc(r.s.servico)}</td><td class="kpi-s">${frenteNome(o,r.s.capId)}<br>${esc(r.s.rua)}</td>
       <td class="num">${esc(r.s.un)}</td><td class="num" style="font-weight:700">${fmtQtd(r.q)}</td>
       <td class="num">${fmtQtd(qa)}</td><td class="num">${fmtPct(p)}</td></tr>`;}).join('')}
-    </tbody></table></div>`:`<div class="empty"><div class="ic">⌗</div>Sem apontamentos neste mês. Registre no <b>Lançar serviços</b>.</div>`}`;
+    </tbody></table></div>`:`<div class="empty">${ic('medicao')}Sem apontamentos neste mês. Registre no <b>Lançar serviços</b>.</div>`}`;
 }
 
 /* ---------- HISTÓRICO ---------- */
 function viewHistorico(o){
   const datas=todasDatas(o).slice().reverse(); // mais recente primeiro
-  if(!datas.length)return `<div class="empty"><div class="ic">≡</div>Nenhum RDO ainda. Comece em <b>Lançar serviços</b> ou <b>Diário de Obra</b>.</div>`;
+  if(!datas.length)return `<div class="empty">${ic('historico')}Nenhum RDO ainda. Comece em <b>Lançar serviços</b> ou <b>Diário de Obra</b>.</div>`;
   const topo=`<div class="row" style="margin-bottom:16px;align-items:center">
     <div class="chip">${datas.length} RDO(s)</div>
-    <div style="margin-left:auto"><button class="btn btn-sm" onclick="gerarExcelTudo()">⬇ Exportar Excel (todos)</button></div></div>`;
+    <div style="margin-left:auto"><button class="btn btn-sm" onclick="gerarExcelTudo()">${ic('planilha')} Exportar Excel (todos)</button></div></div>`;
   const cards=datas.map(d=>{
     const dd=montarRDO(o,d);const dv=diarioDoDia(o.id,d);
     const dataBR=new Date(d+'T00:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit',year:'numeric'});
@@ -1211,13 +1226,13 @@ function viewHistorico(o){
       <td>${esc(l.servico)} ${l.avulso?'<span class="chip" style="padding:0 6px;font-size:10px">avulso</span>':''}<div class="kpi-s">${esc(l.rua)} · ${esc(frenteNome(o,l.capId))}${l.usuario?' · por <b>'+esc(l.usuario)+'</b>':''}</div>
       ${(l.fotos&&l.fotos.length)?`<div style="display:flex;flex-wrap:wrap">${galeriaFotos(l.fotos,52)}</div>`:''}</td>
       <td class="mono">${esc(estacaTxt(l))||'—'}</td><td class="num">${fmtQtd(l.qtd)} ${esc(l.un)}</td>
-      <td class="num" style="white-space:nowrap"><button class="btn btn-sm btn-ghost" onclick="editarServ('${l.id}')" title="Editar">✎</button><button class="btn btn-sm btn-ghost" onclick="excluir('${l.id}')" title="Excluir">✕</button></td></tr>`).join('')
+      <td class="num" style="white-space:nowrap"><button class="btn btn-sm btn-ghost" onclick="editarServ('${l.id}')" title="Editar">${ic('editar')}</button><button class="btn btn-sm btn-ghost" onclick="excluir('${l.id}')" title="Excluir">✕</button></td></tr>`).join('')
       :`<tr><td colspan="4" class="kpi-s">Nenhum serviço lançado neste dia.</td></tr>`;
-    const resumo=dv?`👷 ${totalPessoal(dv.pessoal||[])} · 🚜 ${(dv.equipamentos||[]).length} equip. · ☁ ${esc(dv.climaManha||'—')}/${esc(dv.climaTarde||'—')}`:'sem diário — só serviços';
+    const resumo=dv?`${ic('capacete')} ${totalPessoal(dv.pessoal||[])} · ${ic('equipamentos')} ${(dv.equipamentos||[]).length} equip. · ${ic('nuvem')} ${esc(dv.climaManha||'—')}/${esc(dv.climaTarde||'—')}`:'sem diário — só serviços';
     return `<div class="card" style="margin-bottom:14px"><div class="card-h">
       <div><div class="card-t">RDO ${numeroRDO(o,d)} · ${dataBR}</div><div class="card-st">${resumo}</div></div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-sm" onclick="gerarPDFdia('${d}')">📄 PDF</button>
-        <button class="btn btn-sm" onclick="gerarExcelDia('${d}')">⬇ Excel</button></div></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-sm" onclick="gerarPDFdia('${d}')">${ic('arquivo')} PDF</button>
+        <button class="btn btn-sm" onclick="gerarExcelDia('${d}')">${ic('planilha')} Excel</button></div></div>
       <div class="tbl-wrap" style="border:none"><table class="t">
       <thead><tr><th>Serviço</th><th>Trecho</th><th class="num">Qtd</th><th></th></tr></thead>
       <tbody>${linhas}</tbody></table></div></div>`;
@@ -1250,7 +1265,7 @@ function carregarEquip(){
   }).catch(function(e){console.warn('equip load',e);EQUIP.carregado=true;if(estado.tela==='equip')render();});
 }
 function viewEquip(o){
-  if(!BACKEND)return `<div class="empty"><div class="ic">🚜</div>O módulo de Equipamentos usa o backend (Google Sheets).<br>Configure o CONFIG do app para ativar.</div>`;
+  if(!BACKEND)return `<div class="empty">${ic('equipamentos')}O módulo de Equipamentos usa o backend (Google Sheets).<br>Configure o CONFIG do app para ativar.</div>`;
   const eqOpts=EQUIP.equipamentos.map(e=>`<option value="${esc(e.nome)}">${esc(e.nome)}${e.tipo?' · '+esc(e.tipo):''}${e.locadora?' · '+esc(e.locadora):''}</option>`).join('');
   const meses=[...new Set(EQUIP.apontamentos.map(a=>String(a.data).slice(0,7)).filter(m=>/^\d{4}-\d{2}$/.test(m)))].sort().reverse();
   const equipNomes=[...new Set(EQUIP.apontamentos.map(a=>a.equipamento))];
@@ -1265,16 +1280,16 @@ function viewEquip(o){
       <select id="eqFilMes"><option value="Todos">Todos os meses</option>${meses.map(m=>`<option value="${m}">${mesLabel(m+'-01')}</option>`).join('')}</select></div>
     <div class="field" style="margin:0;max-width:240px"><label class="fl">Equipamento</label>
       <select id="eqFilEquip"><option value="Todos">Todos os equipamentos</option>${equipNomes.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('')}</select></div>
-    <button class="btn" onclick="imprimirMedicaoEquip()" ${EQUIP.apontamentos.length?'':'disabled'} style="margin-left:auto">🖨 Medição (PDF)</button>
-    <button class="btn btn-pri" onclick="medicaoEquipExcel()" ${EQUIP.apontamentos.length?'':'disabled'}>⬇ Gerar medição (Excel)</button>
+    <button class="btn" onclick="imprimirMedicaoEquip()" ${EQUIP.apontamentos.length?'':'disabled'} style="margin-left:auto">${ic('imprimir')} Medição (PDF)</button>
+    <button class="btn btn-pri" onclick="medicaoEquipExcel()" ${EQUIP.apontamentos.length?'':'disabled'}>${ic('planilha')} Gerar medição (Excel)</button>
     <div class="kpi-s" style="flex-basis:100%">Relatório de medição no padrão de obra pública (resumo consolidado + diário por equipamento, com paradas, horímetro, combustível e disponibilidade), respeitando os filtros acima. PDF para impressão/fiscalização; Excel com uma aba por equipamento.</div></div></div>
   <div class="grid g2" style="grid-template-columns:1.3fr 1fr;align-items:start">
-    <div class="card"><div class="card-h"><div class="card-t">🚜 Apontamento de equipamento</div><div class="card-st">produção do dia: horas, paradas, horímetro, combustível</div></div>
+    <div class="card"><div class="card-h"><div class="card-t"><span class="ic-tx">${ic('equipamentos')}</span>Apontamento de equipamento</div><div class="card-st">produção do dia: horas, paradas, horímetro, combustível</div></div>
       <div class="card-b">
         <div class="row"><div class="field"><label class="fl">Data</label><input type="date" id="eqData" value="${hoje()}"></div>
           <div class="field"><label class="fl">Turno</label><select id="eqTurno" onchange="eqAplicarTurno()">
-            <option value="Diurno" data-ini="07:00" data-fim="17:00">☀ Diurno (07–17)</option>
-            <option value="Noturno" data-ini="19:00" data-fim="05:00">🌙 Noturno (19–05)</option></select></div></div>
+            <option value="Diurno" data-ini="07:00" data-fim="17:00">Diurno (07–17)</option>
+            <option value="Noturno" data-ini="19:00" data-fim="05:00">Noturno (19–05)</option></select></div></div>
         <div class="field"><label class="fl">Equipamento</label><select id="eqEquip">${eqOpts||'<option value="">— cadastre um equipamento —</option>'}</select></div>
         <div class="field"><label class="fl">Operador</label><input id="eqOper" placeholder="Nome do operador"></div>
         <div class="row"><div class="field"><label class="fl">Início</label><input type="time" id="eqIni" value="07:00" onchange="eqCalcHoras()"></div>
@@ -1297,14 +1312,14 @@ function viewEquip(o){
   </div>`;
 }
 function eqListaUltimos(){
-  if(!EQUIP.carregado)return `<div class="empty" style="padding:20px"><div class="ic">⏳</div>Carregando…</div>`;
+  if(!EQUIP.carregado)return `<div class="empty" style="padding:20px">${ic('ampulheta')}Carregando…</div>`;
   const ult=EQUIP.apontamentos.slice(0,15);
-  if(!ult.length)return `<div class="empty" style="padding:14px"><div class="ic">◔</div>Nenhum apontamento ainda.</div>`;
+  if(!ult.length)return `<div class="empty" style="padding:14px">${ic('vazio')}Nenhum apontamento ainda.</div>`;
   return ult.map(a=>`<div style="padding:10px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;gap:10px">
     <div style="flex:1;min-width:0"><div style="font-weight:600;font-size:13.5px">${esc(a.equipamento)} <span class="kpi-s">· ${esc(String(a.horas))}h</span></div>
     <div class="kpi-s">${esc(String(a.data).slice(0,10))} · ${esc(a.turno||'')} · ${esc(a.operador||'')} · ${esc(a.situacao||'')}</div>
-    ${a.assinatura&&String(a.assinatura).indexOf('http')===0?`<a href="${esc(a.assinatura)}" target="_blank" rel="noopener" class="kpi-s" style="color:var(--accent)">✍ assinatura</a>`:''}</div>
-    <button class="btn btn-sm btn-ghost" onclick="eqApagar('${esc(String(a.carimbo))}')" title="Apagar">✕</button></div>`).join('');
+    ${a.assinatura&&String(a.assinatura).indexOf('http')===0?`<a href="${esc(a.assinatura)}" target="_blank" rel="noopener" class="kpi-s" style="color:var(--accent)">${ic('assinatura')} assinatura</a>`:''}</div>
+    <button class="btn btn-sm btn-ghost" onclick="eqApagar('${esc(String(a.carimbo))}')" title="Apagar">${ic('fechar')}</button></div>`).join('');
 }
 /* horas e paradas */
 function hm(t){if(!t)return 0;const p=String(t).split(':');return (+p[0]||0)*60+(+p[1]||0);}
@@ -1316,7 +1331,7 @@ function eqAddParada(mot,ini,fim){
   row.innerHTML=`<div class="field" style="margin:0;flex:1.4"><select class="par-mot">${MOTIVOS_PARADA.map(m=>`<option>${m}</option>`).join('')}</select></div>
     <div class="field" style="margin:0"><input type="time" class="par-ini" onchange="eqCalcHoras()"></div>
     <div class="field" style="margin:0"><input type="time" class="par-fim" onchange="eqCalcHoras()"></div>
-    <button class="btn btn-sm btn-ghost" onclick="this.closest('.par-row').remove();eqCalcHoras()">✕</button>`;
+    <button class="btn btn-sm btn-ghost" onclick="this.closest('.par-row').remove();eqCalcHoras()" title="Remover">${ic('fechar')}</button>`;
   box.appendChild(row);
   if(mot)row.querySelector('.par-mot').value=mot;if(ini)row.querySelector('.par-ini').value=ini;if(fim)row.querySelector('.par-fim').value=fim;
 }
@@ -1479,7 +1494,7 @@ function fotosDaObra(o){
 }
 function viewGaleria(o){
   const todas=fotosDaObra(o);
-  if(!todas.length)return `<div class="empty"><div class="ic">📷</div>Nenhuma foto registrada nesta obra.<br>
+  if(!todas.length)return `<div class="empty">${ic('camera')}Nenhuma foto registrada nesta obra.<br>
     <span class="kpi-s">Anexe fotos ao lançar um serviço, em <b>Lançar serviços</b>.</span></div>`;
   const meses=[...new Set(todas.map(f=>f.dataISO.slice(0,7)))].sort().reverse();
   const fs=todas.filter(f=>(estado.galRua==='Todas'||f.rua===estado.galRua)&&(estado.galMes==='Todos'||f.dataISO.slice(0,7)===estado.galMes));
@@ -1495,17 +1510,17 @@ function viewGaleria(o){
         ${meses.map(m=>`<option value="${m}" ${estado.galMes===m?'selected':''}>${mesLabel(m+'-01')}</option>`).join('')}</select></div>
     <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
       <span class="chip">${fs.length} foto(s)</span>
-      <button class="btn btn-sm" onclick="baixarGaleria()" ${fs.length?'':'disabled'}>⬇ Baixar todas com marca d'água</button></div></div>`;
+      <button class="btn btn-sm" onclick="baixarGaleria()" ${fs.length?'':'disabled'}>${ic('baixar')} Baixar todas com marca d'água</button></div></div>`;
   const cards=fs.map((f,i)=>`<div class="card" style="overflow:hidden;padding:0">
     <div style="position:relative;background:var(--surface-2);cursor:zoom-in" onclick="abrirFotoGaleria(${i})">
       ${f.src?`<img src="${esc(f.src)}" alt="${esc(f.legenda)}" loading="lazy" style="width:100%;height:170px;object-fit:cover;display:block">`
-             :`<div class="empty" style="height:170px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:10px"><div class="ic">☁</div><span style="font-size:11.5px">Imagem no servidor</span></div>`}
+             :`<div class="empty" style="height:170px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:10px">${ic('nuvem')}<span style="font-size:11.5px">Imagem no servidor</span></div>`}
       <span class="pill pill-grn" style="position:absolute;top:8px;left:8px;background:rgba(0,0,0,.6);color:#fff">${new Date(f.dataISO+'T00:00:00').toLocaleDateString('pt-BR')}</span></div>
     <div style="padding:11px 13px">
       <div style="font-weight:600;font-size:13px;line-height:1.3">${esc(f.legenda)}</div>
       <div class="kpi-s" style="margin-top:3px">${esc(f.rua)}${f.trecho?' · '+esc(f.trecho):''}</div>
       <div class="kpi-s">${esc(f.frente)}${f.usuario?' · por '+esc(f.usuario):''}</div>
-      <button class="btn btn-sm" style="width:100%;justify-content:center;margin-top:9px" onclick="event.stopPropagation();baixarFoto(${i})" ${f.src?'':'disabled'}>⬇ Baixar com marca d'água</button>
+      <button class="btn btn-sm" style="width:100%;justify-content:center;margin-top:9px" onclick="event.stopPropagation();baixarFoto(${i})" ${f.src?'':'disabled'}>${ic('baixar')} Baixar com marca d'água</button>
     </div></div>`).join('');
   return `${filtros}
     ${semImagem?`<div class="card" style="margin-bottom:14px;border-left:3px solid var(--amarelo)"><div class="card-b" style="padding:11px 16px">
@@ -1527,7 +1542,7 @@ function abrirFotoGaleria(i){
       <div><b>Quantidade:</b> ${fmtQtd(f.qtd)} ${esc(f.un)}</div>
       <div><b>Data:</b> ${new Date(f.dataISO+'T00:00:00').toLocaleDateString('pt-BR')}${f.usuario?' · <b>Registrado por:</b> '+esc(f.usuario):''}</div>
     </div>
-    <button class="btn btn-pri" style="width:100%;justify-content:center;margin-top:14px" onclick="baixarFoto(${i})" ${f.src?'':'disabled'}>⬇ Baixar com marca d'água</button>`);
+    <button class="btn btn-pri" style="width:100%;justify-content:center;margin-top:14px" onclick="baixarFoto(${i})" ${f.src?'':'disabled'}>${ic('baixar')} Baixar com marca d'água</button>`);
 }
 // desenha a foto com uma tarja de identificacao e devolve o JPEG
 function comMarcaDagua(f,o,src){
@@ -1608,7 +1623,7 @@ async function baixarGaleria(){
 /* ---------- PROJETOS (PDFs) ---------- */
 function viewProjetos(o){
   const projs=o.projetos||[];
-  if(!projs.length)return `<div class="empty"><div class="ic">📐</div>Nenhum projeto cadastrado para esta obra.</div>`;
+  if(!projs.length)return `<div class="empty">${ic('projetos')}Nenhum projeto cadastrado para esta obra.</div>`;
   if(!estado.projSel||!projs.some(p=>p.arquivo===estado.projSel))estado.projSel=projs[0].arquivo;
   const sel=projs.find(p=>p.arquivo===estado.projSel);
   const porRua={};projs.forEach(p=>{(porRua[p.rua]=porRua[p.rua]||[]).push(p);});
@@ -1616,7 +1631,7 @@ function viewProjetos(o){
     <div class="kpi-l" style="padding:12px 6px 4px">${esc(rua)}</div>
     ${ps.map(p=>{const on=p.arquivo===estado.projSel;
       return `<div onclick="setProj('${esc(p.arquivo)}')" style="display:flex;gap:10px;align-items:center;padding:9px 11px;border-radius:var(--r-sm);cursor:pointer;margin:2px 0;${on?'background:var(--accent-soft);color:var(--accent)':'color:var(--text-2)'}">
-        <span style="font-size:16px">📄</span><div style="flex:1;min-width:0">
+        <span style="font-size:17px;color:var(--muted);display:flex">${ic('arquivo')}</span><div style="flex:1;min-width:0">
         <div style="font-weight:600;font-size:13.5px">${esc(p.disciplina)}</div>${p.cod?`<div class="kpi-s">${esc(p.cod)}</div>`:''}</div></div>`;}).join('')}`).join('');
   return `<div class="proj-wrap" style="display:flex;gap:16px;align-items:flex-start">
     <div class="card proj-list" style="width:290px;flex-shrink:0"><div class="card-b" style="padding:6px 10px 12px">${lista}</div></div>
@@ -1627,22 +1642,22 @@ function viewProjetos(o){
         <span id="pdfZoomLbl" class="mono" style="min-width:46px;text-align:center;font-size:12.5px">${Math.round(_pdfZoom*100)}%</span>
         <button class="btn btn-sm" onclick="pdfZoom(0.2)" title="Ampliar">+</button>
         <button class="btn btn-sm" onclick="pdfZoomReset()" title="Ajustar à largura">⤢ Ajustar</button>
-        <a class="btn btn-sm btn-pri" href="${esc(sel.arquivo)}" target="_blank" rel="noopener">Abrir ⬈</a>
-        <a class="btn btn-sm" href="${esc(sel.arquivo)}" download>Baixar ⬇</a></div></div>
+        <a class="btn btn-sm btn-pri" href="${esc(sel.arquivo)}" target="_blank" rel="noopener">Abrir ${ic('seta')}</a>
+        <a class="btn btn-sm" href="${esc(sel.arquivo)}" download>${ic('baixar')} Baixar</a></div></div>
       <div id="pdfViewer" style="height:78vh;overflow:auto;background:var(--surface-2);border-radius:0 0 var(--r) var(--r);padding:14px;text-align:center">
-        <div class="empty" style="padding:40px"><div class="ic">⏳</div>Carregando projeto…</div>
+        <div class="empty" style="padding:40px">${ic('ampulheta')}Carregando projeto…</div>
       </div>
     </div></div>`;
 }
 function setProj(a){estado.projSel=a;_pdfZoom=1;render();}
 let _pdfToken=0,_pdfDoc=null,_pdfUrl='',_pdfZoom=1;
-function fallbackPDF(url){return `<div class="empty" style="padding:44px 20px"><div class="ic">📄</div>Não foi possível renderizar o PDF.<br><a class="btn btn-pri" style="margin-top:14px" href="${esc(url)}" target="_blank" rel="noopener">Abrir projeto ⬈</a></div>`;}
+function fallbackPDF(url){return `<div class="empty" style="padding:44px 20px">${ic('arquivo')}Não foi possível renderizar o PDF.<br><a class="btn btn-pri" style="margin-top:14px" href="${esc(url)}" target="_blank" rel="noopener">Abrir projeto ${ic('seta')}</a></div>`;}
 function renderPdfDoc(url){
   const box=el('pdfViewer');if(!box||!url)return;
   if(_pdfDoc&&_pdfUrl===url){drawPdf();return;}          // já carregado: só desenha
   const tok=++_pdfToken;
   if(!window.pdfjsLib){box.innerHTML=fallbackPDF(url);return;}
-  box.innerHTML='<div class="empty" style="padding:40px"><div class="ic">⏳</div>Carregando projeto…</div>';
+  box.innerHTML=`<div class="empty" style="padding:40px">${ic('ampulheta')}Carregando projeto…</div>`;
   window.pdfjsLib.getDocument(url).promise.then(pdf=>{
     if(tok!==_pdfToken)return;
     _pdfDoc=pdf;_pdfUrl=url;drawPdf();
@@ -1676,12 +1691,12 @@ function rowPessoal(p){p=p||{funcao:'',qtd:''};
   return `<div class="drow pessoal-row" style="display:flex;gap:8px;margin-bottom:6px">
     <input list="dlFuncoes" class="p-func" placeholder="Função" value="${esc(p.funcao||'')}" style="flex:1">
     <input type="number" min="0" class="p-qtd" placeholder="Qtd" value="${p.qtd||''}" style="width:80px">
-    <button class="btn btn-sm btn-ghost" onclick="delRow(this)" title="Remover">✕</button></div>`;}
+    <button class="btn btn-sm btn-ghost" onclick="delRow(this)" title="Remover">${ic('fechar')}</button></div>`;}
 function rowEquip(e){e=e||{nome:'',qtd:''};
   return `<div class="drow equip-row" style="display:flex;gap:8px;margin-bottom:6px">
     <input list="dlEquip" class="e-nome" placeholder="Equipamento" value="${esc(e.nome||'')}" style="flex:1">
     <input type="number" min="0" class="e-qtd" placeholder="Qtd" value="${e.qtd||''}" style="width:80px">
-    <button class="btn btn-sm btn-ghost" onclick="delRow(this)" title="Remover">✕</button></div>`;}
+    <button class="btn btn-sm btn-ghost" onclick="delRow(this)" title="Remover">${ic('fechar')}</button></div>`;}
 function lerPessoal(){return [...document.querySelectorAll('#pessoalBox .pessoal-row')].map(r=>({funcao:r.querySelector('.p-func').value.trim(),qtd:+r.querySelector('.p-qtd').value||0})).filter(p=>p.funcao||p.qtd);}
 function lerEquip(){return [...document.querySelectorAll('#equipBox .equip-row')].map(r=>({nome:r.querySelector('.e-nome').value.trim(),qtd:+r.querySelector('.e-qtd').value||0})).filter(e=>e.nome||e.qtd);}
 function addPessoal(){el('pessoalBox').insertAdjacentHTML('beforeend',rowPessoal());}
@@ -1704,7 +1719,7 @@ function viewDiario(o){
   <datalist id="dlEquip">${EQUIPS.map(e=>`<option value="${esc(e)}">`).join('')}</datalist>
   <div class="grid g2" style="grid-template-columns:1.4fr 1fr;align-items:start">
     <div class="card"><div class="card-h">
-      <div><div class="card-t">📋 Relatório Diário de Obra</div><div class="card-st">Efetivo, equipamentos e ocorrências do dia</div></div>
+      <div><div class="card-t"><span class="ic-tx">${ic('diario')}</span>Relatório Diário de Obra</div><div class="card-st">Efetivo, equipamentos e ocorrências do dia</div></div>
       ${sv.criadoEm?'<span class="chip on">salvo</span>':'<span class="chip">novo</span>'}</div>
       <div class="card-b">
         <div class="row">
@@ -1725,7 +1740,7 @@ function viewDiario(o){
         <div class="field" style="margin-top:14px"><label class="fl">Ocorrências / observações</label>
           <textarea id="dOcor" rows="3" placeholder="Atrasos, imprevistos, visitas, interferências, medições, etc.">${esc(sv.ocorrencias||'')}</textarea></div>
         <div class="row"><button class="btn btn-pri" style="flex:1;justify-content:center" onclick="salvarDiario()">Salvar diário</button>
-          <button class="btn" onclick="imprimirRDO()">🖨 Imprimir RDO</button></div>
+          <button class="btn" onclick="imprimirRDO()">${ic('imprimir')} Imprimir RDO</button></div>
       </div></div>
     <div style="display:flex;flex-direction:column;gap:16px">
       <div class="card"><div class="card-h"><div class="card-t">Serviços lançados neste dia</div>
@@ -1739,7 +1754,7 @@ function viewDiario(o){
         ${diarios.length?diarios.map(x=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 6px;border-bottom:1px solid var(--border);cursor:pointer" onclick="setDiaData('${x.dataISO}')">
           <div><b>${new Date(x.dataISO+'T00:00:00').toLocaleDateString('pt-BR')}</b>
           <div class="kpi-s">${totalPessoal(x.pessoal)} pessoas · ${(x.equipamentos||[]).length} equip.</div></div>
-          <button class="btn btn-sm btn-ghost" onclick="event.stopPropagation();delDiario('${x.dataISO}')" title="Excluir">✕</button></div>`).join(''):`<div class="empty" style="padding:14px">Nenhum diário salvo.</div>`}
+          <button class="btn btn-sm btn-ghost" onclick="event.stopPropagation();delDiario('${x.dataISO}')" title="Excluir">${ic('fechar')}</button></div>`).join(''):`<div class="empty" style="padding:14px">Nenhum diário salvo.</div>`}
       </div></div>
     </div>
   </div>`;
@@ -1990,7 +2005,7 @@ function mostraSaldo(){
   const s=servSelecionado();if(!s){el('saldoBox').textContent='';return;}
   const o=obra();const av=avancoServ(o);const jaf=av[skeyS(s)]||0;const nova=+el('fQtd').value||0;
   const saldo=s.qtdPrev-jaf-nova;const cor=saldo<0?'var(--vermelho)':'var(--muted)';
-  el('saldoBox').innerHTML=`Previsto <b>${fmtQtd(s.qtdPrev)} ${esc(s.un)}</b> · executado ${fmtQtd(jaf)} · <span style="color:${cor}">saldo ${fmtQtd(saldo)}</span>`+(saldo<0?' ⚠ acima do previsto':'');
+  el('saldoBox').innerHTML=`Previsto <b>${fmtQtd(s.qtdPrev)} ${esc(s.un)}</b> · executado ${fmtQtd(jaf)} · <span style="color:${cor}">saldo ${fmtQtd(saldo)}</span>`+(saldo<0?(' '+ic('alerta')+' acima do previsto'):'');
 }
 function salvar(){
   const o=obra();const qtd=+el('fQtd').value;
@@ -2067,19 +2082,19 @@ function apSlideHTML(sl){
     <div class="ap-sub" style="margin:0 auto">Acompanhamento físico, diário de obra, equipamentos, medição e projetos — do canteiro à gestão executiva, em um só sistema.</div></div>`;
   if(sl.tipo==='capacidades'){
     const caps=[
-      ['◆','Painel Executivo','KPIs, Curva S e alertas automáticos de desvio por frente'],
-      ['⊕','RDO de Campo','Apontamento diário de produção por serviço e estaca'],
-      ['📋','Diário de Obra','Efetivo, equipamentos, clima e ocorrências — PDF pronto'],
-      ['🚜','Equipamentos','Horas, paradas, horímetro, combustível e assinatura'],
-      ['⌗','Medição Física','Produção do mês por serviço, com exportação'],
-      ['📷','Galeria de Fotos','Registro fotográfico com marca d\'água para prestação de contas'],
-      ['📐','Projetos','Pranchas renderizadas offline, com zoom'],
-      ['≡','Histórico','Consulta auditável por data, com edição'],
-      ['☁','Sincronização','Nuvem com fila offline — funciona sem sinal no campo']
+      ['painel','Painel Executivo','KPIs, Curva S e alertas automáticos de desvio por frente'],
+      ['lancar','RDO de Campo','Apontamento diário de produção por serviço e estaca'],
+      ['diario','Diário de Obra','Efetivo, equipamentos, clima e ocorrências — PDF pronto'],
+      ['equipamentos','Equipamentos','Horas, paradas, horímetro, combustível e assinatura'],
+      ['medicao','Medição Física','Produção do mês por serviço, com exportação'],
+      ['galeria','Galeria de Fotos','Registro fotográfico com marca d\'água para prestação de contas'],
+      ['projetos','Projetos','Pranchas renderizadas offline, com zoom'],
+      ['historico','Histórico','Consulta auditável por data, com edição'],
+      ['nuvem','Sincronização','Nuvem com fila offline — funciona sem sinal no campo']
     ];
     return `<div class="ap-slide"><div class="ap-kicker">O que o sistema entrega</div>
       <h2>Uma plataforma, todo o ciclo da obra</h2>
-      <div class="ap-caps">${caps.map(c=>`<div class="ap-cap"><span class="ic">${c[0]}</span><div><b>${esc(c[1])}</b><span>${esc(c[2])}</span></div></div>`).join('')}</div></div>`;
+      <div class="ap-caps">${caps.map(c=>`<div class="ap-cap"><span class="ic-ap">${ic(c[0])}</span><div><b>${esc(c[1])}</b><span>${esc(c[2])}</span></div></div>`).join('')}</div></div>`;
   }
   if(sl.tipo==='obra'){
     const o=sl.o,serv=o.servicos||[],av=avancoServ(o),pf=mediaPct(serv,av);
@@ -2099,7 +2114,7 @@ function apSlideHTML(sl){
       <div class="ap-cols">
         <div><div class="ap-kicker" style="margin-bottom:8px">Curva S — previsto × realizado</div>${curvaSVG(pts,prev,real)}</div>
         <div><div class="ap-kicker" style="margin-bottom:8px">Avanço por frente</div><div class="ap-frn">
-          ${frn.length?frn.map(f=>`<div class="fr"><div class="hd"><span>${ICONE[f.id]||'•'} ${esc(f.nome)}</span><span class="mono">${fmtPct(f.p)}</span></div><div class="bar" style="margin:0"><i style="width:${clamp(f.p).toFixed(1)}%"></i></div></div>`).join(''):'<div class="ap-sub">Sem serviços cadastrados.</div>'}
+          ${frn.length?frn.map(f=>`<div class="fr"><div class="hd"><span><span class="ic-tx">${ic(icFrente(f.nome))}</span>${esc(f.nome)}</span><span class="mono">${fmtPct(f.p)}</span></div><div class="bar" style="margin:0"><i style="width:${clamp(f.p).toFixed(1)}%"></i></div></div>`).join(''):'<div class="ap-sub">Sem serviços cadastrados.</div>'}
         </div></div>
       </div></div>`;
   }
@@ -2117,7 +2132,7 @@ function apSlideHTML(sl){
         <div class="ap-k"><div class="l">Efetivo (diários)</div><div class="v">${efet}</div></div>
       </div>
       <div class="ap-kicker" style="margin:8px 0 2px">Serviços mais executados</div>
-      <table class="ap-op"><tbody>${top.map(t=>`<tr><td>${ICONE[t.s.capId]||'•'} ${esc(t.s.servico)}</td><td class="n">${fmtQtd(t.q)} ${esc(t.s.un)}</td><td class="n" style="color:var(--accent-2)">${fmtPct(t.p)}</td></tr>`).join('')}</tbody></table></div>`;
+      <table class="ap-op"><tbody>${top.map(t=>`<tr><td><span class="ic-tx">${ic(icFrente(frenteNome(o,t.s.capId)))}</span>${esc(t.s.servico)}</td><td class="n">${fmtQtd(t.q)} ${esc(t.s.un)}</td><td class="n" style="color:var(--accent-2)">${fmtPct(t.p)}</td></tr>`).join('')}</tbody></table></div>`;
   }
   if(sl.tipo==='ruas'){
     const o=sl.o,lf=getLanc(o.id);
@@ -2140,7 +2155,7 @@ function apSlideHTML(sl){
     const o=sl.o,projs=o.projetos||[];const porRua={};projs.forEach(p=>{(porRua[p.rua]=porRua[p.rua]||[]).push(p);});
     const first=projs[0];
     const cat=Object.entries(porRua).map(([rua,ps])=>`<div style="margin-bottom:12px"><div class="ap-kicker" style="margin-bottom:6px">${esc(rua)}</div>
-      ${ps.map(p=>`<div class="ap-cap" style="padding:10px 14px;margin-bottom:8px"><span class="ic">📄</span><div><b>${esc(p.disciplina)}</b><span>${esc(p.cod||'')}</span></div></div>`).join('')}</div>`).join('');
+      ${ps.map(p=>`<div class="ap-cap" style="padding:10px 14px;margin-bottom:8px"><span class="ic-ap">${ic('arquivo')}</span><div><b>${esc(p.disciplina)}</b><span>${esc(p.cod||'')}</span></div></div>`).join('')}</div>`).join('');
     return `<div class="ap-slide"><div class="ap-kicker">${esc(o.nome)} · projetos</div>
       <h2>Projetos de engenharia, sempre à mão</h2>
       <div class="ap-sub" style="margin-bottom:16px">Pranchas de pavimentação, drenagem e terraplenagem renderizadas no próprio app — offline e com zoom.</div>
@@ -2227,7 +2242,7 @@ function apGo(d){const n=APRES.slides.length;let i=APRES.idx+d;if(i>=n){apFechar
 function apPlayPause(){
   APRES.playing=!APRES.playing;
   const o=el('apres');if(o)o.classList.toggle('paused',!APRES.playing);
-  const b=el('apPlay');if(b)b.textContent=APRES.playing?'⏸ Pausar':'▶ Continuar';
+  const b=el('apPlay');if(b)b.innerHTML=APRES.playing?(ic('pausa')+' Pausar'):(ic('play')+' Continuar');
   if(APRES.playing)apArmar();else clearTimeout(APRES.timer);
 }
 function abrirApresentacao(){
@@ -2242,9 +2257,9 @@ function abrirApresentacao(){
       <div class="ap-prog">${segs}</div></div>
     <div class="ap-stage" id="apStage"></div>
     <div class="ap-ctrl"><button type="button" onclick="apGo(-1)">← Anterior</button>
-      <button type="button" id="apPlay" onclick="apPlayPause()">⏸ Pausar</button>
+      <button type="button" id="apPlay" onclick="apPlayPause()">${ic('pausa')} Pausar</button>
       <button type="button" onclick="apGo(1)">Próximo →</button>
-      <button type="button" onclick="apFechar()">✕ Sair</button></div>
+      <button type="button" onclick="apFechar()">${ic('fechar')} Sair</button></div>
     <div class="ap-credits">Criado e desenvolvido por <b>Leonardo Maciel</b></div>`;
   document.body.appendChild(ov);
   APRES.keyH=e=>{if(e.key==='Escape')apFechar();else if(e.key==='ArrowRight')apGo(1);else if(e.key==='ArrowLeft')apGo(-1);else if(e.key===' '){e.preventDefault();apPlayPause();}};
