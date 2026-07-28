@@ -4,7 +4,7 @@
 > contexto do projeto sem precisar reler o histórico de conversa. Descreve o app, as
 > decisões tomadas, o que está pendente e como trabalhar no repositório.
 >
-> **Última atualização:** Notas Fiscais — PDF, consulta pela chave e formulário enxuto · Service Worker `v29`
+> **Última atualização:** Notas Fiscais — PDF, consulta pela chave e formulário enxuto · Service Worker `v30`
 
 ---
 
@@ -189,7 +189,7 @@ direito (para não colidir):
 Overlay fullscreen, auto-avança ~8,5 s, setas/espaço/Esc. **11 cenas** com dados:
 
 `capa → capacidades → obra (Curva S) → a obra em números → avanço por estaca → galeria →
-projetos → Relatório Executivo → RDO → Medição de Equipamentos → encerramento`
+**notas fiscais** → projetos → Relatório Executivo → RDO → Medição de Equipamentos → encerramento`
 
 - Cenas por obra só entram **se houver dados** (`getLanc(o.id).length`).
 - `apFitDoc1()` mede o tamanho real do documento e escala para caber inteiro (A4 sem corte).
@@ -322,7 +322,7 @@ Fotos tiradas antes do commit `b21f7bf` não têm a imagem cheia no aparelho. Sa
 
 ### Sempre que mudar arquivos servidos
 **Suba a versão do cache** em `sw.js` (`gestor-obras-vNN`), senão o usuário continua vendo
-a versão antiga. Hoje: **v29**. E oriente o **Ctrl/Cmd+Shift+R**.
+a versão antiga. Hoje: **v30**. E oriente o **Ctrl/Cmd+Shift+R**.
 
 ### Testar (o ambiente tem Playwright + Chromium)
 ```bash
@@ -426,6 +426,15 @@ do mês corrente),
 botão para abrir o resto, e suporte a **chave e CNPJ alfanuméricos** (NT 2026.004,
 que mudou o cálculo do dígito verificador para ASCII−48).
 
+**Cena de Notas Fiscais na apresentação** (`tipo:'notas'`): entra depois da galeria,
+quando a obra tem nota lançada. Mostra o caminho em 4 passos (código de barras → SEFAZ →
+conferência → estoque), os KPIs, miniaturas das notas e os principais fornecedores. O
+módulo também entrou na cena de **capacidades**, junto com Estoque e Pedidos.
+
+> ⚠ As três cenas de `relatorios` passam ~41px do palco (aparece barra de rolagem).
+> **Isso é anterior** ao módulo de notas — medido nas duas versões. Não foi mexido porque
+> ajustar o encaixe A4 (`apFitDocs`) é delicado e deu trabalho para acertar.
+
 ### Sobre a revisão do "antigravity"
 Outra ferramenta de IA gerou ~1.400 linhas. Trouxe coisas boas (**leitura privada**, **hash
 de senha**, **bloqueio de tentativas**, **auditoria**, CI) mas deixou problemas que foram
@@ -445,7 +454,6 @@ navegador e conferir 404 + erros de console + módulos órfãos** antes de segui
 
 | Ideia | Impacto | Esforço |
 |---|---|---|
-| Cena de Notas Fiscais no Modo Apresentação | O módulo é vendável e hoje não aparece na apresentação | Baixo |
 | Saída de material do estoque (hoje só entra) | Fecha o ciclo do almoxarifado | Médio |
 | Resumo diário automático por e-mail (Apps Script) | Gestor recebe sem abrir o app | Baixo-médio |
 | Assinatura digital no RDO (reusar o canvas dos equipamentos) | Fecha o documento | Baixo |

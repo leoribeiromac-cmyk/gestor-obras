@@ -2067,6 +2067,7 @@ function apMontarSlides(){
   geridas.forEach(o=>{const tem=getLanc(o.id).length;s.push({tipo:'obra',o});
     if(tem){s.push({tipo:'operacao',o});s.push({tipo:'ruas',o});}
     if(tem&&fotosDaObra(o).some(f=>f.src))s.push({tipo:'galeria',o});
+    if(typeof nfGet==='function'&&nfGet(o.id).length)s.push({tipo:'notas',o});
     if((o.projetos||[]).length)s.push({tipo:'projetos',o});
     if(tem)s.push({tipo:'relatorios',o,doc:'exec'});
     if(tem)s.push({tipo:'relatorios',o,doc:'rdo'});
@@ -2087,6 +2088,8 @@ function apSlideHTML(sl){
       ['diario','Diário de Obra','Efetivo, equipamentos, clima e ocorrências — PDF pronto'],
       ['equipamentos','Equipamentos','Horas, paradas, horímetro, combustível e assinatura'],
       ['medicao','Medição Física','Produção do mês por serviço, com exportação'],
+      ['notas','Notas Fiscais','O apontador fotografa a DANFE e o sistema busca os dados oficiais na SEFAZ'],
+      ['caixa','Estoque e Pedidos','Entrada automática por lote, com baixa no pedido de compra'],
       ['galeria','Galeria de Fotos','Registro fotográfico com marca d\'água para prestação de contas'],
       ['projetos','Projetos','Pranchas renderizadas offline, com zoom'],
       ['historico','Histórico','Consulta auditável por data, com edição'],
@@ -2150,6 +2153,39 @@ function apSlideHTML(sl){
       <div class="ap-sub" style="margin-bottom:16px">${total} foto(s) anexadas no campo, organizadas por rua e por mês. O download sai com marca d'água — obra, serviço, trecho, data e responsável — pronto para prestação de contas.</div>
       <div class="ap-gal">${fotos.map(f=>`<figure><img src="${esc(f.src)}" alt="${esc(f.legenda)}">
         <figcaption><b>${esc(f.legenda)}</b>${esc(f.rua)}${f.trecho?' · '+esc(f.trecho):''}<br>${new Date(f.dataISO+'T00:00:00').toLocaleDateString('pt-BR')}${f.usuario?' · '+esc(f.usuario):''}</figcaption></figure>`).join('')}</div></div>`;
+  }
+  if(sl.tipo==='notas'){
+    const o=sl.o;
+    const notas=nfGet(o.id).filter(n=>n.status!=='Cancelada');
+    const total=notas.reduce((a,n)=>a+nfNum(n.vTotal),0);
+    const forn=nfFornecedores(o.id), mat=nfMateriais(o.id);
+    const mostra=notas.filter(n=>n.thumb).slice(0,4);
+    const etapas=[
+      ['codigoBarras','Fotografa a nota','O código de barras da DANFE entrega a chave de acesso — conferida pelo dígito verificador'],
+      ['chave','Busca na SEFAZ','A nota volta com os dados oficiais do XML: fornecedor, valores e todos os itens'],
+      ['check','Confere e salva','Campo que a leitura não teve certeza vem marcado; nada trava se a leitura falhar'],
+      ['caixa','Entra no estoque','Entrada por lote, com o caminho de volta até a nota e baixa no pedido de compra']
+    ];
+    return `<div class="ap-slide"><div class="ap-kicker">${esc(o.nome)} · suprimentos</div>
+      <h2>Da nota fiscal ao estoque, sem digitação</h2>
+      <div class="ap-sub">O apontador aponta a câmera para a nota. O resto o sistema faz sozinho — e os dados vêm da SEFAZ, não de leitura de imagem.</div>
+      <div class="ap-kpis">
+        <div class="ap-k"><div class="l">Material recebido</div><div class="v">${fmtBRLc(total)}</div></div>
+        <div class="ap-k"><div class="l">Notas</div><div class="v">${notas.length}</div></div>
+        <div class="ap-k"><div class="l">Fornecedores</div><div class="v">${forn.length}</div></div>
+        <div class="ap-k"><div class="l">Materiais</div><div class="v">${mat.length}</div></div></div>
+      <div class="ap-cols" style="grid-template-columns:1fr 1fr;gap:20px;align-items:start">
+        <div>${etapas.map((e,i)=>`<div class="ap-cap" style="padding:11px 14px;margin-bottom:9px">
+          <span class="ic-ap">${ic(e[0])}</span>
+          <div><b>${i+1}. ${esc(e[1])}</b><span>${esc(e[2])}</span></div></div>`).join('')}</div>
+        <div>${mostra.length?`<div class="ap-gal" style="grid-template-columns:1fr 1fr;gap:10px">${mostra.map(n=>`<figure>
+            <img src="${esc(n.thumb)}" alt="nota fiscal ${esc(n.numero)}" style="height:11.5vh;min-height:78px;object-position:top center">
+            <figcaption style="padding:6px 8px"><b style="font-size:11.5px">NF ${esc(n.numero||'—')} · ${fmtBRL(nfNum(n.vTotal))}</b>${esc(n.razaoSocial||'')}</figcaption>
+          </figure>`).join('')}</div>`:''}
+          ${forn.length?`<div class="ap-kicker" style="margin:14px 0 2px">Principais fornecedores</div>
+          <table class="ap-op"><tbody>${forn.slice(0,3).map(f=>`<tr>
+            <td style="padding:6px 4px">${esc(f.nome)}</td><td class="n" style="padding:6px 4px">${fmtBRLc(f.valor)}</td></tr>`).join('')}</tbody></table>`:''}
+        </div></div></div>`;
   }
   if(sl.tipo==='projetos'){
     const o=sl.o,projs=o.projetos||[];const porRua={};projs.forEach(p=>{(porRua[p.rua]=porRua[p.rua]||[]).push(p);});
