@@ -692,21 +692,36 @@ async function nfTestarLeitura() {
       `Modelo: <b>${esc(r.modelo || '')}</b>`), 560);
     return;
   }
-  const extra = r.motivo === 'autorizacao'
-    ? `<b>Como resolver:</b><br>
+  let extra = '';
+  if (r.motivo === 'autorizacao' || r.precisaAutorizar) {
+    extra = `<b>Como resolver:</b><br>
        1. Abra a planilha → <b>Extensões ▸ Apps Script</b><br>
-       2. No alto, escolha a função <b>nfDiag</b> e clique em <b>▶ Executar</b><br>
-       3. Aceite a autorização que o Google pedir (é o acesso à internet, que o script passou a precisar)<br>
-       4. Volte aqui e teste de novo`
-    : (r.chaveConfigurada === false
-      ? `<b>Como resolver:</b><br>
-         1. Pegue a chave em <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a><br>
-         2. Apps Script → <b>⚙ Configurações do projeto ▸ Propriedades do script</b><br>
-         3. Adicione <b>GEMINI_API_KEY</b> com a chave e salve`
-      : (r.detalhe ? `<span class="kpi-s">Detalhe técnico: ${esc(String(r.detalhe).slice(0, 200))}</span>` : ''));
+       2. No seletor de função lá em cima, escolha <b>autorizarInternet</b> e clique em <b>▶ Executar</b><br>
+       3. Aceite a autorização que o Google pedir<br>
+       4. Volte aqui e teste de novo
+       <div class="kpi-s" style="margin-top:8px">Essa função existe só para o Google perguntar. Rodar o <b>nfDiag</b> não serve: sem a chave cadastrada ele volta antes de tocar na internet e o Google não pergunta nada.</div>
+       ${r.autorizacaoUrl ? `<a class="btn btn-pri" style="width:100%;justify-content:center;margin-top:10px" href="${esc(r.autorizacaoUrl)}" target="_blank" rel="noopener">Autorizar agora</a>` : ''}`;
+  } else if (r.chaveConfigurada === false) {
+    extra = `<b>Como resolver:</b><br>
+       1. Pegue a chave em <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a><br>
+       2. Apps Script → <b>⚙ Configurações do projeto ▸ Propriedades do script</b><br>
+       3. Adicione <b>GEMINI_API_KEY</b> com a chave e salve`;
+  }
+  // o erro cru sempre aparece: é o que permite descobrir o que ninguém previu
+  const tec = [];
+  if (r.motivo) tec.push('motivo: ' + r.motivo);
+  if (r.codigo) tec.push('código: ' + r.codigo);
+  if (r.modelo) tec.push('modelo: ' + r.modelo);
+  if (typeof r.tamanhoChave === 'number') tec.push('tamanho da chave: ' + r.tamanhoChave);
+  if (r.propriedades) tec.push('propriedades: ' + r.propriedades);
+  if (r.versaoBackend) tec.push('backend: ' + r.versaoBackend);
+  if (r.detalhe) tec.push('detalhe: ' + String(r.detalhe).slice(0, 300));
+
   abrirModal('Teste da leitura', bloco('ylw', 'A leitura por imagem não está funcionando.',
     esc(r.mensagem || 'Motivo não informado.'), extra) +
-    `<div class="kpi-s" style="margin-top:12px">O cadastro de notas continua funcionando: o código de barras e a chave de acesso já preenchem número, série, CNPJ e UF.</div>`, 620);
+    `<div class="kpi-s" style="margin-top:12px">O cadastro de notas continua funcionando: o código de barras e a chave de acesso já preenchem número, série, CNPJ e UF.</div>
+     ${tec.length ? `<details style="margin-top:12px"><summary class="kpi-s" style="cursor:pointer">Detalhes técnicos (para mandar a quem der suporte)</summary>
+       <pre class="mono" style="font-size:11px;white-space:pre-wrap;word-break:break-word;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:10px;margin-top:8px">${esc(tec.join('\n'))}</pre></details>` : ''}`, 620);
 }
 
 /* ---------- tela de conferência ---------- */

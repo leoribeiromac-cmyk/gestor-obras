@@ -173,8 +173,13 @@ As três causas, em ordem de frequência:
 | O que o teste diz | O que fazer |
 |---|---|
 | "O backend publicado está desatualizado" | Republicar o `Code.gs` (Implantar ▸ Gerenciar implantações ▸ ✏️ Editar ▸ Nova versão) |
-| "O Apps Script ainda não tem permissão para acessar a internet" | No editor do script, escolher a função **`nfDiag`** e clicar em **▶ Executar**, aceitando a autorização. O script passou a acessar a internet e essa permissão é nova — a implantação antiga não a tem |
+| "O Apps Script ainda não tem permissão para acessar a internet" | No editor do script, escolher a função **`autorizarInternet`** e clicar em **▶ Executar**, aceitando a autorização |
 | "A propriedade GEMINI_API_KEY não está no script" | Cadastrar a chave nas Propriedades do script |
 
 > A permissão de internet é o tropeço mais comum: colar o `Code.gs` e implantar
-> **não** dispara o pedido de autorização. Rodar uma função pelo editor dispara.
+> **não** dispara o pedido de autorização.
+>
+> E não adianta rodar o `nfDiag` para isso: sem a `GEMINI_API_KEY` cadastrada ele
+> volta antes de tocar na internet, termina em menos de um segundo e o Google não
+> pergunta nada. A função **`autorizarInternet`** existe só para forçar a pergunta —
+> ela não faz outra coisa.

@@ -987,20 +987,43 @@ function nfChamarGemini(modelo, key, payload) {
 
 // Diagnostico da leitura automatica: diz em bom portugues o que esta faltando.
 // Nunca devolve a chave da API, so se ela existe e se a chamada funciona.
+// Rode ESTA função uma vez pelo editor do Apps Script para o Google pedir a
+// permissão de acesso à internet. Ela não faz mais nada — existe só para
+// disparar a autorização. O nfDiag não serve para isso: se a chave não estiver
+// cadastrada ele volta antes de tocar na internet e o Google não pergunta nada.
+function autorizarInternet() {
+  var r = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models', { muteHttpExceptions: true });
+  Logger.log('Autorização de internet OK. O servidor respondeu com o código ' + r.getResponseCode() +
+             ' (401/403 aqui é normal: a chamada foi feita sem chave, o que importa é ter saído).');
+  return true;
+}
+
 function nfDiag() {
   var props = PropertiesService.getScriptProperties();
   var key = props.getProperty('GEMINI_API_KEY');
   var modelo = props.getProperty('GEMINI_MODEL') || 'gemini-2.5-flash';
   var out = {
     ok: true,
-    versaoBackend: 'notas-fiscais-1',
+    versaoBackend: 'notas-fiscais-2',
     chaveConfigurada: !!key,
     tamanhoChave: key ? String(key).length : 0,
-    modelo: modelo
+    modelo: modelo,
+    propriedades: props.getKeys().sort().join(', ')
   };
+  // o próprio Apps Script sabe dizer se ainda falta autorização — e devolve o
+  // endereço para autorizar, que é melhor do que explicar o caminho do menu
+  try {
+    var info = ScriptApp.getAuthorizationInfo(ScriptApp.AuthMode.FULL);
+    out.precisaAutorizar = (info.getAuthorizationStatus() === ScriptApp.AuthorizationStatus.REQUIRED);
+    if (out.precisaAutorizar) out.autorizacaoUrl = info.getAuthorizationUrl();
+  } catch (e) { out.precisaAutorizar = null; }
+
   if (!key) {
     out.leituraOk = false;
-    out.mensagem = 'A propriedade GEMINI_API_KEY não está no script. Sem ela o app lê a nota pelo código de barras e pela chave de acesso, mas não pelos dados da imagem.';
+    out.motivo = 'sem_ia';
+    out.mensagem = 'A propriedade GEMINI_API_KEY não está no script' +
+      (out.propriedades ? ' (as que estão lá: ' + out.propriedades + ')' : ' (não há nenhuma propriedade cadastrada)') +
+      '. Confira se salvou na mesma planilha e se o nome está exatamente GEMINI_API_KEY.';
     return out;
   }
   var r = nfChamarGemini(modelo, key, {
