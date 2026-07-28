@@ -576,10 +576,12 @@ async function nfImagemSelecionada(inp) {
   // 2) imagem -> OCR/IA no backend
   const ia = await nfLerImagemIA(full, daChave ? daChave.chave : '');
   if (ia && ia.ok) passos[2] = { ic: '✓', t: 'Dados extraídos da imagem', st: 'ok' };
-  else if (ia && ia.motivo === 'sem_ia') passos[2] = { ic: '—', t: 'Leitura por imagem não configurada no servidor', st: '' };
-  else if (ia && ia.motivo === 'local') passos[2] = { ic: '—', t: 'Sem servidor: confira os campos abaixo', st: '' };
-  else passos[2] = { ic: '—', t: 'Não consegui ler a imagem — confira os campos', st: '' };
+  else passos[2] = { ic: '—', t: nfMotivoTxt(ia), st: '' };
   nfPassoUI(passos);
+  // falha do lado do servidor: guarda para o botão de teste explicar direito
+  if (ia && !ia.ok && ['api', 'autorizacao', 'chave_invalida', 'chave_sem_acesso', 'modelo', 'limite', 'vazia', 'resposta', 'bloqueado'].indexOf(ia.motivo) > -1) {
+    _nfUltimaFalhaIA = ia;
+  }
 
   let nota = nfMesclarLeitura(_nfRascunho, daChave, ia);
   nota.leitura = {
@@ -627,6 +629,84 @@ function nfAutoVincular(obraId, nota) {
       if (p.length && p[0].score >= 0.85 && (p.length === 1 || p[0].score - p[1].score > 0.12)) it.pedidoItemId = p[0].item.id;
     }
   });
+}
+
+/* motivo da falha em português, para o apontador não ficar no escuro */
+let _nfUltimaFalhaIA = null;
+function nfMotivoTxt(ia) {
+  const m = (ia && ia.motivo) || '';
+  return ({
+    local: 'Sem servidor — confira os campos abaixo',
+    sem_ia: 'Leitura por imagem não está ligada no servidor',
+    autorizacao: 'O servidor ainda não tem permissão para usar a IA',
+    chave_invalida: 'A chave da IA foi recusada pelo Google',
+    chave_sem_acesso: 'A chave da IA não tem acesso à API',
+    modelo: 'O modelo de IA configurado não existe',
+    limite: 'Cota da IA esgotada — tente daqui a pouco',
+    longa: 'Nota comprida demais para uma leitura só',
+    bloqueado: 'A IA recusou a imagem',
+    vazia: 'A IA não devolveu os dados',
+    resposta: 'A IA respondeu num formato inesperado',
+    rede: 'Não consegui falar com o servidor',
+    sem_resposta: 'O servidor não respondeu'
+  })[m] || 'Não consegui ler a imagem — confira os campos';
+}
+
+/* Diagnóstico da leitura automática. Existe porque "não leu a nota" pode ser
+   backend antigo, chave errada, autorização faltando ou cota estourada — e o
+   apontador não tem como adivinhar qual. */
+async function nfTestarLeitura() {
+  if (isDemo()) { toast('Saia do modo demonstração para testar'); return; }
+  if (!BACKEND) { abrirModal('Teste da leitura', `<div class="nf-alerta nf-alerta-ylw">O app está sem servidor configurado. A leitura da nota funciona pelo código de barras e pela chave de acesso; os demais campos são digitados.</div>`, 560); return; }
+  abrirModal('Teste da leitura', `<div class="empty"><div class="ic">⏳</div>Conversando com o servidor…</div>`, 560);
+  let r = null;
+  try { r = await postAcao({ action: 'nfDiag' }); } catch (e) { r = null; }
+
+  const bloco = (cor, titulo, texto, passos) => `
+    <div class="nf-alerta nf-alerta-${cor}"><b>${titulo}</b><br>${texto}</div>
+    ${passos ? `<div style="font-size:13.5px;line-height:1.7">${passos}</div>` : ''}`;
+
+  if (!r) {
+    abrirModal('Teste da leitura', bloco('red', 'Não consegui falar com o servidor.',
+      'Confira a conexão e tente de novo.'), 560);
+    return;
+  }
+  // backend antigo: a ação nem existe lá
+  if (r.error && /desconhecida/i.test(r.error)) {
+    abrirModal('Teste da leitura', bloco('red', 'O backend publicado está desatualizado.',
+      'A versão no ar não conhece o módulo de notas fiscais.',
+      `<b>Como resolver:</b><br>
+       1. Abra a planilha → <b>Extensões ▸ Apps Script</b><br>
+       2. Cole o <b>Code.gs</b> novo por cima e salve<br>
+       3. <b>Implantar ▸ Gerenciar implantações ▸ ✏️ Editar ▸ Versão: Nova versão ▸ Implantar</b><br>
+       <span style="color:var(--vermelho)">Nunca use "Nova implantação" — isso cria outro endereço e o app continua no antigo.</span>`), 620);
+    return;
+  }
+  if (r.error && /TOKEN/i.test(r.error)) {
+    abrirModal('Teste da leitura', bloco('ylw', 'Sua sessão expirou.', 'Saia e entre de novo no app.'), 560);
+    return;
+  }
+  if (r.leituraOk) {
+    abrirModal('Teste da leitura', bloco('grn', 'Leitura automática funcionando ✓',
+      esc(r.mensagem || ''),
+      `Modelo: <b>${esc(r.modelo || '')}</b>`), 560);
+    return;
+  }
+  const extra = r.motivo === 'autorizacao'
+    ? `<b>Como resolver:</b><br>
+       1. Abra a planilha → <b>Extensões ▸ Apps Script</b><br>
+       2. No alto, escolha a função <b>nfDiag</b> e clique em <b>▶ Executar</b><br>
+       3. Aceite a autorização que o Google pedir (é o acesso à internet, que o script passou a precisar)<br>
+       4. Volte aqui e teste de novo`
+    : (r.chaveConfigurada === false
+      ? `<b>Como resolver:</b><br>
+         1. Pegue a chave em <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a><br>
+         2. Apps Script → <b>⚙ Configurações do projeto ▸ Propriedades do script</b><br>
+         3. Adicione <b>GEMINI_API_KEY</b> com a chave e salve`
+      : (r.detalhe ? `<span class="kpi-s">Detalhe técnico: ${esc(String(r.detalhe).slice(0, 200))}</span>` : ''));
+  abrirModal('Teste da leitura', bloco('ylw', 'A leitura por imagem não está funcionando.',
+    esc(r.mensagem || 'Motivo não informado.'), extra) +
+    `<div class="kpi-s" style="margin-top:12px">O cadastro de notas continua funcionando: o código de barras e a chave de acesso já preenchem número, série, CNPJ e UF.</div>`, 620);
 }
 
 /* ---------- tela de conferência ---------- */
@@ -919,7 +999,8 @@ function viewNotas(o) {
   const tab = estado.nfTab || 'notas';
   const topo = `<div class="row nf-topo" style="align-items:center;margin-bottom:16px;gap:9px">
     <div style="display:flex;gap:7px;flex-wrap:wrap">${abas.map(a => `<button class="chip ${tab === a[0] ? 'on' : ''}" onclick="nfTab('${a[0]}')">${a[1]}</button>`).join('')}</div>
-    <button class="btn btn-pri nf-nova" style="margin-left:auto" onclick="nfAbrirNova()">📷 Nova nota fiscal</button></div>`;
+    <button class="btn btn-ghost btn-sm nf-teste" style="margin-left:auto" onclick="nfTestarLeitura()" title="Conferir se a leitura automática está no ar">🔎 Testar leitura</button>
+    <button class="btn btn-pri nf-nova" onclick="nfAbrirNova()">📷 Nova nota fiscal</button></div>`;
   const corpo = tab === 'estoque' ? nfViewEstoque(o) : tab === 'pedidos' ? nfViewPedidos(o) : tab === 'painel' ? nfViewPainel(o) : nfViewLista(o);
   return topo + corpo;
 }

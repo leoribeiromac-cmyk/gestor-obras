@@ -49,7 +49,7 @@ function rotear(e) {
       'addDiario', 'updateDiario', 'deleteDiario',
       'equipListar', 'equipCadastrar', 'equipDesativar', 'locadoraCadastrar', 'equipApontar', 'equipApagar', 'equipApontamentos',
       'obterFoto',
-      'nfListar', 'nfSalvar', 'nfExcluir', 'nfImagem', 'nfLerIA', 'pedidoSalvar', 'pedidoExcluir'
+      'nfListar', 'nfSalvar', 'nfExcluir', 'nfImagem', 'nfLerIA', 'nfDiag', 'pedidoSalvar', 'pedidoExcluir'
     ];
     if (PROTEGIDAS.indexOf(action) !== -1) {
       var falha = exigirTokenSeAtivo(p.token);
@@ -80,6 +80,7 @@ function rotear(e) {
       case 'nfExcluir':         resp = nfExcluir(p.obra, p.id, p.token); break;
       case 'nfImagem':          resp = nfImagem(p); break;
       case 'nfLerIA':           resp = nfLerIA(p); break;
+      case 'nfDiag':            resp = nfDiag(); break;
       case 'pedidoSalvar':      resp = pedidoSalvar(p); break;
       case 'pedidoExcluir':     resp = pedidoExcluir(p.obra, p.id, p.token); break;
       default:
@@ -829,40 +830,46 @@ function nfLerIA(p) {
         { inline_data: { mime_type: 'image/jpeg', data: b64.split(',')[1] } }
       ]
     }],
-    generationConfig: { temperature: 0, maxOutputTokens: 4096, responseMimeType: 'application/json' }
+    // O 2.5 "pensa" antes de responder e esse raciocínio consome o mesmo teto de
+    // tokens da resposta. Numa DANFE cheia isso estourava o limite e voltava vazio.
+    // Aqui a tarefa é copiar campo de imagem, não raciocinar: desliga o pensamento
+    // e sobra teto para o JSON inteiro.
+    generationConfig: {
+      temperature: 0, maxOutputTokens: 8192, responseMimeType: 'application/json',
+      thinkingConfig: { thinkingBudget: 0 }
+    }
   };
 
-  var url = 'https://generativelanguage.googleapis.com/v1beta/models/' +
-            encodeURIComponent(modelo) + ':generateContent?key=' + encodeURIComponent(key);
-  var res;
-  try {
-    res = UrlFetchApp.fetch(url, {
-      method: 'post', contentType: 'application/json',
-      payload: JSON.stringify(payload), muteHttpExceptions: true
-    });
-  } catch (e) {
-    return { ok: false, motivo: 'rede', error: String(e && e.message ? e.message : e) };
+  var resp = nfChamarGemini(modelo, key, payload);
+  if (!resp.ok) return resp;
+
+  var j = resp.json;
+  var cand = (j.candidates && j.candidates[0]) || null;
+  var motivoFim = cand ? String(cand.finishReason || '') : '';
+
+  // resposta bloqueada ou cortada: dizer o que houve, não um "não consegui" seco
+  if (!cand && j.promptFeedback && j.promptFeedback.blockReason) {
+    return { ok: false, motivo: 'bloqueado', detalhe: String(j.promptFeedback.blockReason) };
   }
-  if (res.getResponseCode() !== 200) {
-    return { ok: false, motivo: 'api', codigo: res.getResponseCode(), error: String(res.getContentText()).slice(0, 300) };
+  if (motivoFim === 'MAX_TOKENS') {
+    return { ok: false, motivo: 'longa', detalhe: 'A nota tem itens demais para uma leitura só.' };
+  }
+  if (motivoFim === 'SAFETY' || motivoFim === 'PROHIBITED_CONTENT') {
+    return { ok: false, motivo: 'bloqueado', detalhe: motivoFim };
   }
 
-  var txt = '';
-  try {
-    var j = JSON.parse(res.getContentText());
-    var partes = j.candidates && j.candidates[0] && j.candidates[0].content && j.candidates[0].content.parts;
-    txt = (partes || []).map(function (x) { return x.text || ''; }).join('');
-  } catch (e) {
-    return { ok: false, motivo: 'resposta' };
-  }
+  var partes = cand && cand.content && cand.content.parts;
+  var txt = (partes || []).map(function (x) { return x.text || ''; }).join('');
   txt = String(txt).replace(/^\s*```(?:json)?/i, '').replace(/```\s*$/, '').trim();
+  if (!txt) return { ok: false, motivo: 'vazia', detalhe: motivoFim || 'o modelo não devolveu texto' };
+
   var out;
   try { out = JSON.parse(txt); } catch (e) {
-    var m = txt.match(/\{[\s\S]*\}/);
-    if (!m) return { ok: false, motivo: 'resposta' };
-    try { out = JSON.parse(m[0]); } catch (e2) { return { ok: false, motivo: 'resposta' }; }
+    var mm = txt.match(/\{[\s\S]*\}/);
+    if (!mm) return { ok: false, motivo: 'resposta', detalhe: txt.slice(0, 160) };
+    try { out = JSON.parse(mm[0]); } catch (e2) { return { ok: false, motivo: 'resposta', detalhe: txt.slice(0, 160) }; }
   }
-  if (!out || !out.dados) return { ok: false, motivo: 'resposta' };
+  if (!out || !out.dados) return { ok: false, motivo: 'resposta', detalhe: 'veio JSON sem o campo "dados"' };
 
   registrarAuditoria(usuarioDoToken(p.token), 'app', 'nfLeituraIA', p.obra || '', String(out.dados.numero || ''), modelo,
     'confiança ' + (out.confiancaGeral == null ? '?' : out.confiancaGeral));
@@ -919,4 +926,101 @@ function pedidoExcluir(obra, id, token) {
     }
   }
   return { ok: true, removido: false };
+}
+
+// Chamada ao Gemini isolada: trata a falta de autorizacao do Apps Script para
+// acessar a internet, e refaz o pedido sem "thinkingConfig" caso o modelo
+// escolhido nao aceite esse ajuste (modelos anteriores ao 2.5).
+function nfChamarGemini(modelo, key, payload) {
+  var url = 'https://generativelanguage.googleapis.com/v1beta/models/' +
+            encodeURIComponent(modelo) + ':generateContent?key=' + encodeURIComponent(key);
+  var opts = { method: 'post', contentType: 'application/json', muteHttpExceptions: true };
+
+  function tentar(corpo) {
+    opts.payload = JSON.stringify(corpo);
+    try {
+      return { res: UrlFetchApp.fetch(url, opts) };
+    } catch (e) {
+      var msg = String(e && e.message ? e.message : e);
+      // scope novo (script.external_request): a implantacao antiga nao tem
+      if (/permission|autoriza|authoriz|scope/i.test(msg)) {
+        return { erro: { ok: false, motivo: 'autorizacao', detalhe: msg.slice(0, 200) } };
+      }
+      return { erro: { ok: false, motivo: 'rede', detalhe: msg.slice(0, 200) } };
+    }
+  }
+
+  var t = tentar(payload);
+  if (t.erro) return t.erro;
+  var res = t.res;
+
+  if (res.getResponseCode() === 400 && payload.generationConfig && payload.generationConfig.thinkingConfig) {
+    var copia = JSON.parse(JSON.stringify(payload));
+    delete copia.generationConfig.thinkingConfig;
+    var t2 = tentar(copia);
+    if (t2.erro) return t2.erro;
+    res = t2.res;
+  }
+
+  var codigo = res.getResponseCode();
+  var corpo = String(res.getContentText());
+  if (codigo !== 200) {
+    var detalhe = corpo.slice(0, 300);
+    try {
+      var e = JSON.parse(corpo);
+      if (e && e.error && e.error.message) detalhe = e.error.message;
+    } catch (ex) {}
+    var motivo = 'api';
+    if (codigo === 400 && /API key not valid|API_KEY_INVALID/i.test(detalhe)) motivo = 'chave_invalida';
+    else if (codigo === 403) motivo = 'chave_sem_acesso';
+    else if (codigo === 404) motivo = 'modelo';
+    else if (codigo === 429) motivo = 'limite';
+    return { ok: false, motivo: motivo, codigo: codigo, detalhe: detalhe };
+  }
+
+  try {
+    return { ok: true, json: JSON.parse(corpo) };
+  } catch (e2) {
+    return { ok: false, motivo: 'resposta', detalhe: corpo.slice(0, 200) };
+  }
+}
+
+// Diagnostico da leitura automatica: diz em bom portugues o que esta faltando.
+// Nunca devolve a chave da API, so se ela existe e se a chamada funciona.
+function nfDiag() {
+  var props = PropertiesService.getScriptProperties();
+  var key = props.getProperty('GEMINI_API_KEY');
+  var modelo = props.getProperty('GEMINI_MODEL') || 'gemini-2.5-flash';
+  var out = {
+    ok: true,
+    versaoBackend: 'notas-fiscais-1',
+    chaveConfigurada: !!key,
+    tamanhoChave: key ? String(key).length : 0,
+    modelo: modelo
+  };
+  if (!key) {
+    out.leituraOk = false;
+    out.mensagem = 'A propriedade GEMINI_API_KEY não está no script. Sem ela o app lê a nota pelo código de barras e pela chave de acesso, mas não pelos dados da imagem.';
+    return out;
+  }
+  var r = nfChamarGemini(modelo, key, {
+    contents: [{ role: 'user', parts: [{ text: 'Responda apenas: OK' }] }],
+    generationConfig: { temperature: 0, maxOutputTokens: 16, thinkingConfig: { thinkingBudget: 0 } }
+  });
+  out.leituraOk = !!r.ok;
+  if (r.ok) {
+    out.mensagem = 'Leitura automática funcionando. O modelo ' + modelo + ' respondeu normalmente.';
+  } else {
+    out.motivo = r.motivo;
+    out.detalhe = r.detalhe || '';
+    out.mensagem = ({
+      autorizacao: 'O Apps Script ainda não tem permissão para acessar a internet. Abra o editor do script, rode qualquer função pelo botão "Executar" e aceite a autorização que aparecer. Depois republique.',
+      chave_invalida: 'A GEMINI_API_KEY foi recusada. Confira se copiou a chave inteira, sem espaço no começo ou no fim.',
+      chave_sem_acesso: 'A chave existe mas não tem acesso à API. Gere uma nova em aistudio.google.com/apikey.',
+      modelo: 'O modelo "' + modelo + '" não existe para esta chave. Apague a propriedade GEMINI_MODEL para usar o padrão.',
+      limite: 'A cota da chave estourou. Tente de novo daqui a pouco.',
+      rede: 'Não consegui falar com o servidor da IA.'
+    })[r.motivo] || ('A chamada à IA falhou: ' + (r.detalhe || r.motivo));
+  }
+  return out;
 }

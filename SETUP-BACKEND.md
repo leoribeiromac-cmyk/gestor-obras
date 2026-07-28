@@ -160,3 +160,21 @@ Para conferir se pegou, abra no navegador:
 - As imagens ficam **privadas** no Drive; o app as busca pelo backend.
 - Toda gravação, alteração, exclusão e leitura automática entra na aba
   **`Auditoria`**, com usuário, data e o que mudou.
+
+
+## Não está lendo os dados da nota? Use o botão de teste
+
+Dentro do app, em **Notas Fiscais**, tem o botão **🔎 Testar leitura**. Ele fala
+com o servidor e diz em português o que está faltando — inclusive o passo a passo
+para resolver. É por ali que se descobre a causa, em vez de adivinhar.
+
+As três causas, em ordem de frequência:
+
+| O que o teste diz | O que fazer |
+|---|---|
+| "O backend publicado está desatualizado" | Republicar o `Code.gs` (Implantar ▸ Gerenciar implantações ▸ ✏️ Editar ▸ Nova versão) |
+| "O Apps Script ainda não tem permissão para acessar a internet" | No editor do script, escolher a função **`nfDiag`** e clicar em **▶ Executar**, aceitando a autorização. O script passou a acessar a internet e essa permissão é nova — a implantação antiga não a tem |
+| "A propriedade GEMINI_API_KEY não está no script" | Cadastrar a chave nas Propriedades do script |
+
+> A permissão de internet é o tropeço mais comum: colar o `Code.gs` e implantar
+> **não** dispara o pedido de autorização. Rodar uma função pelo editor dispara.

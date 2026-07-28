@@ -383,9 +383,10 @@ input.nf-confira,select.nf-confira,textarea.nf-confira{border-color:var(--amarel
   .nf-card-img,.nf-card-img img,.nf-card-sem{height:180px}
   .nf-item .row>.field{min-width:0}
   /* o apontador entra aqui para lançar: o botão vem primeiro e inteiro */
-  .nf-topo{flex-direction:column-reverse;align-items:stretch;gap:12px}
-  .nf-topo .nf-nova{margin-left:0;width:100%;justify-content:center;padding:13px 16px;font-size:15px}
-  .nf-topo>div{justify-content:center}
+  .nf-topo{flex-direction:column;align-items:stretch;gap:12px}
+  .nf-topo .nf-nova{order:-1;margin-left:0;width:100%;justify-content:center;padding:13px 16px;font-size:15px}
+  .nf-topo>div{order:0;justify-content:center}
+  .nf-topo .nf-teste{order:1;margin-left:0;justify-content:center}
 }
 </style>
 </head>
