@@ -4,7 +4,7 @@
 > contexto do projeto sem precisar reler o histórico de conversa. Descreve o app, as
 > decisões tomadas, o que está pendente e como trabalhar no repositório.
 >
-> **Última atualização:** módulo de Notas Fiscais (DANFE) · Service Worker `v24`
+> **Última atualização:** Notas Fiscais — PDF, consulta pela chave e formulário enxuto · Service Worker `v27`
 
 ---
 
@@ -57,6 +57,7 @@ gestor-obras/
 ├── intro/                  Abertura cinematográfica (antes do login)
 ├── tests/sCurve.test.js    ⚠ QUEBRADO desde `849e8e9` (pede js/domain/rdo.js, apagado)
 ├── tests/notas.test.js     Testes das Notas Fiscais (rodar: node tests/notas.test.js)
+├── tests/nfe-xml.test.js   Testes do parser do XML oficial da NF-e
 └── .github/workflows/ci.yml
 ```
 
@@ -236,7 +237,10 @@ Planilha única para todas as obras. Abas: `RDO`, `Diario`, `Equipamentos`, `Loc
 | `equipListar`, `equipCadastrar`, `equipDesativar`, `locadoraCadastrar`, `equipApontar`, `equipApagar`, `equipApontamentos` | equipamentos |
 | `nfListar` / `nfSalvar` / `nfExcluir` | notas fiscais (upsert por `clientId`) |
 | `nfImagem` | imagem da nota no Drive, em `Notas Fiscais/<obra>/<ano>/<mês>` |
-| `nfLerIA` | OCR + interpretação da DANFE via Gemini (chave em `GEMINI_API_KEY`) |
+| `nfLerIA` | interpreta a DANFE via Gemini — recebe o **texto do PDF** quando há, senão a imagem (`GEMINI_API_KEY`) |
+| `nfConsultarChave` | busca a NF-e pela chave num serviço com certificado e lê o **XML oficial** (`NFE_API_URL`) |
+| `nfDiag` | diagnóstico da leitura, usado pelo botão "Testar leitura" do app |
+| `autorizarInternet` | só existe para o Google pedir a permissão de acesso à internet |
 | `pedidoSalvar` / `pedidoExcluir` | pedidos de compra |
 
 Segurança: senha com **hash SHA-256** (aceita texto puro para compatibilidade), **bloqueio
@@ -317,7 +321,7 @@ Fotos tiradas antes do commit `b21f7bf` não têm a imagem cheia no aparelho. Sa
 
 ### Sempre que mudar arquivos servidos
 **Suba a versão do cache** em `sw.js` (`gestor-obras-vNN`), senão o usuário continua vendo
-a versão antiga. Hoje: **v24**. E oriente o **Ctrl/Cmd+Shift+R**.
+a versão antiga. Hoje: **v27**. E oriente o **Ctrl/Cmd+Shift+R**.
 
 ### Testar (o ambiente tem Playwright + Chromium)
 ```bash
@@ -381,7 +385,14 @@ Em ordem cronológica, do mais antigo ao mais recente:
 | `b21f7bf` | Imagem cheia no IndexedDB + marca d'água proporcional |
 | `ffaff22` | Quantidade fora da marca d'água |
 | `5d6c02a` | Cena da Galeria na apresentação |
-| _atual_ | **Controle de Notas Fiscais (DANFE)**: leitura por código de barras/chave/IA, imagem no Drive por obra→ano→mês, estoque com lote e rastreabilidade, pedidos de compra com baixa automática, painel, pesquisa, status e auditoria |
+| _anterior_ | **Controle de Notas Fiscais (DANFE)**: leitura por código de barras/chave/IA, imagem no Drive por obra→ano→mês, estoque com lote e rastreabilidade, pedidos de compra com baixa automática, painel, pesquisa, status e auditoria |
+
+**Depois disso**, no mesmo módulo: upload de **PDF** (texto extraído com o PDF.js
+que já estava vendorizado — leitura exata, sem OCR), **consulta da NF-e pela chave**
+num serviço com certificado digital (parser do XML oficial no backend),
+**formulário enxuto** para digitação (empresa, data, item, valor, frete, total) com
+botão para abrir o resto, e suporte a **chave e CNPJ alfanuméricos** (NT 2026.004,
+que mudou o cálculo do dígito verificador para ASCII−48).
 
 ### Sobre a revisão do "antigravity"
 Outra ferramenta de IA gerou ~1.400 linhas. Trouxe coisas boas (**leitura privada**, **hash

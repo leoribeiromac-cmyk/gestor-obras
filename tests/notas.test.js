@@ -67,7 +67,19 @@ assert.strictEqual(ctx.nfChaveDeTexto(qr), chave, 'extrai a chave da URL do QR C
 const espacado = chave.replace(/(\d{4})(?=\d)/g, '$1 ');
 assert.strictEqual(ctx.nfChaveDeTexto('CHAVE DE ACESSO ' + espacado), chave, 'extrai a chave impressa de 4 em 4');
 assert.strictEqual(ctx.nfChaveDeTexto('nota 12345'), '', 'texto sem chave devolve vazio');
-console.log('  ✓ leitura da chave em QR Code e em texto de OCR');
+
+// texto longo, como o de um PDF de DANFE de verdade: a chave não pode se
+// perder por causa de onde o texto foi cortado
+const enchimento = 'DADOS DO PRODUTO SERVICO CODIGO DESCRICAO NCM CFOP UNID QUANT VALOR UNITARIO ';
+const textoLongo = enchimento.repeat(6) + 'CHAVE DE ACESSO ' + espacado + ' ' + enchimento.repeat(6);
+assert.ok(textoLongo.length > 900, 'o texto de teste é mesmo longo');
+assert.strictEqual(ctx.nfChaveDeTexto(textoLongo), chave, 'acha a chave em texto longo de PDF');
+
+// e no meio de outros números soltos, que é o caso da DANFE
+const comNumeros = 'NF-e No 018.420 SERIE 001 EMISSAO 15/07/2026 CNPJ 61.304.455/0001-95 ' +
+  'CHAVE DE ACESSO ' + espacado + ' PROTOCOLO 135260012345678 12/07/2026 09:15:22';
+assert.strictEqual(ctx.nfChaveDeTexto(comNumeros), chave, 'acha a chave cercada de outros números');
+console.log('  ✓ leitura da chave em QR Code, OCR e texto longo de PDF');
 
 // ------------------------------------------------------------------
 // 3. CNPJ
@@ -209,5 +221,59 @@ assert.strictEqual(ctx.nfDivergencia({
   numero: '18420', cnpj: '61304455000195', chave: chave, vTotal: 3540, vFrete: 0, itens: [{ vTotal: 3540 }]
 }), '', 'nota consistente não acusa nada');
 console.log('  ✓ detecção de divergência na conferência');
+
+
+// ------------------------------------------------------------------
+// 11. CNPJ alfanumérico e chave com letras (Nota Técnica 2026.004)
+//     O dígito verificador passou a converter cada caractere por
+//     ASCII menos 48. Para chave só de números tem de dar o MESMO
+//     resultado de antes — a regra nova engloba a antiga.
+// ------------------------------------------------------------------
+assert.ok(ctx.nfChaveValida(chave), 'chave numérica continua válida com a regra nova');
+assert.ok(ctx.nfCNPJvalido('61304455000195'), 'CNPJ numérico continua válido');
+
+// monta uma chave com letras no miolo do CNPJ e calcula o DV pela regra nova
+const cnpjAlfa = 'A1B2C3D4E5F6';                       // 12 posições alfanuméricas
+const dvCNPJ = (() => {
+  const val = c => c.charCodeAt(0) - 48;
+  const calc = pesos => {
+    let s = 0;
+    for (let i = 0; i < pesos.length; i++) s += val(cnpjAlfa[i]) * pesos[i];
+    const r = s % 11;
+    return r < 2 ? 0 : 11 - r;
+  };
+  const a = calc([5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
+  const b = (() => {
+    const base = cnpjAlfa + a;
+    let s = 0;
+    const pesos = [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+    for (let i = 0; i < pesos.length; i++) s += val(base[i]) * pesos[i];
+    const r = s % 11;
+    return r < 2 ? 0 : 11 - r;
+  })();
+  return '' + a + b;
+})();
+const cnpjCompleto = cnpjAlfa + dvCNPJ;
+assert.ok(ctx.nfCNPJvalido(cnpjCompleto), 'CNPJ alfanumérico com DV certo é aceito');
+assert.ok(!ctx.nfCNPJvalido(cnpjAlfa + '00'), 'CNPJ alfanumérico com DV errado é recusado');
+
+const baseAlfa43 = '35' + '2607' + cnpjCompleto + '55' + '001' + '000018420' + '1' + '00012345';
+assert.strictEqual(baseAlfa43.length, 43, 'base alfanumérica tem 43 caracteres');
+const chaveAlfa = baseAlfa43 + ctx.nfDVchave(baseAlfa43);
+assert.ok(ctx.nfChaveValida(chaveAlfa), 'chave com letras no CNPJ é aceita');
+
+const dAlfa = ctx.nfDaChave(chaveAlfa);
+assert.strictEqual(dAlfa.cnpj, cnpjCompleto, 'o CNPJ alfanumérico sai inteiro da chave');
+assert.strictEqual(dAlfa.numero, '18420', 'número continua saindo certo');
+assert.strictEqual(dAlfa.uf, 'SP', 'UF continua saindo certa');
+
+// letra fora do miolo do CNPJ não pode passar
+assert.ok(!ctx.nfChaveValida('A' + chave.slice(1)), 'letra nos 6 primeiros é recusada');
+assert.ok(!ctx.nfChaveValida(chave.slice(0, 43) + 'X'), 'letra no dígito verificador é recusada');
+
+// e a chave com letras também é encontrada dentro de um texto
+assert.strictEqual(ctx.nfChaveDeTexto('CHAVE DE ACESSO ' + chaveAlfa), chaveAlfa,
+  'acha a chave alfanumérica no meio do texto');
+console.log('  ✓ chave e CNPJ alfanuméricos (NT 2026.004), sem quebrar os numéricos');
 
 console.log('\n✅ Notas Fiscais: todos os testes passaram.');

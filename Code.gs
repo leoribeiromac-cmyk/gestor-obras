@@ -49,7 +49,7 @@ function rotear(e) {
       'addDiario', 'updateDiario', 'deleteDiario',
       'equipListar', 'equipCadastrar', 'equipDesativar', 'locadoraCadastrar', 'equipApontar', 'equipApagar', 'equipApontamentos',
       'obterFoto',
-      'nfListar', 'nfSalvar', 'nfExcluir', 'nfImagem', 'nfLerIA', 'nfDiag', 'pedidoSalvar', 'pedidoExcluir'
+      'nfListar', 'nfSalvar', 'nfExcluir', 'nfImagem', 'nfLerIA', 'nfDiag', 'nfConsultarChave', 'pedidoSalvar', 'pedidoExcluir'
     ];
     if (PROTEGIDAS.indexOf(action) !== -1) {
       var falha = exigirTokenSeAtivo(p.token);
@@ -81,6 +81,7 @@ function rotear(e) {
       case 'nfImagem':          resp = nfImagem(p); break;
       case 'nfLerIA':           resp = nfLerIA(p); break;
       case 'nfDiag':            resp = nfDiag(); break;
+      case 'nfConsultarChave':  resp = nfConsultarChave(p); break;
       case 'pedidoSalvar':      resp = pedidoSalvar(p); break;
       case 'pedidoExcluir':     resp = pedidoExcluir(p.obra, p.id, p.token); break;
       default:
@@ -795,11 +796,17 @@ function nfLerIA(p) {
   if (!key) return { ok: false, motivo: 'sem_ia' };
 
   var b64 = String(p.foto || '');
-  if (b64.indexOf('data:image') !== 0) return { ok: false, motivo: 'imagem_invalida' };
+  var texto = String(p.texto || '');
+  // O PDF da DANFE quase sempre traz o texto embutido. Quando o app consegue
+  // extrair esse texto, ele manda o texto em vez da imagem: nao ha OCR no meio,
+  // entao nao ha erro de leitura de caractere — e sai bem mais barato.
+  if (!texto && b64.indexOf('data:image') !== 0) return { ok: false, motivo: 'imagem_invalida' };
   var modelo = props.getProperty('GEMINI_MODEL') || 'gemini-2.5-flash';
 
   var prompt =
-    'Você está lendo a imagem de uma DANFE (Documento Auxiliar da Nota Fiscal Eletrônica) brasileira, ' +
+    (texto
+      ? 'Abaixo está o TEXTO extraído do PDF de uma DANFE (Documento Auxiliar da Nota Fiscal Eletrônica) brasileira, '
+      : 'Você está lendo a IMAGEM de uma DANFE (Documento Auxiliar da Nota Fiscal Eletrônica) brasileira, ') +
     'recebida por uma construtora de obras públicas.\n' +
     'Extraia os campos abaixo e responda SOMENTE com um objeto JSON, sem texto em volta e sem cercas de código.\n\n' +
     'Formato exigido:\n' +
@@ -820,16 +827,23 @@ function nfLerIA(p) {
     '- Campo que você não conseguir ler: string vazia "" ou número 0, e confiança 0.\n' +
     '- NUNCA invente número, valor ou CNPJ. Prefira deixar vazio a chutar.\n' +
     '- Confiança de 0 a 1 por campo, refletindo o quanto o texto estava legível.\n' +
+    '\nOnde procurar na DANFE:\n' +
+    '- "NF-e Nº" e "SÉRIE" ficam no quadro superior, ao lado do código de barras.\n' +
+    '- O emitente é o bloco do topo à esquerda, junto do logotipo; o DESTINATÁRIO/REMETENTE é outro bloco, mais abaixo — não confunda.\n' +
+    '- "CÁLCULO DO IMPOSTO" traz BASE DE CÁLCULO DO ICMS, VALOR DO ICMS, VALOR DO FRETE, VALOR TOTAL DOS PRODUTOS e VALOR TOTAL DA NOTA.\n' +
+    '- "DADOS DO PRODUTO / SERVIÇO" é a tabela dos itens: CÓDIGO, DESCRIÇÃO, UNID, QUANT, VALOR UNITÁRIO e VALOR TOTAL. Traga uma linha por item, na ordem em que aparecem.\n' +
+    '- Ignore o quadro "DADOS ADICIONAIS" e os textos de informações complementares.\n' +
     (p.chave ? '- A chave de acesso já foi lida do código de barras e é: ' + String(p.chave).replace(/\D/g, '') + '. Use-a e mantenha coerência com número, série e CNPJ dela.\n' : '');
 
+  var partes = [{ text: prompt }];
+  if (texto) {
+    partes.push({ text: '\n--- TEXTO EXTRAIDO DO PDF DA NOTA ---\n' + texto.slice(0, 24000) });
+  } else {
+    partes.push({ inline_data: { mime_type: 'image/jpeg', data: b64.split(',')[1] } });
+  }
+
   var payload = {
-    contents: [{
-      role: 'user',
-      parts: [
-        { text: prompt },
-        { inline_data: { mime_type: 'image/jpeg', data: b64.split(',')[1] } }
-      ]
-    }],
+    contents: [{ role: 'user', parts: partes }],
     // O 2.5 "pensa" antes de responder e esse raciocínio consome o mesmo teto de
     // tokens da resposta. Numa DANFE cheia isso estourava o limite e voltava vazio.
     // Aqui a tarefa é copiar campo de imagem, não raciocinar: desliga o pensamento
@@ -1008,7 +1022,8 @@ function nfDiag() {
     chaveConfigurada: !!key,
     tamanhoChave: key ? String(key).length : 0,
     modelo: modelo,
-    propriedades: props.getKeys().sort().join(', ')
+    propriedades: props.getKeys().sort().join(', '),
+    consultaChaveConfigurada: !!nfeApiConfig().url
   };
   // o próprio Apps Script sabe dizer se ainda falta autorização — e devolve o
   // endereço para autorizar, que é melhor do que explicar o caminho do menu
@@ -1046,4 +1061,199 @@ function nfDiag() {
     })[r.motivo] || ('A chamada à IA falhou: ' + (r.detalhe || r.motivo));
   }
   return out;
+}
+
+// ============================================================
+// CONSULTA DA NOTA PELA CHAVE DE ACESSO
+// ------------------------------------------------------------
+// Servicos como consultadanfe.com, meudanfe.com.br e nfe.io tem o
+// certificado digital e devolvem a nota a partir da chave. Isso e melhor
+// do que qualquer OCR: os dados vem do XML oficial, exatamente como o
+// fornecedor emitiu.
+//
+// O endereco e o token ficam nas Propriedades do script, porque cada
+// servico tem o seu contrato:
+//   NFE_API_URL     = https://.../consulta?chave={chave}   ({chave} e trocado)
+//   NFE_API_TOKEN   = seu token             (opcional)
+//   NFE_API_HEADER  = Authorization         (opcional, padrao Authorization)
+//   NFE_API_PREFIXO = "Bearer "             (opcional, padrao "Bearer ")
+//   NFE_API_METODO  = GET | POST            (opcional, padrao GET)
+//   NFE_API_CAMPO   = chave                 (opcional, nome do campo no POST)
+//
+// A resposta pode vir como XML da NF-e ou como JSON. O XML e o caminho
+// bom: o layout e padronizado pela Receita, entao a leitura e exata.
+// ============================================================
+function nfeApiConfig() {
+  var p = PropertiesService.getScriptProperties();
+  return {
+    url: p.getProperty('NFE_API_URL') || '',
+    token: p.getProperty('NFE_API_TOKEN') || '',
+    header: p.getProperty('NFE_API_HEADER') || 'Authorization',
+    prefixo: p.getProperty('NFE_API_PREFIXO') == null ? 'Bearer ' : p.getProperty('NFE_API_PREFIXO'),
+    metodo: (p.getProperty('NFE_API_METODO') || 'GET').toUpperCase(),
+    campo: p.getProperty('NFE_API_CAMPO') || 'chave'
+  };
+}
+
+function nfConsultarChave(p) {
+  var chave = String(p.chave || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (chave.length !== 44) return { ok: false, motivo: 'chave_invalida' };
+
+  var cfg = nfeApiConfig();
+  if (!cfg.url) return { ok: false, motivo: 'sem_api' };
+
+  var url = cfg.url.indexOf('{chave}') !== -1
+    ? cfg.url.replace('{chave}', encodeURIComponent(chave))
+    : cfg.url;
+  var opts = { muteHttpExceptions: true, headers: {} };
+  if (cfg.token) opts.headers[cfg.header] = cfg.prefixo + cfg.token;
+  if (cfg.metodo === 'POST') {
+    opts.method = 'post';
+    opts.contentType = 'application/json';
+    var corpo = {};
+    corpo[cfg.campo] = chave;
+    opts.payload = JSON.stringify(corpo);
+  } else {
+    opts.method = 'get';
+    if (cfg.url.indexOf('{chave}') === -1) {
+      url += (url.indexOf('?') === -1 ? '?' : '&') + encodeURIComponent(cfg.campo) + '=' + encodeURIComponent(chave);
+    }
+  }
+
+  var res;
+  try {
+    res = UrlFetchApp.fetch(url, opts);
+  } catch (e) {
+    var msg = String(e && e.message ? e.message : e);
+    if (/permission|autoriza|authoriz|scope/i.test(msg)) return { ok: false, motivo: 'autorizacao', detalhe: msg.slice(0, 200) };
+    return { ok: false, motivo: 'rede', detalhe: msg.slice(0, 200) };
+  }
+  var codigo = res.getResponseCode();
+  var corpoTxt = String(res.getContentText());
+  if (codigo !== 200) {
+    return { ok: false, motivo: codigo === 401 || codigo === 403 ? 'token' : 'api', codigo: codigo, detalhe: corpoTxt.slice(0, 300) };
+  }
+
+  var xml = nfeAcharXML(corpoTxt);
+  if (!xml) return { ok: false, motivo: 'sem_xml', detalhe: corpoTxt.slice(0, 300) };
+
+  var dados;
+  try {
+    dados = nfeDoXML(xml);
+  } catch (e2) {
+    return { ok: false, motivo: 'xml_invalido', detalhe: String(e2 && e2.message ? e2.message : e2).slice(0, 200) };
+  }
+  if (!dados) return { ok: false, motivo: 'xml_invalido' };
+
+  registrarAuditoria(usuarioDoToken(p.token), 'app', 'nfConsultaChave', p.obra || '', dados.numero || '', chave, 'NF-e obtida pela chave');
+  return { ok: true, fonte: 'xml', dados: dados, confiancaGeral: 1 };
+}
+
+// A resposta pode ser o XML puro, ou um JSON com o XML dentro de algum campo.
+function nfeAcharXML(txt) {
+  var t = String(txt || '');
+  if (t.indexOf('<infNFe') !== -1) return t;
+  var j = null;
+  try { j = JSON.parse(t); } catch (e) { return ''; }
+  var achado = '';
+  function varrer(v, prof) {
+    if (achado || prof > 6 || v == null) return;
+    if (typeof v === 'string') {
+      if (v.indexOf('<infNFe') !== -1) achado = v;
+      return;
+    }
+    if (typeof v === 'object') {
+      var ks = Object.keys(v);
+      for (var i = 0; i < ks.length && !achado; i++) varrer(v[ks[i]], prof + 1);
+    }
+  }
+  varrer(j, 0);
+  return achado;
+}
+
+// ---- leitura do XML da NF-e (layout da Receita, sem depender do namespace) ----
+function nfeFilho(el, nome) {
+  if (!el) return null;
+  var fs = el.getChildren();
+  for (var i = 0; i < fs.length; i++) if (fs[i].getName() === nome) return fs[i];
+  return null;
+}
+function nfeFilhos(el, nome) {
+  var out = [];
+  if (!el) return out;
+  var fs = el.getChildren();
+  for (var i = 0; i < fs.length; i++) if (fs[i].getName() === nome) out.push(fs[i]);
+  return out;
+}
+function nfeTxt(el, nome) {
+  var f = nfeFilho(el, nome);
+  return f ? String(f.getText()).trim() : '';
+}
+function nfeNum(el, nome) {
+  var v = nfeTxt(el, nome);
+  var n = parseFloat(v);
+  return isNaN(n) ? 0 : n;
+}
+// procura infNFe em qualquer profundidade (nfeProc > NFe > infNFe, ou direto)
+function nfeAcharInf(el, prof) {
+  if (!el || prof > 6) return null;
+  if (el.getName() === 'infNFe') return el;
+  var fs = el.getChildren();
+  for (var i = 0; i < fs.length; i++) {
+    var r = nfeAcharInf(fs[i], prof + 1);
+    if (r) return r;
+  }
+  return null;
+}
+
+function nfeDoXML(xml) {
+  var doc = XmlService.parse(String(xml).replace(/^﻿/, '').trim());
+  var inf = nfeAcharInf(doc.getRootElement(), 0);
+  if (!inf) return null;
+
+  var ide = nfeFilho(inf, 'ide');
+  var emit = nfeFilho(inf, 'emit');
+  var ender = emit ? nfeFilho(emit, 'enderEmit') : null;
+  var total = nfeFilho(inf, 'total');
+  var icmsTot = total ? nfeFilho(total, 'ICMSTot') : null;
+
+  var chave = '';
+  try { chave = String(inf.getAttribute('Id').getValue()).replace(/^NFe/i, ''); } catch (e) {}
+
+  var emissao = nfeTxt(ide, 'dhEmi') || nfeTxt(ide, 'dEmi');
+  var entrada = nfeTxt(ide, 'dhSaiEnt') || nfeTxt(ide, 'dSaiEnt');
+
+  var itens = [];
+  var dets = nfeFilhos(inf, 'det');
+  for (var i = 0; i < dets.length && i < 200; i++) {
+    var prod = nfeFilho(dets[i], 'prod');
+    if (!prod) continue;
+    itens.push({
+      codigo: nfeTxt(prod, 'cProd'),
+      descricao: nfeTxt(prod, 'xProd'),
+      qtd: nfeNum(prod, 'qCom'),
+      un: nfeTxt(prod, 'uCom'),
+      vUnit: nfeNum(prod, 'vUnCom'),
+      vTotal: nfeNum(prod, 'vProd')
+    });
+  }
+
+  return {
+    chave: chave,
+    numero: nfeTxt(ide, 'nNF'),
+    serie: nfeTxt(ide, 'serie'),
+    dataEmissao: String(emissao).slice(0, 10),
+    dataEntrada: String(entrada).slice(0, 10),
+    cnpj: nfeTxt(emit, 'CNPJ') || nfeTxt(emit, 'CPF'),
+    razaoSocial: nfeTxt(emit, 'xNome'),
+    nomeFantasia: nfeTxt(emit, 'xFant'),
+    municipio: nfeTxt(ender, 'xMun'),
+    uf: nfeTxt(ender, 'UF'),
+    vProd: nfeNum(icmsTot, 'vProd'),
+    vFrete: nfeNum(icmsTot, 'vFrete'),
+    vTotal: nfeNum(icmsTot, 'vNF'),
+    vBaseICMS: nfeNum(icmsTot, 'vBC'),
+    vICMS: nfeNum(icmsTot, 'vICMS'),
+    itens: itens
+  };
 }

@@ -378,6 +378,8 @@ input.nf-confira,select.nf-confira,textarea.nf-confira{border-color:var(--amarel
 .nf-chip-sug:hover{background:var(--accent);color:#fff;border-color:var(--accent)}
 .nf-passo{display:flex;gap:10px;align-items:flex-start;padding:7px 0;font-size:13.5px}
 .nf-1linha{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* formulário enxuto: os campos acessórios continuam no DOM, só não aparecem */
+.nf-simples .nf-extra{display:none!important}
 @media(max-width:700px){
   .nf-grid{grid-template-columns:1fr}
   .nf-card-img,.nf-card-img img,.nf-card-sem{height:180px}

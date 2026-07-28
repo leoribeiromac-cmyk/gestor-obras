@@ -157,17 +157,27 @@ Aba **Suprimentos ▸ Notas Fiscais**. Feita para o apontador em campo: o caminh
 normal é **fotografar a nota e conferir** — não digitar.
 
 ### Como o apontador usa
-1. **Nova nota fiscal** → **Fotografar a nota** (ou escolher da galeria).
-2. O app comprime a imagem, guarda a versão grande no aparelho e manda para o
-   Drive **em segundo plano**.
+1. **Nova nota fiscal** → **Fotografar a nota**, ou **Escolher arquivo (PDF ou imagem)**.
+2. O app guarda a imagem da nota (a 1ª página, no caso do PDF) no aparelho e
+   manda para o Drive **em segundo plano**.
 3. Enquanto isso, tenta ler os dados nesta ordem:
-   1. **Código de barras / QR da DANFE** → chave de acesso;
-   2. **Chave de acesso** → número, série, CNPJ do emitente, UF e mês de emissão
-      (conferidos pelo dígito verificador, então não tem erro de leitura);
-   3. **Leitura da imagem (OCR + IA)** no backend → fornecedor, valores e produtos;
-   4. o que faltar, **digita**.
+   1. **Chave de acesso** — do texto do PDF ou do código de barras da foto.
+      Tem dígito verificador: ou está certa, ou é recusada;
+   2. **Consulta da nota pela chave** num serviço com certificado digital
+      (opcional, veja SETUP-BACKEND.md) → **dados oficiais do XML da NF-e**,
+      com todos os itens. É o melhor caminho: nada de OCR;
+   3. **Texto do PDF** → interpretado pela IA, sem OCR no meio;
+   4. **Imagem** → OCR + IA;
+   5. o que faltar, **digita**.
+
+> **Tem o PDF da DANFE? Use o PDF.** O texto vem embutido no arquivo, então a
+> leitura sai certa. Fotografar é o plano B.
 4. A tela de conferência abre preenchida. Campo que a leitura não teve certeza
    vem **marcado em amarelo com "confira"** — e tudo é editável.
+   Quando **nada** foi lido, o formulário abre **enxuto**, só com o essencial:
+   empresa, data, itens com o valor, frete e valor da nota. O botão
+   **"Mostrar todos os campos"** abre o resto (número, série, chave, CNPJ,
+   ICMS, status, quantidades) sem perder o que já foi digitado.
 5. **Salvar**. Nada trava se a leitura falhar: dá para salvar só com o número e o valor.
 
 O leitor de código de barras é o do próprio navegador (`BarcodeDetector`),

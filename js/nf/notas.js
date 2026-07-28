@@ -75,41 +75,55 @@ function nfISO(v) {
   return a + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[1]).slice(-2);
 }
 function nfDataBR(iso) { return iso ? new Date(iso + 'T00:00:00').toLocaleDateString('pt-BR') : '—'; }
+function nfCNPJnorm(c) { return String(c == null ? '' : c).toUpperCase().replace(/[^A-Z0-9]/g, ''); }
 function nfCNPJfmt(c) {
-  const d = nfDigitos(c);
+  const d = nfCNPJnorm(c);
   if (d.length !== 14) return c || '';
   return d.slice(0, 2) + '.' + d.slice(2, 5) + '.' + d.slice(5, 8) + '/' + d.slice(8, 12) + '-' + d.slice(12);
 }
+/* Vale para o CNPJ de sempre e para o alfanumerico: as 12 primeiras posicoes
+   podem ter letra, os 2 digitos verificadores continuam numericos e o calculo
+   usa ASCII menos 48 (para numero, da no mesmo de antes). */
 function nfCNPJvalido(c) {
-  const d = nfDigitos(c);
-  if (d.length !== 14 || /^(\d)\1{13}$/.test(d)) return false;
-  const calc = (base, pesos) => {
+  const d = nfCNPJnorm(c);
+  if (!/^[A-Z0-9]{12}\d{2}$/.test(d)) return false;
+  if (/^(.)\1{13}$/.test(d)) return false;
+  const calc = pesos => {
     let s = 0;
-    for (let i = 0; i < pesos.length; i++) s += (+base[i]) * pesos[i];
+    for (let i = 0; i < pesos.length; i++) s += nfValCar(d[i]) * pesos[i];
     const r = s % 11;
     return r < 2 ? 0 : 11 - r;
   };
-  const d1 = calc(d, [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
-  const d2 = calc(d, [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
-  return d1 === +d[12] && d2 === +d[13];
+  return calc([5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]) === +d[12] &&
+         calc([6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]) === +d[13];
 }
 
 /* ---------- chave de acesso da NF-e (44 digitos) ----------
    cUF(2) AAMM(4) CNPJ(14) mod(2) serie(3) nNF(9) tpEmis(1) cNF(8) cDV(1)
    O digito verificador e modulo 11, entao da para saber se a leitura
    do codigo de barras veio certa antes de preencher qualquer campo.  */
+/* A chave passou a aceitar LETRAS nas 12 posicoes do CNPJ do emitente
+   (CNPJ alfanumerico, Nota Tecnica 2026.004). O digito verificador agora
+   converte cada caractere pela tabela ASCII menos 48 antes do modulo 11.
+   Para chave so de numeros o resultado e exatamente o mesmo de antes —
+   a regra nova engloba a antiga. */
+function nfValCar(c) { return String(c).charCodeAt(0) - 48; }
+function nfChaveNorm(s) { return String(s == null ? '' : s).toUpperCase().replace(/[^A-Z0-9]/g, ''); }
 function nfDVchave(ch43) {
   let p = 2, s = 0;
-  for (let i = 42; i >= 0; i--) { s += (+ch43[i]) * p; p = p === 9 ? 2 : p + 1; }
+  for (let i = 42; i >= 0; i--) { s += nfValCar(ch43[i]) * p; p = p === 9 ? 2 : p + 1; }
   const r = s % 11;
   return (r === 0 || r === 1) ? 0 : 11 - r;
 }
 function nfChaveValida(ch) {
-  const d = nfDigitos(ch);
-  return d.length === 44 && nfDVchave(d.slice(0, 43)) === +d[43];
+  const d = nfChaveNorm(ch);
+  if (d.length !== 44) return false;
+  // so o miolo do CNPJ pode ter letra; o resto continua numerico
+  if (!/^\d{6}[A-Z0-9]{12}\d{26}$/.test(d)) return false;
+  return nfDVchave(d.slice(0, 43)) === +d[43];
 }
 function nfDaChave(ch) {
-  const d = nfDigitos(ch);
+  const d = nfChaveNorm(ch);
   if (d.length !== 44) return null;
   const uf = NF_UF[+d.slice(0, 2)] || '';
   const ano = '20' + d.slice(2, 4), mes = d.slice(4, 6);
@@ -125,17 +139,19 @@ function nfDaChave(ch) {
   };
 }
 function nfChaveDeTexto(txt) {
-  const s = String(txt || '');
-  // a chave costuma vir com espacos de 4 em 4 na DANFE impressa
-  const candidatos = (s.replace(/[^\d\s]/g, ' ').match(/[\d\s]{44,80}/g) || []).map(t => nfDigitos(t));
-  for (const c of candidatos) {
-    for (let i = 0; i + 44 <= c.length; i++) {
-      const ch = c.slice(i, i + 44);
-      if (nfChaveValida(ch)) return ch;
-    }
+  // Junta tudo num so bloco e corre uma janela de 44. Na DANFE a chave sai em
+  // grupos de 4 e no meio de muito outro texto; quebrar o texto em pedacos
+  // fazia a chave sumir justamente quando ela caia na emenda de dois pedacos.
+  const puro = nfChaveNorm(txt);
+  if (puro.length < 44) return '';
+  let reserva = '';
+  for (let i = 0; i + 44 <= puro.length; i++) {
+    const ch = puro.slice(i, i + 44);
+    if (!nfChaveValida(ch)) continue;
+    if (NF_UF[+ch.slice(0, 2)]) return ch;   // comeca com um codigo de UF real: e ela
+    if (!reserva) reserva = ch;              // passou no digito mas com UF estranha
   }
-  const direto = s.match(/\d{44}/);
-  return (direto && nfChaveValida(direto[0])) ? direto[0] : '';
+  return reserva;
 }
 
 /* ============================================================
@@ -202,10 +218,32 @@ function nfBitmapReduzido(fonte, maxLado) {
    2) LEITURA DA IMAGEM (OCR + IA) — roda no backend
    A chave da IA fica nas propriedades do Apps Script, nunca no app.
    ============================================================ */
-async function nfLerImagemIA(dataUrl, chave) {
+/* Busca a nota pela chave de acesso num serviço que tenha o certificado
+   digital (consultadanfe, meudanfe, nfe.io...). Quando funciona é o melhor
+   caminho de todos: os dados vêm do XML que o fornecedor emitiu, não de
+   leitura de imagem. */
+async function nfConsultarPelaChave(chave) {
   if (!BACKEND || isDemo()) return { ok: false, motivo: 'local' };
   try {
-    const r = await postAcao({ action: 'nfLerIA', foto: dataUrl, chave: chave || '' });
+    const r = await postAcao({ action: 'nfConsultarChave', chave: chave, obra: (obra() || {}).id || '' });
+    return r || { ok: false, motivo: 'sem_resposta' };
+  } catch (e) {
+    return { ok: false, motivo: 'rede' };
+  }
+}
+
+async function nfLerImagemIA(dataUrl, chave, texto) {
+  if (!BACKEND || isDemo()) return { ok: false, motivo: 'local' };
+  try {
+    // com o texto do PDF em mãos, mandar a imagem junto só atrapalha (e é
+    // 10x mais caro): o texto já é a nota inteira, sem OCR no meio
+    const temTexto = texto && texto.length > 200;
+    const r = await postAcao({
+      action: 'nfLerIA',
+      foto: temTexto ? '' : dataUrl,
+      texto: temTexto ? String(texto).slice(0, 24000) : '',
+      chave: chave || ''
+    });
     return r || { ok: false, motivo: 'sem_resposta' };
   } catch (e) {
     return { ok: false, motivo: 'rede' };
@@ -229,7 +267,7 @@ function nfMesclarLeitura(base, daChave, daIA) {
     por('serie', String(d.serie || '').trim(), c('serie'));
     por('dataEmissao', nfISO(d.dataEmissao), c('dataEmissao'));
     por('dataEntrada', nfISO(d.dataEntrada), c('dataEntrada'));
-    por('cnpj', nfDigitos(d.cnpj), c('cnpj'));
+    por('cnpj', nfCNPJnorm(d.cnpj), c('cnpj'));
     por('razaoSocial', String(d.razaoSocial || '').trim(), c('razaoSocial'));
     por('nomeFantasia', String(d.nomeFantasia || '').trim(), c('nomeFantasia'));
     por('municipio', String(d.municipio || '').trim(), c('municipio'));
@@ -251,7 +289,7 @@ function nfMesclarLeitura(base, daChave, daIA) {
       })).filter(it => it.descricao);
       conf.itens = c('itens');
     }
-    if (!nfChaveValida(n.chave)) por('chave', nfDigitos(d.chave).slice(0, 44), c('chave'));
+    if (!nfChaveValida(n.chave)) por('chave', nfChaveNorm(d.chave).slice(0, 44), c('chave'));
   }
   // a chave por ultimo, para sobrepor a IA
   if (daChave && daChave.valida) {
@@ -350,7 +388,7 @@ function nfFornecedores(obraId) {
 }
 /* fornecedor ja conhecido pelo CNPJ — evita cadastrar o mesmo duas vezes */
 function nfFornecedorConhecido(obraId, cnpj) {
-  const d = nfDigitos(cnpj);
+  const d = nfCNPJnorm(cnpj);
   if (d.length !== 14) return null;
   return nfFornecedores(obraId).find(f => f.cnpj === d) || null;
 }
@@ -497,6 +535,7 @@ function nfDiff(antes, depois) {
    FLUXO DO APONTADOR — fotografar e pronto
    ============================================================ */
 let _nfRascunho = null;    // nota em conferencia
+let _nfModoSimples = true; // formulario enxuto: so o essencial para digitar
 let _nfFull = '';          // imagem em resolucao cheia da nota em conferencia
 
 function nfNovaVazia(obraId) {
@@ -522,15 +561,16 @@ function nfAbrirNova() {
         O sistema lê o código de barras, a chave de acesso e o restante dos dados sozinho.</div>
       </div>
       <label class="btn btn-pri" style="width:100%;justify-content:center;margin-bottom:9px;cursor:pointer">📷 Fotografar a nota
-        <input type="file" accept="image/*" capture="environment" onchange="nfImagemSelecionada(this)" style="display:none"></label>
-      <label class="btn" style="width:100%;justify-content:center;margin-bottom:14px;cursor:pointer">🖼 Escolher da galeria
-        <input type="file" accept="image/*" onchange="nfImagemSelecionada(this)" style="display:none"></label>
+        <input type="file" accept="image/*" capture="environment" onchange="nfArquivoSelecionado(this)" style="display:none"></label>
+      <label class="btn" style="width:100%;justify-content:center;margin-bottom:4px;cursor:pointer">📄 Escolher arquivo (PDF ou imagem)
+        <input type="file" accept="image/*,application/pdf,.pdf" onchange="nfArquivoSelecionado(this)" style="display:none"></label>
+      <div class="kpi-s" style="text-align:center;margin-bottom:14px">Se você tem o <b>PDF da DANFE</b>, use-o: o texto vem direto do arquivo e a leitura sai certa.</div>
       <div class="card" style="box-shadow:none"><div class="card-b" style="padding:13px 15px">
         <label class="fl">Não tem a nota em mãos?</label>
         <div class="row" style="gap:8px">
           <input id="nfChaveManual" inputmode="numeric" placeholder="Chave de acesso (44 dígitos)" style="flex:1;min-width:190px">
           <button class="btn" onclick="nfUsarChaveDigitada()">Usar chave</button></div>
-        <button class="btn btn-ghost" style="width:100%;justify-content:center;margin-top:8px" onclick="nfConferir()">Preencher tudo à mão</button>
+        <button class="btn btn-ghost" style="width:100%;justify-content:center;margin-top:8px" onclick="_nfModoSimples=true;nfConferir()">Preencher à mão</button>
       </div></div>
     </div>`, 620);
 }
@@ -544,53 +584,140 @@ function nfPassoUI(linhas) {
     </div></div>`;
 }
 
-async function nfImagemSelecionada(inp) {
+/* ---------- PDF da DANFE ----------
+   O PDF quase sempre traz o texto embutido. Nesse caso não há OCR nenhum:
+   os campos saem do próprio arquivo, sem erro de leitura. Só quando o PDF é
+   um escaneado (sem texto) é que se cai na imagem. */
+function nfCanvasJpeg(canvas, maxLado, q) {
+  let w = canvas.width, h = canvas.height;
+  const m = Math.max(w, h);
+  if (m <= maxLado) return canvas.toDataURL('image/jpeg', q);
+  const k = maxLado / m;
+  const c = document.createElement('canvas');
+  c.width = Math.round(w * k); c.height = Math.round(h * k);
+  const x = c.getContext('2d');
+  x.imageSmoothingQuality = 'high';
+  x.drawImage(canvas, 0, 0, c.width, c.height);
+  return c.toDataURL('image/jpeg', q);
+}
+async function nfLerPDF(file) {
+  const out = { texto: '', thumb: '', full: '', paginas: 0 };
+  if (!window.pdfjsLib) return out;
+  const buf = await file.arrayBuffer();
+  const doc = await window.pdfjsLib.getDocument({ data: buf }).promise;
+  out.paginas = doc.numPages;
+  // a DANFE cabe em poucas folhas; ler tudo de uma nota de 40 páginas é desperdício
+  const lim = Math.min(doc.numPages, 4);
+  for (let i = 1; i <= lim; i++) {
+    const pg = await doc.getPage(i);
+    const tc = await pg.getTextContent();
+    out.texto += tc.items.map(it => it.str).join(' ') + '\n';
+  }
+  out.texto = out.texto.replace(/[ \t]+/g, ' ').trim();
+  // primeira página vira a imagem da nota (miniatura, Drive e visualização)
+  const pg1 = await doc.getPage(1);
+  const v1 = pg1.getViewport({ scale: 1 });
+  const escala = Math.min(3, Math.max(1, NF_MAX_LADO / Math.max(v1.width, v1.height)));
+  const vp = pg1.getViewport({ scale: escala });
+  const c = document.createElement('canvas');
+  c.width = Math.round(vp.width); c.height = Math.round(vp.height);
+  const cx = c.getContext('2d');
+  cx.fillStyle = '#fff'; cx.fillRect(0, 0, c.width, c.height);
+  await pg1.render({ canvasContext: cx, viewport: vp }).promise;
+  out.full = nfCanvasJpeg(c, NF_MAX_LADO, .85);
+  out.thumb = nfCanvasJpeg(c, 320, .6);
+  return out;
+}
+
+async function nfArquivoSelecionado(inp) {
   const f = (inp.files || [])[0]; inp.value = '';
-  if (!f || !/^image\//.test(f.type)) { toast('Selecione uma imagem da nota'); return; }
+  const ehPDF = f && (/pdf/i.test(f.type) || /\.pdf$/i.test(f.name || ''));
+  if (!f || (!ehPDF && !/^image\//.test(f.type))) { toast('Escolha o PDF ou uma foto da nota'); return; }
   const o = obra(); if (!o) return;
   const passos = [
-    { ic: '⏳', t: 'Preparando a imagem…', st: '' },
-    { ic: '·', t: 'Procurando o código de barras da DANFE', st: '' },
+    { ic: '⏳', t: ehPDF ? 'Abrindo o PDF…' : 'Preparando a imagem…', st: '' },
+    { ic: '·', t: ehPDF ? 'Procurando a chave de acesso no arquivo' : 'Procurando o código de barras da DANFE', st: '' },
     { ic: '·', t: 'Lendo os dados da nota', st: '' }
   ];
   nfPassoUI(passos);
 
-  let thumb = '', full = '';
-  try {
-    const r = await Promise.all([comprimirImg(f, 320, .55), comprimirImg(f, NF_MAX_LADO, .82)]);
-    thumb = r[0]; full = r[1];
-  } catch (e) { toast('Não consegui ler essa imagem'); nfAbrirNova(); return; }
-  passos[0] = { ic: '✓', t: 'Imagem pronta', st: 'ok' };
+  let thumb = '', full = '', textoPDF = '';
+  if (ehPDF) {
+    try {
+      const p = await nfLerPDF(f);
+      thumb = p.thumb; full = p.full; textoPDF = p.texto;
+    } catch (e) { toast('Não consegui abrir esse PDF'); nfAbrirNova(); return; }
+    passos[0] = { ic: '✓', t: textoPDF.length > 200 ? 'PDF lido — texto disponível' : 'PDF aberto (parece ser digitalizado)', st: 'ok' };
+  } else {
+    try {
+      const r = await Promise.all([comprimirImg(f, 320, .55), comprimirImg(f, NF_MAX_LADO, .88)]);
+      thumb = r[0]; full = r[1];
+    } catch (e) { toast('Não consegui ler essa imagem'); nfAbrirNova(); return; }
+    passos[0] = { ic: '✓', t: 'Imagem pronta', st: 'ok' };
+  }
   passos[1].ic = '⏳'; nfPassoUI(passos);
 
   _nfRascunho.thumb = thumb; _nfFull = full;
 
-  // 1) codigo de barras / QR — offline, instantaneo e exato
-  const cod = await nfLerCodigos(f);
-  const daChave = cod.chave ? nfDaChave(cod.chave) : null;
+  // 1) chave de acesso — do texto do PDF ou do código de barras da foto.
+  //    Nos dois casos o dígito verificador confirma que veio certa.
+  let chaveAchada = '', comoAchou = '';
+  if (textoPDF) {
+    chaveAchada = nfChaveDeTexto(textoPDF);
+    if (chaveAchada) comoAchou = 'Chave de acesso lida do PDF';
+  }
+  let cod = { codigos: [], suportado: nfTemLeitorCodigo() };
+  if (!chaveAchada && !ehPDF) {
+    cod = await nfLerCodigos(f);
+    chaveAchada = cod.chave;
+    if (chaveAchada) comoAchou = 'Chave de acesso lida do código de barras';
+  }
+  const daChave = chaveAchada ? nfDaChave(chaveAchada) : null;
   passos[1] = daChave
-    ? { ic: '✓', t: 'Chave de acesso lida do código de barras', st: 'ok' }
-    : { ic: '—', t: cod.suportado ? 'Sem código legível na foto' : 'Este aparelho não lê código de barras', st: '' };
+    ? { ic: '✓', t: comoAchou, st: 'ok' }
+    : { ic: '—', t: ehPDF ? 'Sem chave de acesso legível no arquivo' : (cod.suportado ? 'Sem código legível na foto' : 'Este aparelho não lê código de barras'), st: '' };
   passos[2].ic = '⏳'; nfPassoUI(passos);
 
-  // 2) imagem -> OCR/IA no backend
-  const ia = await nfLerImagemIA(full, daChave ? daChave.chave : '');
-  if (ia && ia.ok) passos[2] = { ic: '✓', t: 'Dados extraídos da imagem', st: 'ok' };
-  else passos[2] = { ic: '—', t: nfMotivoTxt(ia), st: '' };
+  // 2) com a chave em mãos, buscar a nota oficial antes de tentar ler imagem
+  let consulta = null;
+  if (daChave) {
+    passos[2] = { ic: '⏳', t: 'Buscando a nota pela chave de acesso', st: '' };
+    nfPassoUI(passos);
+    consulta = await nfConsultarPelaChave(daChave.chave);
+  }
+
+  // 3) só se a consulta não resolveu é que se recorre ao texto/imagem
+  let ia = null;
+  if (consulta && consulta.ok) {
+    passos[2] = { ic: '✓', t: 'Nota obtida pela chave — dados oficiais da NF-e', st: 'ok' };
+  } else {
+    passos[2] = { ic: '⏳', t: textoPDF.length > 200 ? 'Lendo os dados do texto do PDF' : 'Lendo os dados da imagem', st: '' };
+    nfPassoUI(passos);
+    ia = await nfLerImagemIA(full, daChave ? daChave.chave : '', textoPDF);
+    if (ia && ia.ok) passos[2] = { ic: '✓', t: textoPDF.length > 200 ? 'Dados extraídos do PDF' : 'Dados extraídos da imagem', st: 'ok' };
+    else passos[2] = { ic: '—', t: nfMotivoTxt(ia), st: '' };
+  }
   nfPassoUI(passos);
+  const fonte = (consulta && consulta.ok) ? consulta : ia;
   // falha do lado do servidor: guarda para o botão de teste explicar direito
   if (ia && !ia.ok && ['api', 'autorizacao', 'chave_invalida', 'chave_sem_acesso', 'modelo', 'limite', 'vazia', 'resposta', 'bloqueado'].indexOf(ia.motivo) > -1) {
     _nfUltimaFalhaIA = ia;
   }
 
-  let nota = nfMesclarLeitura(_nfRascunho, daChave, ia);
+  let nota = nfMesclarLeitura(_nfRascunho, daChave, fonte);
+  const leuAlgo = !!daChave || !!(fonte && fonte.ok);
   nota.leitura = {
-    metodo: daChave ? (ia && ia.ok ? 'codigo+ia' : 'codigo') : (ia && ia.ok ? 'ia' : 'manual'),
+    metodo: (consulta && consulta.ok) ? 'consulta'
+      : daChave ? (ehPDF ? 'pdf+chave' : (ia && ia.ok ? 'codigo+ia' : 'codigo'))
+      : (ia && ia.ok ? (ehPDF ? 'pdf' : 'ia') : 'manual'),
+    origem: ehPDF ? 'pdf' : 'foto',
     codigos: (cod.codigos || []).slice(0, 3),
     quando: Date.now(),
     modelo: (ia && ia.modelo) || '',
-    confiancaGeral: (ia && ia.confiancaGeral) || (daChave ? 1 : 0)
+    confiancaGeral: (fonte && fonte.confiancaGeral) || (daChave ? 1 : 0)
   };
+  // quem não teve nada lido vai digitar: abre o formulário enxuto
+  _nfModoSimples = !leuAlgo;
   if (!nota.dataEntrada) nota.dataEntrada = hoje();
   nfRegistrar(nota, 'leitura automática', nota.leitura.metodo);
   nfAutoVincular(o.id, nota);
@@ -598,15 +725,24 @@ async function nfImagemSelecionada(inp) {
   setTimeout(() => nfConferir(), 450);
 }
 
-function nfUsarChaveDigitada() {
+async function nfUsarChaveDigitada() {
   const v = el('nfChaveManual') ? el('nfChaveManual').value : '';
-  const ch = nfDigitos(v);
-  if (ch.length !== 44) { toast('A chave tem 44 números'); return; }
-  if (!nfChaveValida(ch)) { toast('Chave inválida — confira os números'); return; }
-  _nfRascunho = nfMesclarLeitura(_nfRascunho, nfDaChave(ch), null);
-  _nfRascunho.leitura = { metodo: 'chave', quando: Date.now(), confiancaGeral: 1 };
-  nfRegistrar(_nfRascunho, 'chave digitada', ch);
+  const ch = nfChaveNorm(v);
+  if (ch.length !== 44) { toast('A chave tem 44 caracteres'); return; }
+  if (!nfChaveValida(ch)) { toast('Chave inválida — confira os caracteres'); return; }
+  nfPassoUI([
+    { ic: '✓', t: 'Chave de acesso conferida', st: 'ok' },
+    { ic: '⏳', t: 'Buscando a nota pela chave', st: '' }
+  ]);
+  const consulta = await nfConsultarPelaChave(ch);
+  _nfRascunho = nfMesclarLeitura(_nfRascunho, nfDaChave(ch), consulta && consulta.ok ? consulta : null);
+  _nfRascunho.leitura = {
+    metodo: (consulta && consulta.ok) ? 'consulta' : 'chave',
+    quando: Date.now(), confiancaGeral: 1
+  };
+  nfRegistrar(_nfRascunho, (consulta && consulta.ok) ? 'nota obtida pela chave' : 'chave digitada', ch);
   nfAutoVincular(obra().id, _nfRascunho);
+  _nfModoSimples = false;
   nfConferir();
 }
 
@@ -735,53 +871,70 @@ function nfConferir() {
   const totItens = (n.itens || []).reduce((a, it) => a + nfNum(it.vTotal), 0);
   const difer = nfNum(n.vTotal) && Math.abs(nfNum(n.vTotal) - (totItens + nfNum(n.vFrete))) > 0.05;
 
+  // Todos os campos ficam no formulário; o modo enxuto apenas ESCONDE os
+  // acessórios. Assim alternar não perde nada do que já foi digitado.
   abrirModal((n.criadoEm && nfPorId(o.id, n.id) ? 'Editar nota fiscal' : 'Conferir nota fiscal'), `
     ${n.thumb ? `<div style="display:flex;gap:12px;align-items:flex-start;margin-bottom:14px">
-      <img src="${esc(n.thumb)}" alt="nota fiscal" onclick="nfVerImagem('${n.id}')" style="width:88px;height:110px;object-fit:cover;border-radius:8px;border:1px solid var(--border-strong);cursor:zoom-in">
+      <img src="${esc(n.thumb)}" alt="nota fiscal" onclick="nfVerImagem('${n.id}')" style="width:88px;height:110px;object-fit:cover;object-position:top center;border-radius:8px;border:1px solid var(--border-strong);cursor:zoom-in">
       <div style="flex:1;min-width:0">
         <div class="kpi-s">${nfLeituraTxt(n)}</div>
-        ${n.chave ? `<div class="mono" style="font-size:10.5px;word-break:break-all;margin-top:6px;color:var(--text-2)">${esc(n.chave)}</div>` : ''}
+        ${n.chave ? `<div class="mono nf-extra" style="font-size:10.5px;word-break:break-all;margin-top:6px;color:var(--text-2)">${esc(n.chave)}</div>` : ''}
         <button class="btn btn-sm btn-ghost" style="margin-top:6px;padding-left:0" onclick="nfVerImagem('${n.id}')">🔍 Ver a nota</button>
       </div></div>` : ''}
     ${dup ? `<div class="nf-alerta nf-alerta-red">Já existe a nota <b>${esc(dup.numero || '—')}</b> deste fornecedor no sistema. Salvar vai criar uma segunda.</div>` : ''}
     ${difer ? `<div class="nf-alerta nf-alerta-ylw">A soma dos itens + frete (${fmtBRL(totItens + nfNum(n.vFrete))}) não bate com o valor total da nota (${fmtBRL(nfNum(n.vTotal))}).</div>` : ''}
 
-    <div class="row"><div class="field"><label class="fl">Número ${aviso('numero')}</label><input id="nf_numero" class="${marca('numero')}" value="${esc(n.numero)}" inputmode="numeric"></div>
-      <div class="field" style="max-width:110px"><label class="fl">Série ${aviso('serie')}</label><input id="nf_serie" class="${marca('serie')}" value="${esc(n.serie)}" inputmode="numeric"></div></div>
-    <div class="field"><label class="fl">Chave de acesso ${aviso('chave')}</label>
-      <input id="nf_chave" class="mono ${marca('chave')}" value="${esc(n.chave)}" inputmode="numeric" placeholder="44 dígitos" onblur="nfChaveNoForm()" style="font-size:12.5px"></div>
-    <div class="row"><div class="field"><label class="fl">Emissão ${aviso('dataEmissao')}</label><input type="date" id="nf_dataEmissao" class="${marca('dataEmissao')}" value="${esc(n.dataEmissao)}"></div>
-      <div class="field"><label class="fl">Recebimento</label><input type="date" id="nf_dataEntrada" value="${esc(n.dataEntrada || hoje())}"></div></div>
+    <div id="nfForm" class="${_nfModoSimples ? 'nf-simples' : ''}">
 
-    <div class="nf-sep">Fornecedor</div>
-    <div class="field"><label class="fl">CNPJ ${aviso('cnpj')}</label>
-      <input id="nf_cnpj" class="mono ${marca('cnpj')}" value="${esc(nfCNPJfmt(n.cnpj))}" inputmode="numeric" onblur="nfCnpjNoForm()"><div id="nf_cnpjMsg" class="kpi-s"></div></div>
-    <div class="field"><label class="fl">Razão social ${aviso('razaoSocial')}</label><input id="nf_razaoSocial" class="${marca('razaoSocial')}" value="${esc(n.razaoSocial)}"></div>
-    <div class="row"><div class="field"><label class="fl">Nome fantasia</label><input id="nf_nomeFantasia" value="${esc(n.nomeFantasia)}"></div>
-      <div class="field"><label class="fl">Município</label><input id="nf_municipio" value="${esc(n.municipio)}"></div>
-      <div class="field" style="max-width:88px"><label class="fl">UF</label><input id="nf_uf" value="${esc(n.uf)}" maxlength="2" style="text-transform:uppercase"></div></div>
+    <div class="field"><label class="fl">Empresa (fornecedor) ${aviso('razaoSocial')}</label>
+      <input id="nf_razaoSocial" class="${marca('razaoSocial')}" value="${esc(n.razaoSocial)}" placeholder="Razão social de quem emitiu a nota" list="nfFornLista">
+      <datalist id="nfFornLista">${nfFornecedores(o.id).map(f => `<option value="${esc(f.nome)}">`).join('')}</datalist></div>
+    <div class="field"><label class="fl">Data da nota ${aviso('dataEmissao')}</label>
+      <input type="date" id="nf_dataEmissao" class="${marca('dataEmissao')}" value="${esc(n.dataEmissao)}"></div>
 
-    <div class="nf-sep">Valores</div>
-    <div class="row"><div class="field"><label class="fl">Produtos ${aviso('vProd')}</label><input id="nf_vProd" class="num ${marca('vProd')}" inputmode="decimal" value="${nfNum(n.vProd) ? fmtNum(n.vProd) : ''}" onblur="nfRecalcTotal()"></div>
-      <div class="field"><label class="fl">Frete</label><input id="nf_vFrete" class="num" inputmode="decimal" value="${nfNum(n.vFrete) ? fmtNum(n.vFrete) : ''}" onblur="nfRecalcTotal()"></div>
-      <div class="field"><label class="fl">Total ${aviso('vTotal')}</label><input id="nf_vTotal" class="num ${marca('vTotal')}" inputmode="decimal" value="${nfNum(n.vTotal) ? fmtNum(n.vTotal) : ''}" style="font-weight:700"></div></div>
-    <div class="row"><div class="field"><label class="fl">Base de ICMS</label><input id="nf_vBaseICMS" class="num" inputmode="decimal" value="${nfNum(n.vBaseICMS) ? fmtNum(n.vBaseICMS) : ''}"></div>
-      <div class="field"><label class="fl">ICMS</label><input id="nf_vICMS" class="num" inputmode="decimal" value="${nfNum(n.vICMS) ? fmtNum(n.vICMS) : ''}"></div></div>
+    <div class="nf-extra">
+      <div class="row"><div class="field"><label class="fl">Número ${aviso('numero')}</label><input id="nf_numero" class="${marca('numero')}" value="${esc(n.numero)}" inputmode="numeric"></div>
+        <div class="field" style="max-width:110px"><label class="fl">Série ${aviso('serie')}</label><input id="nf_serie" class="${marca('serie')}" value="${esc(n.serie)}" inputmode="numeric"></div>
+        <div class="field"><label class="fl">Recebimento</label><input type="date" id="nf_dataEntrada" value="${esc(n.dataEntrada || hoje())}"></div></div>
+      <div class="field"><label class="fl">Chave de acesso ${aviso('chave')}</label>
+        <input id="nf_chave" class="mono ${marca('chave')}" value="${esc(n.chave)}" inputmode="numeric" placeholder="44 dígitos" onblur="nfChaveNoForm()" style="font-size:12.5px"></div>
+      <div class="field"><label class="fl">CNPJ ${aviso('cnpj')}</label>
+        <input id="nf_cnpj" class="mono ${marca('cnpj')}" value="${esc(nfCNPJfmt(n.cnpj))}" inputmode="numeric" onblur="nfCnpjNoForm()"><div id="nf_cnpjMsg" class="kpi-s"></div></div>
+      <div class="row"><div class="field"><label class="fl">Nome fantasia</label><input id="nf_nomeFantasia" value="${esc(n.nomeFantasia)}"></div>
+        <div class="field"><label class="fl">Município</label><input id="nf_municipio" value="${esc(n.municipio)}"></div>
+        <div class="field" style="max-width:88px"><label class="fl">UF</label><input id="nf_uf" value="${esc(n.uf)}" maxlength="2" style="text-transform:uppercase"></div></div>
+    </div>
 
     <div class="nf-sep" style="display:flex;justify-content:space-between;align-items:center">
-      <span>Produtos da nota ${aviso('itens')}</span>
-      <button class="btn btn-sm" onclick="nfAddItem()">+ Produto</button></div>
+      <span>Itens da nota ${aviso('itens')}</span>
+      <button class="btn btn-sm" onclick="nfAddItem()">+ Item</button></div>
     <div id="nfItens"></div>
     <div class="kpi-s" id="nfItensTot" style="text-align:right;margin:4px 2px 12px"></div>
 
-    <div class="nf-sep">Conferência</div>
-    <div class="row"><div class="field"><label class="fl">Status</label><select id="nf_status">${NF_STATUS.map(s => `<option ${n.status === s ? 'selected' : ''}>${s}</option>`).join('')}</select></div>
-      <div class="field"><label class="fl">Recebido por</label><input id="nf_responsavel" value="${esc(n.responsavel || usuarioAtual())}"></div></div>
-    <div class="field"><label class="fl">Observações</label><textarea id="nf_obs" rows="2" placeholder="Divergência, avaria, local de descarga…">${esc(n.obs)}</textarea></div>
-    <label style="display:flex;gap:9px;align-items:flex-start;font-size:13.5px;margin-bottom:6px;cursor:pointer">
-      <input type="checkbox" id="nf_estoque" style="width:auto;margin-top:3px" checked> <span>Dar entrada dos materiais no estoque ao salvar</span></label>
-    <label style="display:flex;gap:9px;align-items:flex-start;font-size:13.5px;margin-bottom:14px;cursor:pointer">
-      <input type="checkbox" id="nf_baixa" style="width:auto;margin-top:3px" checked> <span>Baixar os itens vinculados no pedido de compra</span></label>
+    <div class="nf-sep">Valores</div>
+    <div class="row">
+      <div class="field"><label class="fl">Frete</label><input id="nf_vFrete" class="num" inputmode="decimal" value="${nfNum(n.vFrete) ? fmtNum(n.vFrete) : ''}" placeholder="se tiver" oninput="nfTotalAuto()" onblur="nfTotalAuto()"></div>
+      <div class="field"><label class="fl">Valor da nota ${aviso('vTotal')}</label><input id="nf_vTotal" class="num ${marca('vTotal')}" inputmode="decimal" value="${nfNum(n.vTotal) ? fmtNum(n.vTotal) : ''}" oninput="this.dataset.auto=''" style="font-weight:700"></div></div>
+    <div class="row nf-extra">
+      <div class="field"><label class="fl">Produtos ${aviso('vProd')}</label><input id="nf_vProd" class="num ${marca('vProd')}" inputmode="decimal" value="${nfNum(n.vProd) ? fmtNum(n.vProd) : ''}" onblur="nfRecalcTotal()"></div>
+      <div class="field"><label class="fl">Base de ICMS</label><input id="nf_vBaseICMS" class="num" inputmode="decimal" value="${nfNum(n.vBaseICMS) ? fmtNum(n.vBaseICMS) : ''}"></div>
+      <div class="field"><label class="fl">ICMS</label><input id="nf_vICMS" class="num" inputmode="decimal" value="${nfNum(n.vICMS) ? fmtNum(n.vICMS) : ''}"></div></div>
+
+    <div class="nf-extra">
+      <div class="nf-sep">Conferência</div>
+      <div class="row"><div class="field"><label class="fl">Status</label><select id="nf_status">${NF_STATUS.map(s => `<option ${n.status === s ? 'selected' : ''}>${s}</option>`).join('')}</select></div>
+        <div class="field"><label class="fl">Recebido por</label><input id="nf_responsavel" value="${esc(n.responsavel || usuarioAtual())}"></div></div>
+      <div class="field"><label class="fl">Observações</label><textarea id="nf_obs" rows="2" placeholder="Divergência, avaria, local de descarga…">${esc(n.obs)}</textarea></div>
+      <label style="display:flex;gap:9px;align-items:flex-start;font-size:13.5px;margin-bottom:6px;cursor:pointer">
+        <input type="checkbox" id="nf_estoque" style="width:auto;margin-top:3px" checked> <span>Dar entrada dos materiais no estoque ao salvar</span></label>
+      <label style="display:flex;gap:9px;align-items:flex-start;font-size:13.5px;margin-bottom:10px;cursor:pointer">
+        <input type="checkbox" id="nf_baixa" style="width:auto;margin-top:3px" checked> <span>Baixar os itens vinculados no pedido de compra</span></label>
+    </div>
+
+    <button class="btn btn-ghost btn-sm" id="nfBtnCampos" style="width:100%;justify-content:center;margin:4px 0 14px" onclick="nfAlternarCampos()">
+      ${_nfModoSimples ? '⌄ Mostrar todos os campos' : '⌃ Mostrar só o essencial'}</button>
+
+    </div>
 
     <div style="display:flex;gap:9px">
       <button class="btn" style="flex:1;justify-content:center" onclick="fecharModal()">Cancelar</button>
@@ -791,9 +944,23 @@ function nfConferir() {
   nfRenderItens();
   nfCnpjNoForm();
 }
+
+/* alterna entre o formulário enxuto e o completo, sem recarregar nada:
+   os campos continuam no lugar, só deixam de aparecer */
+function nfAlternarCampos() {
+  _nfModoSimples = !_nfModoSimples;
+  const f = el('nfForm'), b = el('nfBtnCampos');
+  if (f) f.classList.toggle('nf-simples', _nfModoSimples);
+  if (b) b.textContent = _nfModoSimples ? '⌄ Mostrar todos os campos' : '⌃ Mostrar só o essencial';
+  nfRenderItens();
+}
+
 function nfLeituraTxt(n) {
   const l = n.leitura || {};
   const m = {
+    'consulta': 'Dados oficiais da NF-e, obtidos pela chave de acesso',
+    'pdf+chave': 'Lido do texto do PDF, com a chave de acesso conferida',
+    'pdf': 'Lido do texto do PDF da nota',
     'codigo+ia': 'Lido do código de barras e da imagem',
     'codigo': 'Lido do código de barras da DANFE',
     'chave': 'Preenchido pela chave de acesso',
@@ -810,7 +977,7 @@ function nfRenderItens() {
   const o = obra();
   const itens = _nfRascunho.itens || [];
   if (!itens.length) {
-    box.innerHTML = `<div class="kpi-s" style="padding:8px 2px 12px">Nenhum produto lido. Use <b>+ Produto</b> se quiser detalhar — não é obrigatório para salvar.</div>`;
+    box.innerHTML = `<div class="kpi-s" style="padding:8px 2px 12px">Nenhum item ainda. Use <b>+ Item</b> para lançar o que veio na nota — não é obrigatório para salvar.</div>`;
   } else {
     box.innerHTML = itens.map((it, i) => {
       const sugM = it.materialId ? [] : nfSugerirMaterial(it.descricao, o.id);
@@ -819,11 +986,11 @@ function nfRenderItens() {
       const ped = it.pedidoItemId ? nfPedItemPorId(o.id, it.pedidoItemId) : null;
       return `<div class="nf-item">
         <div class="row" style="gap:7px;margin-bottom:6px">
-          <div class="field" style="margin:0;flex:3;min-width:150px"><input value="${esc(it.descricao)}" placeholder="Descrição do produto" oninput="nfItemCampo(${i},'descricao',this.value)"></div>
-          <div class="field" style="margin:0;max-width:74px"><input class="num" inputmode="decimal" value="${it.qtd ? fmtQtd(it.qtd) : ''}" placeholder="Qtd" oninput="nfItemCampo(${i},'qtd',this.value)"></div>
-          <div class="field" style="margin:0;max-width:78px"><input value="${esc(it.un)}" placeholder="Un" oninput="nfItemCampo(${i},'un',this.value)" style="text-transform:uppercase"></div>
-          <div class="field" style="margin:0;max-width:96px"><input class="num" inputmode="decimal" value="${it.vUnit ? fmtNum(it.vUnit) : ''}" placeholder="V. unit." oninput="nfItemCampo(${i},'vUnit',this.value)"></div>
-          <div class="field" style="margin:0;max-width:104px"><input class="num" inputmode="decimal" value="${it.vTotal ? fmtNum(it.vTotal) : ''}" placeholder="Total" oninput="nfItemCampo(${i},'vTotal',this.value)"></div>
+          <div class="field" style="margin:0;flex:3;min-width:150px"><input value="${esc(it.descricao)}" placeholder="Item (descrição do material)" oninput="nfItemCampo(${i},'descricao',this.value)"></div>
+          <div class="field nf-extra" style="margin:0;max-width:74px"><input class="num" inputmode="decimal" value="${it.qtd ? fmtQtd(it.qtd) : ''}" placeholder="Qtd" oninput="nfItemCampo(${i},'qtd',this.value)"></div>
+          <div class="field nf-extra" style="margin:0;max-width:78px"><input value="${esc(it.un)}" placeholder="Un" oninput="nfItemCampo(${i},'un',this.value)" style="text-transform:uppercase"></div>
+          <div class="field nf-extra" style="margin:0;max-width:96px"><input class="num" inputmode="decimal" value="${it.vUnit ? fmtNum(it.vUnit) : ''}" placeholder="V. unit." oninput="nfItemCampo(${i},'vUnit',this.value)"></div>
+          <div class="field" style="margin:0;max-width:118px"><input class="num" inputmode="decimal" value="${it.vTotal ? fmtNum(it.vTotal) : ''}" placeholder="Valor do item" oninput="nfItemCampo(${i},'vTotal',this.value)"></div>
           <button class="btn btn-sm btn-ghost" onclick="nfDelItem(${i})" title="Remover">✕</button></div>
         ${mat ? `<div class="nf-vinc">🔗 Material <b>${esc(mat.descricao)}</b> · ${mat.notas} nota(s) <button class="btn btn-sm btn-ghost" onclick="nfItemCampo(${i},'materialId','');nfRenderItens()">desvincular</button></div>` : ''}
         ${ped ? `<div class="nf-vinc">📦 Pedido <b>${esc(ped.pedido.numero)}</b> · ${esc(ped.item.descricao)} (falta ${fmtQtd(nfNum(ped.item.qtd) - nfNum(ped.item.qtdAtendida))} ${esc(ped.item.un || '')}) <button class="btn btn-sm btn-ghost" onclick="nfItemCampo(${i},'pedidoItemId','');nfRenderItens()">desvincular</button></div>` : ''}
@@ -846,8 +1013,11 @@ function nfItemCampo(i, campo, valor) {
   if (campo === 'qtd' || campo === 'vUnit' || campo === 'vTotal') {
     it[campo] = nfNum(valor);
     if (campo !== 'vTotal' && nfNum(it.qtd) && nfNum(it.vUnit)) it.vTotal = +(nfNum(it.qtd) * nfNum(it.vUnit)).toFixed(2);
+    const soma = (_nfRascunho.itens || []).reduce((a, x) => a + nfNum(x.vTotal), 0);
     const tt = el('nfItensTot');
-    if (tt) tt.innerHTML = `Soma dos itens: <b class="mono">${fmtBRL((_nfRascunho.itens || []).reduce((a, x) => a + nfNum(x.vTotal), 0))}</b>`;
+    if (tt) tt.innerHTML = `Soma dos itens: <b class="mono">${fmtBRL(soma)}</b>`;
+    nfTotalAuto();
+    nfTotalAuto();
   } else if (campo === 'un') it.un = String(valor || '').toUpperCase();
   else it[campo] = valor;
 }
@@ -860,7 +1030,7 @@ function nfDelItem(i) { _nfRascunho.itens.splice(i, 1); nfRenderItens(); }
 
 function nfChaveNoForm() {
   const c = el('nf_chave'); if (!c) return;
-  const ch = nfDigitos(c.value);
+  const ch = nfChaveNorm(c.value);
   if (ch.length !== 44) return;
   if (!nfChaveValida(ch)) { toast('Chave inválida — confira os números'); c.classList.add('nf-confira'); return; }
   c.classList.remove('nf-confira');
@@ -875,7 +1045,7 @@ function nfChaveNoForm() {
 }
 function nfCnpjNoForm() {
   const c = el('nf_cnpj'), msg = el('nf_cnpjMsg'); if (!c || !msg) return;
-  const d = nfDigitos(c.value);
+  const d = nfCNPJnorm(c.value);
   if (!d) { msg.textContent = ''; return; }
   if (d.length !== 14) { msg.innerHTML = '<span style="color:var(--amarelo)">CNPJ incompleto</span>'; return; }
   c.value = nfCNPJfmt(d);
@@ -889,11 +1059,22 @@ function nfCnpjNoForm() {
     if (el('nf_uf') && !el('nf_uf').value) el('nf_uf').value = f.uf;
   } else msg.innerHTML = '<span style="color:var(--muted)">Fornecedor novo — será cadastrado com esta nota</span>';
 }
-function nfRecalcTotal() {
-  const p = nfNum(el('nf_vProd') ? el('nf_vProd').value : 0), f = nfNum(el('nf_vFrete') ? el('nf_vFrete').value : 0);
+/* O valor da nota se vira sozinho a partir dos itens e do frete ENQUANTO
+   ninguem o digitou. No instante em que a pessoa digita o total, ele passa a
+   mandar e o sistema nao mexe mais — senao o valor conferido some ao mudar
+   qualquer outra coisa. */
+function nfTotalAuto() {
   const t = el('nf_vTotal');
-  if (t && p && !nfNum(t.value)) t.value = fmtNum(p + f);
+  if (!t) return;
+  if (nfNum(t.value) && t.dataset.auto !== '1') return;   // total digitado a mao
+  const soma = (_nfRascunho && _nfRascunho.itens || []).reduce((a, x) => a + nfNum(x.vTotal), 0);
+  const base = soma || nfNum((el('nf_vProd') || {}).value);
+  const frete = nfNum((el('nf_vFrete') || {}).value);
+  if (!base) return;
+  t.value = fmtNum(base + frete);
+  t.dataset.auto = '1';
 }
+function nfRecalcTotal() { nfTotalAuto(); }
 
 /* ---------- salvar ---------- */
 function nfSalvarForm() {
@@ -904,9 +1085,9 @@ function nfSalvarForm() {
   const antesCopia = antes ? JSON.parse(JSON.stringify(antes)) : null;
 
   n.numero = v('nf_numero'); n.serie = v('nf_serie');
-  n.chave = nfDigitos(v('nf_chave')).slice(0, 44);
+  n.chave = nfChaveNorm(v('nf_chave')).slice(0, 44);
   n.dataEmissao = v('nf_dataEmissao'); n.dataEntrada = v('nf_dataEntrada') || hoje();
-  n.cnpj = nfDigitos(v('nf_cnpj')); n.razaoSocial = v('nf_razaoSocial'); n.nomeFantasia = v('nf_nomeFantasia');
+  n.cnpj = nfCNPJnorm(v('nf_cnpj')); n.razaoSocial = v('nf_razaoSocial'); n.nomeFantasia = v('nf_nomeFantasia');
   n.municipio = v('nf_municipio'); n.uf = v('nf_uf').toUpperCase();
   n.vProd = nfNum(v('nf_vProd')); n.vFrete = nfNum(v('nf_vFrete')); n.vTotal = nfNum(v('nf_vTotal'));
   n.vBaseICMS = nfNum(v('nf_vBaseICMS')); n.vICMS = nfNum(v('nf_vICMS'));
@@ -955,6 +1136,8 @@ function nfEditar(id) {
   const n = nfPorId(o.id, id); if (!n) return;
   _nfRascunho = JSON.parse(JSON.stringify(n));
   _nfFull = '';
+  const met = (n.leitura && n.leitura.metodo) || 'manual';
+  _nfModoSimples = (met === 'manual');
   nfConferir();
 }
 function nfExcluir(id) {
@@ -1362,9 +1545,9 @@ function nfDoServidor(s, obraId, locais) {
   let leitura = {}; try { leitura = JSON.parse(s.leitura || '{}'); } catch (e) { leitura = {}; }
   return {
     id: s.id, clientId: s.clientId || s.id, obraId: obraId,
-    numero: String(s.numero || ''), serie: String(s.serie || ''), chave: nfDigitos(s.chave),
+    numero: String(s.numero || ''), serie: String(s.serie || ''), chave: nfChaveNorm(s.chave),
     dataEmissao: nfISO(s.dataEmissao), dataEntrada: nfISO(s.dataEntrada),
-    cnpj: nfDigitos(s.cnpj), razaoSocial: s.razaoSocial || '', nomeFantasia: s.nomeFantasia || '',
+    cnpj: nfCNPJnorm(s.cnpj), razaoSocial: s.razaoSocial || '', nomeFantasia: s.nomeFantasia || '',
     municipio: s.municipio || '', uf: s.uf || '',
     vProd: nfNum(s.vProd), vFrete: nfNum(s.vFrete), vTotal: nfNum(s.vTotal),
     vBaseICMS: nfNum(s.vBaseICMS), vICMS: nfNum(s.vICMS),

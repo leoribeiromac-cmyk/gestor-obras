@@ -183,3 +183,43 @@ As três causas, em ordem de frequência:
 > volta antes de tocar na internet, termina em menos de um segundo e o Google não
 > pergunta nada. A função **`autorizarInternet`** existe só para forçar a pergunta —
 > ela não faz outra coisa.
+
+
+## Consulta da nota pela chave de acesso (o melhor caminho)
+
+Serviços como **consultadanfe.com**, **meudanfe.com.br** e **nfe.io** têm o
+certificado digital e devolvem a nota a partir da chave. Ligando isso, o
+apontador só fotografa o código de barras da DANFE e **todos os campos vêm do
+XML oficial** — nada de OCR, nada de IA, nada de erro de leitura.
+
+Cada serviço tem o seu contrato, então o endereço é configurável. Em
+**⚙ Configurações do projeto ▸ Propriedades do script**:
+
+| Propriedade | Para que serve | Exemplo |
+|---|---|---|
+| `NFE_API_URL` | endereço da consulta; `{chave}` é trocado pela chave | `https://api.exemplo.com/nfe/{chave}` |
+| `NFE_API_TOKEN` | token do serviço (se pedir) | `abc123...` |
+| `NFE_API_HEADER` | cabeçalho do token (padrão `Authorization`) | `X-API-Key` |
+| `NFE_API_PREFIXO` | prefixo do token (padrão `Bearer `) | deixe vazio se o serviço não usa |
+| `NFE_API_METODO` | `GET` (padrão) ou `POST` | `POST` |
+| `NFE_API_CAMPO` | nome do campo da chave (padrão `chave`) | `chNFe` |
+
+Se a `NFE_API_URL` estiver vazia, nada muda: o app segue pelo PDF, pelo código
+de barras e pela leitura da imagem.
+
+**A resposta pode vir como XML da NF-e ou como JSON com o XML dentro** — o
+backend acha o XML nos dois casos e lê o layout oficial da Receita (emitente,
+valores e todos os itens). Se o serviço devolver só JSON sem XML, a consulta
+avisa `sem_xml` e o app cai para os outros caminhos.
+
+Confira em **🔎 Testar leitura**, dentro do app: ele informa se a consulta por
+chave está configurada.
+
+## Ordem em que o app tenta ler a nota
+
+1. **Chave de acesso** — do texto do PDF ou do código de barras da foto. Tem
+   dígito verificador, então ou está certa ou é recusada.
+2. **Consulta pela chave** (se configurada) → dados oficiais da NF-e.
+3. **Texto do PDF** → mandado para a IA, sem OCR no meio.
+4. **Imagem** → OCR + IA.
+5. **Digitação**, sempre disponível.
