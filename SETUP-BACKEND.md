@@ -185,41 +185,47 @@ As três causas, em ordem de frequência:
 > ela não faz outra coisa.
 
 
-## Consulta da nota pela chave de acesso (o melhor caminho)
+## Consulta da nota pela chave de acesso — **já vem ligada**
 
-Serviços como **consultadanfe.com**, **meudanfe.com.br** e **nfe.io** têm o
-certificado digital e devolvem a nota a partir da chave. Ligando isso, o
-apontador só fotografa o código de barras da DANFE e **todos os campos vêm do
-XML oficial** — nada de OCR, nada de IA, nada de erro de leitura.
+O backend consulta o **consultadanfe.com**, que é gratuito e **não pede cadastro
+nem token**. O apontador fotografa o código de barras da DANFE, o app lê a chave
+e busca a nota: os campos vêm do **XML autorizado pela SEFAZ**, e o **PDF oficial
+do DANFE** vem junto e passa a ser o arquivo guardado no Drive (melhor do que a
+foto tirada no barracão).
 
-Cada serviço tem o seu contrato, então o endereço é configurável. Em
+Não precisa configurar nada. O que existe são ajustes opcionais em
 **⚙ Configurações do projeto ▸ Propriedades do script**:
 
-| Propriedade | Para que serve | Exemplo |
-|---|---|---|
-| `NFE_API_URL` | endereço da consulta; `{chave}` é trocado pela chave | `https://api.exemplo.com/nfe/{chave}` |
-| `NFE_API_TOKEN` | token do serviço (se pedir) | `abc123...` |
-| `NFE_API_HEADER` | cabeçalho do token (padrão `Authorization`) | `X-API-Key` |
-| `NFE_API_PREFIXO` | prefixo do token (padrão `Bearer `) | deixe vazio se o serviço não usa |
-| `NFE_API_METODO` | `GET` (padrão) ou `POST` | `POST` |
-| `NFE_API_CAMPO` | nome do campo da chave (padrão `chave`) | `chNFe` |
+| Propriedade | Para que serve |
+|---|---|
+| `NFE_API_URL` | outro serviço (use `{chave}` no lugar da chave). **`off` desliga a consulta** |
+| `NFE_API_TOKEN` | token, se o serviço pedir |
+| `NFE_API_HEADER` | cabeçalho do token (padrão `Authorization`) |
+| `NFE_API_PREFIXO` | prefixo do token (padrão `Bearer `) |
+| `NFE_API_METODO` | `GET` ou `POST` |
+| `NFE_API_CAMPO` | nome do campo da chave (padrão `chave`) |
 
-Se a `NFE_API_URL` estiver vazia, nada muda: o app segue pelo PDF, pelo código
-de barras e pela leitura da imagem.
+### Limites do consultadanfe (importante)
 
-**A resposta pode vir como XML da NF-e ou como JSON com o XML dentro** — o
-backend acha o XML nos dois casos e lê o layout oficial da Receita (emitente,
-valores e todos os itens). Se o serviço devolver só JSON sem XML, a consulta
-avisa `sem_xml` e o app cai para os outros caminhos.
+| Regra | Valor |
+|---|---|
+| Janela de datas | **Só o mês corrente** (e o anterior, se hoje for antes do dia 15) |
+| Modelo | Apenas **NF-e modelo 55** |
+| Ritmo | 60 consultas por minuto |
 
-Confira em **🔎 Testar leitura**, dentro do app: ele informa se a consulta por
-chave está configurada.
+Ou seja: **lançar a nota assim que ela chega é o que faz o caminho bom funcionar.**
+Nota velha cai automaticamente na leitura do PDF ou da imagem — o app não trava,
+só avisa "a SEFAZ não devolveu essa nota".
+
+O backend entende as respostas: XML puro, XML em base64 (`xml_base64`) ou XML
+dentro de JSON. Erros viram mensagem em português — nota não autorizada, fora da
+janela, contingência, SEFAZ fora do ar ou limite de consultas.
 
 ## Ordem em que o app tenta ler a nota
 
 1. **Chave de acesso** — do texto do PDF ou do código de barras da foto. Tem
    dígito verificador, então ou está certa ou é recusada.
-2. **Consulta pela chave** (se configurada) → dados oficiais da NF-e.
+2. **Consulta pela chave** → dados oficiais da NF-e + PDF oficial do DANFE.
 3. **Texto do PDF** → mandado para a IA, sem OCR no meio.
 4. **Imagem** → OCR + IA.
 5. **Digitação**, sempre disponível.

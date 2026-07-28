@@ -1083,14 +1083,24 @@ function nfDiag() {
 // A resposta pode vir como XML da NF-e ou como JSON. O XML e o caminho
 // bom: o layout e padronizado pela Receita, entao a leitura e exata.
 // ============================================================
+// Vem ligado no consultadanfe.com, que e gratuito e nao pede cadastro:
+//   POST /api/v1/consulta  com  {"chave": "..."}
+// Para usar outro servico, basta trocar as propriedades. Para desligar a
+// consulta, ponha NFE_API_URL = off.
+var NFE_API_PADRAO = 'https://consultadanfe.com/api/v1/consulta';
+
 function nfeApiConfig() {
   var p = PropertiesService.getScriptProperties();
+  var url = p.getProperty('NFE_API_URL');
+  if (url == null || url === '') url = NFE_API_PADRAO;
+  if (String(url).toLowerCase() === 'off' || String(url).toLowerCase() === 'nao') url = '';
   return {
-    url: p.getProperty('NFE_API_URL') || '',
+    url: url,
+    padrao: url === NFE_API_PADRAO,
     token: p.getProperty('NFE_API_TOKEN') || '',
     header: p.getProperty('NFE_API_HEADER') || 'Authorization',
     prefixo: p.getProperty('NFE_API_PREFIXO') == null ? 'Bearer ' : p.getProperty('NFE_API_PREFIXO'),
-    metodo: (p.getProperty('NFE_API_METODO') || 'GET').toUpperCase(),
+    metodo: (p.getProperty('NFE_API_METODO') || (url === NFE_API_PADRAO ? 'POST' : 'GET')).toUpperCase(),
     campo: p.getProperty('NFE_API_CAMPO') || 'chave'
   };
 }
@@ -1131,11 +1141,28 @@ function nfConsultarChave(p) {
   var codigo = res.getResponseCode();
   var corpoTxt = String(res.getContentText());
   if (codigo !== 200) {
-    return { ok: false, motivo: codigo === 401 || codigo === 403 ? 'token' : 'api', codigo: codigo, detalhe: corpoTxt.slice(0, 300) };
+    // erros do consultadanfe (e da maioria dos servicos) em bom portugues
+    var motivoCod = ({
+      202: 'pendente',      // NF-e em contingencia, ainda nao disponivel
+      400: 'chave_recusada',
+      401: 'token', 403: 'token',
+      404: 'nao_encontrada', // nao autorizada na SEFAZ ou fora da janela de datas
+      429: 'limite',
+      503: 'sefaz'
+    })[codigo] || 'api';
+    var detErro = corpoTxt.slice(0, 300);
+    try {
+      var je = JSON.parse(corpoTxt);
+      if (je && (je.message || je.erro || je.error)) detErro = je.message || je.erro || je.error;
+    } catch (ex) {}
+    var cabErro = '';
+    try { cabErro = res.getHeaders()['X-Error-Code'] || res.getAllHeaders()['X-Error-Code'] || ''; } catch (ex2) {}
+    return { ok: false, motivo: motivoCod, codigo: codigo, erroCod: cabErro, detalhe: detErro };
   }
 
+  var pdf = nfeAcharPDF(corpoTxt);
   var xml = nfeAcharXML(corpoTxt);
-  if (!xml) return { ok: false, motivo: 'sem_xml', detalhe: corpoTxt.slice(0, 300) };
+  if (!xml) return { ok: false, motivo: 'sem_xml', detalhe: corpoTxt.slice(0, 300), pdf: pdf };
 
   var dados;
   try {
@@ -1146,10 +1173,29 @@ function nfConsultarChave(p) {
   if (!dados) return { ok: false, motivo: 'xml_invalido' };
 
   registrarAuditoria(usuarioDoToken(p.token), 'app', 'nfConsultaChave', p.obra || '', dados.numero || '', chave, 'NF-e obtida pela chave');
-  return { ok: true, fonte: 'xml', dados: dados, confiancaGeral: 1 };
+  // o PDF oficial vem junto: vale mais como arquivo da nota do que a foto
+  return { ok: true, fonte: 'xml', dados: dados, confiancaGeral: 1, pdf: pdf };
+}
+
+// alguns servicos devolvem o PDF do DANFE junto, em base64
+function nfeAcharPDF(txt) {
+  try {
+    var j = JSON.parse(String(txt));
+    var v = j.pdf_base64 || j.pdfBase64 || j.pdf || '';
+    v = String(v || '');
+    // 3 MB de base64 ja e um DANFE enorme; acima disso nao vale trafegar
+    return (v.length > 100 && v.length < 3000000) ? v : '';
+  } catch (e) { return ''; }
 }
 
 // A resposta pode ser o XML puro, ou um JSON com o XML dentro de algum campo.
+function nfeDeBase64(v) {
+  try {
+    var bytes = Utilities.base64Decode(String(v));
+    return Utilities.newBlob(bytes).getDataAsString('UTF-8');
+  } catch (e) { return ''; }
+}
+
 function nfeAcharXML(txt) {
   var t = String(txt || '');
   if (t.indexOf('<infNFe') !== -1) return t;
@@ -1159,7 +1205,12 @@ function nfeAcharXML(txt) {
   function varrer(v, prof) {
     if (achado || prof > 6 || v == null) return;
     if (typeof v === 'string') {
-      if (v.indexOf('<infNFe') !== -1) achado = v;
+      if (v.indexOf('<infNFe') !== -1) { achado = v; return; }
+      // o consultadanfe manda o XML autorizado em base64 (xml_base64)
+      if (v.length > 200 && /^[A-Za-z0-9+/=\s]+$/.test(v)) {
+        var d = nfeDeBase64(v);
+        if (d && d.indexOf('<infNFe') !== -1) achado = d;
+      }
       return;
     }
     if (typeof v === 'object') {

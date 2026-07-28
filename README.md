@@ -163,9 +163,10 @@ normal é **fotografar a nota e conferir** — não digitar.
 3. Enquanto isso, tenta ler os dados nesta ordem:
    1. **Chave de acesso** — do texto do PDF ou do código de barras da foto.
       Tem dígito verificador: ou está certa, ou é recusada;
-   2. **Consulta da nota pela chave** num serviço com certificado digital
-      (opcional, veja SETUP-BACKEND.md) → **dados oficiais do XML da NF-e**,
-      com todos os itens. É o melhor caminho: nada de OCR;
+   2. **Consulta da nota pela chave** (já vem ligada, via consultadanfe.com)
+      → **dados oficiais do XML da NF-e** com todos os itens, e o **PDF oficial
+      do DANFE**, que passa a ser o arquivo guardado. É o melhor caminho:
+      nada de OCR. Só vale para notas do mês corrente;
    3. **Texto do PDF** → interpretado pela IA, sem OCR no meio;
    4. **Imagem** → OCR + IA;
    5. o que faltar, **digita**.

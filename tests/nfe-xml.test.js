@@ -49,7 +49,12 @@ const ctx = {
   console, Logger: { log: () => {} },
   XmlService: { parse: t => ({ getRootElement: () => envolver(parseXML(t)) }) },
   PropertiesService: { getScriptProperties: () => ({ getProperty: () => '', getKeys: () => [] }) },
-  UrlFetchApp: {}, Utilities: {}, SpreadsheetApp: {}, DriveApp: {}, CacheService: {}, Session: {}, ScriptApp: {}
+  // o consultadanfe devolve o XML autorizado em base64 (xml_base64)
+  Utilities: {
+    base64Decode: v => Array.from(Buffer.from(String(v), 'base64')),
+    newBlob: bytes => ({ getDataAsString: () => Buffer.from(bytes).toString('utf8') })
+  },
+  UrlFetchApp: {}, SpreadsheetApp: {}, DriveApp: {}, CacheService: {}, Session: {}, ScriptApp: {}
 };
 ctx.globalThis = ctx;
 vm.createContext(ctx);
@@ -95,4 +100,21 @@ assert.ok(ctx.nfeAcharXML(dentroJSON).includes('<infNFe'), 'acha o XML dentro do
 assert.strictEqual(ctx.nfeAcharXML('{"erro":"nao encontrado"}'), '', 'JSON sem XML devolve vazio');
 assert.ok(ctx.nfeAcharXML(xml).includes('<infNFe'), 'XML puro passa direto');
 console.log('  ✓ acha o XML tanto puro quanto embrulhado em JSON');
+
+// resposta real do consultadanfe: XML autorizado em base64 + DANFE em PDF
+const respostaAPI = JSON.stringify({
+  status: 'ok',
+  chave: '35260761304455000195550010000184201001289406',
+  tipo: 'nfe',
+  pdf_base64: Buffer.from('%PDF-1.4 fingindo ser um DANFE'.repeat(8)).toString('base64'),
+  xml_base64: Buffer.from(xml, 'utf8').toString('base64')
+});
+const xmlDaAPI = ctx.nfeAcharXML(respostaAPI);
+assert.ok(xmlDaAPI.includes('<infNFe'), 'decodifica o xml_base64 da resposta');
+const dAPI = ctx.nfeDoXML(xmlDaAPI);
+assert.strictEqual(dAPI.numero, '18420', 'lê a nota vinda em base64');
+assert.strictEqual(dAPI.itens.length, 2, 'itens vêm completos da resposta da API');
+assert.ok(ctx.nfeAcharPDF(respostaAPI).length > 100, 'separa o PDF oficial do DANFE');
+assert.strictEqual(ctx.nfeAcharPDF('{"status":"ok"}'), '', 'sem PDF na resposta devolve vazio');
+console.log('  ✓ resposta do consultadanfe: XML em base64 + PDF oficial');
 console.log('\n✅ Parser da NF-e: tudo certo.');

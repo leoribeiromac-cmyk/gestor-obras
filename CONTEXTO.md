@@ -4,7 +4,7 @@
 > contexto do projeto sem precisar reler o histórico de conversa. Descreve o app, as
 > decisões tomadas, o que está pendente e como trabalhar no repositório.
 >
-> **Última atualização:** Notas Fiscais — PDF, consulta pela chave e formulário enxuto · Service Worker `v27`
+> **Última atualização:** Notas Fiscais — PDF, consulta pela chave e formulário enxuto · Service Worker `v28`
 
 ---
 
@@ -238,7 +238,7 @@ Planilha única para todas as obras. Abas: `RDO`, `Diario`, `Equipamentos`, `Loc
 | `nfListar` / `nfSalvar` / `nfExcluir` | notas fiscais (upsert por `clientId`) |
 | `nfImagem` | imagem da nota no Drive, em `Notas Fiscais/<obra>/<ano>/<mês>` |
 | `nfLerIA` | interpreta a DANFE via Gemini — recebe o **texto do PDF** quando há, senão a imagem (`GEMINI_API_KEY`) |
-| `nfConsultarChave` | busca a NF-e pela chave num serviço com certificado e lê o **XML oficial** (`NFE_API_URL`) |
+| `nfConsultarChave` | busca a NF-e pela chave no **consultadanfe.com** (ligado por padrão, sem token) e lê o **XML oficial**; traz o PDF do DANFE junto. `NFE_API_URL=off` desliga |
 | `nfDiag` | diagnóstico da leitura, usado pelo botão "Testar leitura" do app |
 | `autorizarInternet` | só existe para o Google pedir a permissão de acesso à internet |
 | `pedidoSalvar` / `pedidoExcluir` | pedidos de compra |
@@ -321,7 +321,7 @@ Fotos tiradas antes do commit `b21f7bf` não têm a imagem cheia no aparelho. Sa
 
 ### Sempre que mudar arquivos servidos
 **Suba a versão do cache** em `sw.js` (`gestor-obras-vNN`), senão o usuário continua vendo
-a versão antiga. Hoje: **v27**. E oriente o **Ctrl/Cmd+Shift+R**.
+a versão antiga. Hoje: **v28**. E oriente o **Ctrl/Cmd+Shift+R**.
 
 ### Testar (o ambiente tem Playwright + Chromium)
 ```bash
@@ -389,7 +389,9 @@ Em ordem cronológica, do mais antigo ao mais recente:
 
 **Depois disso**, no mesmo módulo: upload de **PDF** (texto extraído com o PDF.js
 que já estava vendorizado — leitura exata, sem OCR), **consulta da NF-e pela chave**
-num serviço com certificado digital (parser do XML oficial no backend),
+no consultadanfe.com (gratuito, sem cadastro; parser do XML oficial no backend,
+que ainda traz o PDF do DANFE para guardar no lugar da foto — só vale para nota
+do mês corrente),
 **formulário enxuto** para digitação (empresa, data, item, valor, frete, total) com
 botão para abrir o resto, e suporte a **chave e CNPJ alfanuméricos** (NT 2026.004,
 que mudou o cálculo do dígito verificador para ASCII−48).

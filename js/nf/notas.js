@@ -600,6 +600,12 @@ function nfCanvasJpeg(canvas, maxLado, q) {
   x.drawImage(canvas, 0, 0, c.width, c.height);
   return c.toDataURL('image/jpeg', q);
 }
+function nfPDFdeBase64(b64) {
+  const bin = atob(String(b64).replace(/\s/g, ''));
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new File([bytes], 'danfe.pdf', { type: 'application/pdf' });
+}
 async function nfLerPDF(file) {
   const out = { texto: '', thumb: '', full: '', paginas: 0 };
   if (!window.pdfjsLib) return out;
@@ -690,6 +696,14 @@ async function nfArquivoSelecionado(inp) {
   let ia = null;
   if (consulta && consulta.ok) {
     passos[2] = { ic: '✓', t: 'Nota obtida pela chave — dados oficiais da NF-e', st: 'ok' };
+    // a consulta devolve o DANFE oficial em PDF: vale mais como arquivo da
+    // nota do que a foto tirada no barracão
+    if (consulta.pdf) {
+      try {
+        const oficial = await nfLerPDF(nfPDFdeBase64(consulta.pdf));
+        if (oficial.full) { thumb = oficial.thumb; full = oficial.full; _nfRascunho.thumb = thumb; _nfFull = full; }
+      } catch (e) { /* fica com a imagem que o apontador enviou */ }
+    }
   } else {
     passos[2] = { ic: '⏳', t: textoPDF.length > 200 ? 'Lendo os dados do texto do PDF' : 'Lendo os dados da imagem', st: '' };
     nfPassoUI(passos);
@@ -735,6 +749,12 @@ async function nfUsarChaveDigitada() {
     { ic: '⏳', t: 'Buscando a nota pela chave', st: '' }
   ]);
   const consulta = await nfConsultarPelaChave(ch);
+  if (consulta && consulta.ok && consulta.pdf) {
+    try {
+      const oficial = await nfLerPDF(nfPDFdeBase64(consulta.pdf));
+      if (oficial.full) { _nfRascunho.thumb = oficial.thumb; _nfFull = oficial.full; }
+    } catch (e) { /* segue sem imagem */ }
+  }
   _nfRascunho = nfMesclarLeitura(_nfRascunho, nfDaChave(ch), consulta && consulta.ok ? consulta : null);
   _nfRascunho.leitura = {
     metodo: (consulta && consulta.ok) ? 'consulta' : 'chave',
@@ -784,7 +804,14 @@ function nfMotivoTxt(ia) {
     vazia: 'A IA não devolveu os dados',
     resposta: 'A IA respondeu num formato inesperado',
     rede: 'Não consegui falar com o servidor',
-    sem_resposta: 'O servidor não respondeu'
+    sem_resposta: 'O servidor não respondeu',
+    // consulta da nota pela chave
+    sem_api: 'Consulta por chave não está ligada',
+    nao_encontrada: 'A SEFAZ não devolveu essa nota (fora do mês corrente ou ainda não autorizada)',
+    chave_recusada: 'A consulta recusou a chave',
+    pendente: 'Nota em contingência — ainda não disponível na SEFAZ',
+    sefaz: 'A SEFAZ está fora do ar no momento',
+    sem_xml: 'A consulta respondeu, mas sem o XML da nota'
   })[m] || 'Não consegui ler a imagem — confira os campos';
 }
 
