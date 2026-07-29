@@ -49,7 +49,8 @@ function rotear(e) {
       'addDiario', 'updateDiario', 'deleteDiario',
       'equipListar', 'equipCadastrar', 'equipDesativar', 'locadoraCadastrar', 'equipApontar', 'equipApagar', 'equipApontamentos',
       'obterFoto',
-      'nfListar', 'nfSalvar', 'nfExcluir', 'nfImagem', 'nfLerIA', 'nfDiag', 'nfConsultarChave', 'pedidoSalvar', 'pedidoExcluir'
+      'nfListar', 'nfSalvar', 'nfExcluir', 'nfImagem', 'nfLerIA', 'nfDiag', 'nfConsultarChave', 'pedidoSalvar', 'pedidoExcluir',
+      'usuariosListar', 'usuarioSalvar', 'usuarioExcluir'
     ];
     if (PROTEGIDAS.indexOf(action) !== -1) {
       var falha = exigirTokenSeAtivo(p.token);
@@ -84,6 +85,9 @@ function rotear(e) {
       case 'nfConsultarChave':  resp = nfConsultarChave(p); break;
       case 'pedidoSalvar':      resp = pedidoSalvar(p); break;
       case 'pedidoExcluir':     resp = pedidoExcluir(p.obra, p.id, p.token); break;
+      case 'usuariosListar':    resp = usuariosListar(p.token); break;
+      case 'usuarioSalvar':     resp = usuarioSalvar(p); break;
+      case 'usuarioExcluir':    resp = usuarioExcluir(p); break;
       default:
         resp = { ok: false, error: 'Ação desconhecida: "' + action + '"' };
     }
@@ -1341,4 +1345,136 @@ function nfeDoXML(xml) {
     vICMS: nfeNum(icmsTot, 'vICMS'),
     itens: itens
   };
+}
+
+// ============================================================
+// USUARIOS — cadastro pelo proprio app, so para o administrador
+// ------------------------------------------------------------
+// Mexe na propriedade USUARIOS do script, a mesma que o login le.
+// Regras que valem AQUI, nao no app:
+//   • so o perfil admin entra;
+//   • so funciona com EXIGIR_TOKEN=true — sem token o backend esta
+//     aberto, e deixar isso reescrever a lista de senhas seria dar a
+//     chave da casa para qualquer um que descubra a URL;
+//   • senha sai daqui HASHEADA e nunca volta para o app;
+//   • ninguem se exclui, e o sistema nao pode ficar sem admin.
+// ============================================================
+var NF_PERFIS_VALIDOS = ['campo', 'administrativo', 'engenharia', 'diretoria', 'admin'];
+
+function usuariosCarregar() {
+  var raw = PropertiesService.getScriptProperties().getProperty('USUARIOS');
+  if (!raw) return {};
+  try { return JSON.parse(raw) || {}; } catch (e) { return {}; }
+}
+function usuariosGravar(mapa) {
+  PropertiesService.getScriptProperties().setProperty('USUARIOS', JSON.stringify(mapa));
+}
+// perfil de uma entrada, aceitando o formato antigo ("Nome": "senha")
+function usuarioPerfilDe(nome, conf) {
+  if (conf && typeof conf === 'object' && conf.perfil) return String(conf.perfil).toLowerCase();
+  return String(nome).toLowerCase() === 'leonardo' ? 'admin' : 'engenharia';
+}
+function usuarioSenhaDe(conf) {
+  if (conf && typeof conf === 'object') return conf.senha || '';
+  return conf || '';
+}
+function contarAdmins(mapa, ignorar) {
+  var n = 0;
+  Object.keys(mapa).forEach(function (k) {
+    if (ignorar && k === ignorar) return;
+    if (usuarioPerfilDe(k, mapa[k]) === 'admin') n++;
+  });
+  return n;
+}
+
+function exigirAdmin(token) {
+  var props = PropertiesService.getScriptProperties();
+  if (String(props.getProperty('EXIGIR_TOKEN')).toLowerCase() !== 'true') {
+    return { ok: false, error: 'ADMIN_REQUER_TOKEN',
+      mensagem: 'Para gerenciar usuários, a propriedade EXIGIR_TOKEN precisa estar como true. Sem ela o backend fica aberto.' };
+  }
+  if (!sessaoDoToken(token)) return { ok: false, error: 'TOKEN_INVALIDO' };
+  if (perfilDoToken(token) !== 'admin') {
+    return { ok: false, error: 'SEM_PERMISSAO', mensagem: 'Só o administrador gerencia usuários.' };
+  }
+  return null;
+}
+
+function usuariosListar(token) {
+  var falha = exigirAdmin(token); if (falha) return falha;
+  var mapa = usuariosCarregar();
+  var lista = Object.keys(mapa).sort(function (a, b) { return a.localeCompare(b); }).map(function (nome) {
+    return {
+      nome: nome,
+      perfil: usuarioPerfilDe(nome, mapa[nome]),
+      // "formatoAntigo" = senha ainda em texto puro na planilha
+      formatoAntigo: typeof mapa[nome] !== 'object',
+      temSenha: !!usuarioSenhaDe(mapa[nome])
+    };
+  });
+  return { ok: true, usuarios: lista, eu: usuarioDoToken(token) };
+}
+
+function usuarioSalvar(p) {
+  var falha = exigirAdmin(p.token); if (falha) return falha;
+  var nome = String(p.nome || '').trim();
+  var perfil = String(p.perfil || '').toLowerCase().trim();
+  var senha = String(p.senha || '');
+  var nomeAntigo = String(p.nomeAntigo || '').trim();
+
+  if (!nome) return { ok: false, error: 'NOME_OBRIGATORIO', mensagem: 'Informe o nome do usuário.' };
+  if (nome.length > 40) return { ok: false, error: 'NOME_LONGO', mensagem: 'Nome muito longo.' };
+  if (NF_PERFIS_VALIDOS.indexOf(perfil) === -1) {
+    return { ok: false, error: 'PERFIL_INVALIDO', mensagem: 'Perfil desconhecido: ' + perfil };
+  }
+
+  var mapa = usuariosCarregar();
+  var eu = usuarioDoToken(p.token);
+  var editando = nomeAntigo && mapa[nomeAntigo];
+
+  if (!editando && mapa[nome]) {
+    return { ok: false, error: 'JA_EXISTE', mensagem: 'Já existe um usuário com esse nome.' };
+  }
+  if (editando && nomeAntigo !== nome && mapa[nome]) {
+    return { ok: false, error: 'JA_EXISTE', mensagem: 'Já existe um usuário com esse nome.' };
+  }
+
+  var senhaFinal = senha ? hashSenha(senha) : (editando ? usuarioSenhaDe(mapa[nomeAntigo]) : '');
+  if (!senhaFinal) return { ok: false, error: 'SENHA_OBRIGATORIA', mensagem: 'Defina uma senha para o usuário novo.' };
+  if (senha && senha.length < 4) return { ok: false, error: 'SENHA_CURTA', mensagem: 'A senha precisa de pelo menos 4 caracteres.' };
+
+  // o sistema nao pode ficar sem nenhum administrador
+  var perfilAnterior = editando ? usuarioPerfilDe(nomeAntigo, mapa[nomeAntigo]) : '';
+  if (editando && perfilAnterior === 'admin' && perfil !== 'admin' && contarAdmins(mapa, nomeAntigo) === 0) {
+    return { ok: false, error: 'SEM_ADMIN', mensagem: 'Este é o único administrador. Promova outra pessoa antes de rebaixá-lo.' };
+  }
+  if (editando && nomeAntigo === eu && perfil !== 'admin') {
+    return { ok: false, error: 'AUTO_REBAIXA', mensagem: 'Você não pode tirar o seu próprio acesso de administrador.' };
+  }
+
+  if (editando && nomeAntigo !== nome) delete mapa[nomeAntigo];
+  mapa[nome] = { senha: senhaFinal, perfil: perfil };
+  usuariosGravar(mapa);
+
+  registrarAuditoria(eu, 'admin', editando ? 'usuarioAlterar' : 'usuarioCriar', 'GLOBAL', nome,
+    editando ? (nomeAntigo + ' · ' + perfilAnterior) : '', nome + ' · ' + perfil + (senha ? ' · senha trocada' : ''));
+  return { ok: true, nome: nome, perfil: perfil };
+}
+
+function usuarioExcluir(p) {
+  var falha = exigirAdmin(p.token); if (falha) return falha;
+  var nome = String(p.nome || '').trim();
+  var mapa = usuariosCarregar();
+  if (!mapa[nome]) return { ok: false, error: 'NAO_ENCONTRADO', mensagem: 'Usuário não encontrado.' };
+
+  var eu = usuarioDoToken(p.token);
+  if (nome === eu) return { ok: false, error: 'AUTO_EXCLUSAO', mensagem: 'Você não pode excluir o seu próprio usuário.' };
+  if (usuarioPerfilDe(nome, mapa[nome]) === 'admin' && contarAdmins(mapa, nome) === 0) {
+    return { ok: false, error: 'SEM_ADMIN', mensagem: 'Não dá para excluir o único administrador.' };
+  }
+
+  delete mapa[nome];
+  usuariosGravar(mapa);
+  registrarAuditoria(eu, 'admin', 'usuarioExcluir', 'GLOBAL', nome, '', '');
+  return { ok: true, removido: true };
 }

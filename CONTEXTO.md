@@ -49,6 +49,7 @@ gestor-obras/
 ├── js/                     Módulos complementares, todos realmente usados
 │   ├── auth/session.js     GestorAuth.setSession (chamado no login)
 │   ├── auth/perfis.js      **Níveis de acesso** — quem vê e quem faz o quê
+│   ├── auth/usuarios.js    Tela de cadastro de usuários (só admin)
 │   ├── ui/saveBar.js       Barra de status de sincronização
 │   ├── ui/centralHoje.js   "Central de Campo" (topo do Lançar serviços)
 │   ├── ui/icones.js        **Ícones do app** — conjunto próprio, ver abaixo
@@ -243,6 +244,7 @@ Planilha única para todas as obras. Abas: `RDO`, `Diario`, `Equipamentos`, `Loc
 | `nfDiag` | diagnóstico da leitura, usado pelo botão "Testar leitura" do app |
 | `autorizarInternet` | só existe para o Google pedir a permissão de acesso à internet |
 | `pedidoSalvar` / `pedidoExcluir` | pedidos de compra |
+| `usuariosListar` / `usuarioSalvar` / `usuarioExcluir` | cadastro de usuários — **só admin e só com `EXIGIR_TOKEN=true`** |
 
 Segurança: senha com **hash SHA-256** (aceita texto puro para compatibilidade), **bloqueio
 após 5 tentativas** (15 min), token em cache, aba de **Auditoria**, e `EXIGIR_TOKEN`.
@@ -428,6 +430,21 @@ De pé, no sol, com uma mão e às vezes de luva. Três regras mandam:
 Para auditar de novo: medir alvo de toque, elemento que passa da largura e fonte
 computada, **ignorando o que está com `display:none`** (senão o `<th>` escondido
 das tabelas aparece como falso positivo).
+
+### Cadastro de usuários — `js/auth/usuarios.js`
+Botão **Usuários** na home e ícone de capacete no rodapé do menu, ambos só para
+`admin`. Mexe na propriedade `USUARIOS` do Apps Script, a mesma que o login lê.
+
+- Senha sai **hasheada** e **nunca volta** para o app.
+- A tela **exige `EXIGIR_TOKEN=true`** — sem token o backend está aberto, e deixar
+  isso reescrever a lista de senhas seria entregar a chave da casa. Se faltar, o
+  app avisa e ensina onde ligar.
+- Travas no servidor: ninguém se exclui, ninguém tira o próprio admin, o sistema
+  nunca fica sem administrador, tudo vai para a Auditoria.
+- **O login virou campo livre** com sugestão (`usuariosSugeridos()`): a lista fixa
+  em `CONFIG.usuarios` impedia usuário novo de entrar até alguém editar o código —
+  que era metade do problema que o Leonardo queria resolver.
+- `CONFIG.usuarios` continua no código só como sugestão inicial do login.
 
 ### Cuidados aprendidos (erros já cometidos)
 - **Substituição em massa por texto:** um `replace` de um trecho que aparece em

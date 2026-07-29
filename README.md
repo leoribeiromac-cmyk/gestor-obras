@@ -230,7 +230,10 @@ Cada pessoa entra com o seu usuário e vê só o que o perfil dela permite:
 também no servidor — esconder o botão no app não impediria ninguém. Tentativa
 negada fica registrada na aba de Auditoria.
 
-Como cadastrar os perfis: veja **SETUP-BACKEND.md**.
+**Cadastro pelo próprio app:** entrando como administrador aparece o botão
+**Usuários** na tela inicial. Ali se cria, muda o perfil, troca a senha e exclui —
+sem abrir o Apps Script e sem mexer no código. A senha fica embaralhada no
+servidor e nunca volta para o app. Detalhes em **SETUP-BACKEND.md**.
 
 ## No celular
 

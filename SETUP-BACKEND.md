@@ -258,7 +258,32 @@ lançamento de terceiro. Registro antigo sem dono (coluna `usuario` vazia) só o
 administrador apaga. Toda tentativa negada fica na aba **Auditoria**, com a ação
 `EXCLUSAO_NEGADA`.
 
-## Como cadastrar
+## Como cadastrar — **pelo próprio app**
+
+Entrando como administrador, aparece o botão **Usuários** na tela inicial (e o
+ícone de capacete no rodapé do menu, dentro de uma obra). Ali dá para criar,
+editar o perfil, trocar a senha e excluir — sem abrir o Apps Script e **sem mexer
+no código do site**.
+
+A senha é guardada **embaralhada** (hash SHA-256) e nunca volta para o app.
+
+Para essa tela funcionar, a propriedade **`EXIGIR_TOKEN` precisa estar como
+`true`**. Sem ela o backend fica aberto, e deixar a lista de senhas ser reescrita
+por qualquer um que descubra a URL seria dar a chave da casa. Se estiver
+faltando, o próprio app avisa e ensina onde ligar.
+
+Travas que o servidor aplica, não importa o que o app mande:
+
+- só o perfil `admin` entra na tela;
+- ninguém exclui o próprio usuário nem tira o próprio acesso de administrador;
+- o sistema nunca fica sem nenhum administrador;
+- toda criação, alteração e exclusão vai para a aba **Auditoria**.
+
+> **A tela de login virou campo livre.** Antes era uma lista fixa escrita no
+> `index.html`, então usuário novo não conseguia entrar até alguém editar o
+> código. Agora a pessoa digita o nome, com sugestão dos nomes já conhecidos.
+
+## Como cadastrar — pela planilha (jeito antigo)
 
 Em **⚙ Configurações do projeto ▸ Propriedades do script**, na propriedade
 `USUARIOS`, troque a senha simples por um objeto com senha e perfil:

@@ -473,6 +473,9 @@ input.nf-confira,select.nf-confira,textarea.nf-confira{border-color:var(--amarel
 .nf-chip-sug:hover{background:var(--accent);color:#fff;border-color:var(--accent)}
 .nf-passo{display:flex;gap:10px;align-items:flex-start;padding:7px 0;font-size:13.5px}
 .nf-1linha{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* lista de usuários */
+.us-item{display:flex;align-items:center;gap:10px;padding:11px 0;border-bottom:1px solid var(--border)}
+.us-item:last-child{border-bottom:none}
 /* formulário enxuto: os campos acessórios continuam no DOM, só não aparecem */
 .nf-simples .nf-extra{display:none!important}
 @media(max-width:700px){
@@ -502,6 +505,7 @@ input.nf-confira,select.nf-confira,textarea.nf-confira{border-color:var(--amarel
 <script src="js/ui/icones.js"></script>
 <script src="js/auth/session.js"></script>
 <script src="js/auth/perfis.js"></script>
+<script src="js/auth/usuarios.js"></script>
 <script src="js/ui/saveBar.js"></script>
 <script src="js/ui/centralHoje.js"></script>
 <script src="js/nf/notas.js"></script>
@@ -809,6 +813,7 @@ function sidebar(o){
     }).join('')}`;}).join('')}</nav>
     <div class="side-foot"><button class="btn btn-sm btn-ghost" onclick="irHome()">← Obras</button>
       <button class="btn btn-sm btn-ghost" onclick="abrirApresentacao()" title="Modo apresentação">${ic('apresentar')}</button>
+      ${ehAdmin()&&BACKEND?`<button class="btn btn-sm btn-ghost" onclick="usuariosAbrir()" title="Usuários e permissões" aria-label="Usuários e permissões">${ic('capacete')}</button>`:''}
       <button class="btn btn-sm btn-ghost" onclick="toggleTema()" title="Tema">${ic('tema')}</button>
       ${BACKEND&&getToken()?`<button class="btn btn-sm btn-ghost" onclick="sair()" title="Sair (${esc(usuarioAtual())})">${ic('voltar')} Sair</button>`:''}
       <div style="width:100%;font-size:11px;color:var(--muted);margin-top:6px;padding-top:6px;border-top:1px solid var(--border);text-align:center">Criado e desenvolvido por <b>Leonardo Maciel</b></div></div></aside>`;
@@ -844,8 +849,11 @@ function viewLogin(){
         <img src="assets/logo_gestor.png" style="width:52px;height:52px;border-radius:11px;background:#fff;object-fit:contain">
         <div style="font-weight:700;font-size:18px;margin-top:10px">Gestor — Controle de Obras</div>
         <div class="kpi-s">Entre para acompanhar e lançar</div></div>
-      <div class="field"><label class="fl" for="loginUser">Usuário</label><select id="loginUser">
-        ${CONFIG.usuarios.map(u=>`<option>${esc(u)}</option>`).join('')}</select></div>
+      <div class="field"><label class="fl" for="loginUser">Usuário</label>
+        <input id="loginUser" list="loginNomes" autocomplete="username" placeholder="Seu nome de usuário"
+          value="${esc(localStorage.getItem('gestor:ultimoUsuario')||'')}"
+          onkeyup="if(event.key==='Enter')el('loginPass').focus()">
+        <datalist id="loginNomes">${usuariosSugeridos().map(u=>`<option value="${esc(u)}">`).join('')}</datalist></div>
       <div class="field"><label class="fl" for="loginPass">Senha</label>
         <input type="password" id="loginPass" autocomplete="current-password" onkeyup="if(event.key==='Enter')fazerLogin()" placeholder="••••••••"></div>
       <div id="loginErro" class="kpi-s" style="color:var(--vermelho);min-height:16px;margin:-6px 0 10px"></div>
@@ -854,13 +862,15 @@ function viewLogin(){
     </div></div></div>`;
 }
 async function fazerLogin(){
-  const u=el('loginUser').value, p=el('loginPass').value;
+  const u=(el('loginUser').value||'').trim(), p=el('loginPass').value;
+  if(!u){el('loginErro').textContent='Informe o usuário.';return;}
   if(!p){el('loginErro').textContent='Informe a senha.';return;}
   el('loginErro').textContent='Entrando...';
   try{
     const r=await postAcao({action:'login',usuario:u,senha:p});
     if(r&&r.ok&&r.token){
       if(window.GestorAuth) window.GestorAuth.setSession(r);
+      try{localStorage.setItem('gestor:ultimoUsuario',r.usuario||u);}catch(e){}
       setToken(r.token,r.usuario);outboxFlush();render();
     }
     else el('loginErro').textContent=(r&&/CREDENC/i.test(r.error||''))?'Usuário ou senha incorretos.':((r&&r.error)||'Falha ao entrar.');
@@ -912,7 +922,8 @@ function viewHome(){
       <img src="assets/logo_gestor.png" style="width:40px;height:40px;border-radius:9px;background:#fff;object-fit:contain" alt="Gestor">
       <div style="flex:1"><h1>Gestor — Controle de Obras</h1><div class="sub">Selecione uma obra para acompanhar</div></div>
       <button class="btn btn-sm btn-pri" onclick="abrirApresentacao()" title="Modo apresentação">${ic('apresentar')} Apresentar</button>
-      ${isDemo()?`<button class="btn btn-sm" style="border-color:var(--amarelo);color:var(--amarelo)" onclick="sairDemo()" title="Sair da demonstração">● Demo ativo</button>`:`<button class="btn btn-sm btn-ghost" onclick="carregarDemo()" title="Preencher com dados de demonstração (local)">🎬 Demo</button>`}
+      ${ehAdmin()&&BACKEND&&getToken()?`<button class="btn btn-sm" onclick="usuariosAbrir()" title="Usuários e permissões">${ic('capacete')} Usuários</button>`:''}
+      ${isDemo()?`<button class="btn btn-sm" style="border-color:var(--amarelo);color:var(--amarelo)" onclick="sairDemo()" title="Sair da demonstração">● Demo ativo</button>`:`<button class="btn btn-sm btn-ghost" onclick="carregarDemo()" title="Preencher com dados de demonstração (local)">${ic('apresentar')} Demo</button>`}
       <button class="btn btn-sm btn-ghost" onclick="toggleTema()" title="Tema">${ic('tema')}</button></header>
     <div class="content">${resumo}<div class="obras-grid">${cards}
       <div class="obra-card add"><div style="font-size:30px;margin-bottom:8px">＋</div>
