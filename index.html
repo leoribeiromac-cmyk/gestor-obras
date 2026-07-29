@@ -536,7 +536,10 @@ function fmtQtd(n){return (n||0).toLocaleString('pt-BR',{maximumFractionDigits:2
 function fmtPct(n,d=1){return (n||0).toLocaleString('pt-BR',{minimumFractionDigits:d,maximumFractionDigits:d})+'%';}
 function hoje(){return new Date().toISOString().slice(0,10);}
 function mesLabel(iso){const[a,m]=iso.split('-');return MESES[(+m)-1]+'/'+a.slice(2);}
-function addMeses(iso,n){const d=new Date(iso+'T00:00:00');d.setMonth(d.getMonth()+n);return d.toISOString().slice(0,10);}
+// soma meses sem estourar para o mês seguinte quando o dia não existe no destino
+// (31/01 + 1 mês = 28/02, e não 03/03) — obra que começa dia 29/30/31 tinha a
+// malha de meses da curva com mês repetido e mês faltando.
+function addMeses(iso,n){const[a,m,d]=iso.split('-').map(Number);const alvo=new Date(Date.UTC(a,m-1+n,1));const ult=new Date(Date.UTC(alvo.getUTCFullYear(),alvo.getUTCMonth()+1,0)).getUTCDate();alvo.setUTCDate(Math.min(d||1,ult));return alvo.toISOString().slice(0,10);}
 function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
 function clamp(n){return Math.max(0,Math.min(100,n));}
 
@@ -704,7 +707,8 @@ function curvaReal(o,pts){
   const serv=o.servicos||[]; const lanc=getLanc(o.id);
   return pts.map(p=>{
     const cum={};
-    lanc.forEach(l=>{if(l.dataISO.slice(0,7)<=p.mes){const k=skey(l.rua,l.capId,l.servico);cum[k]=(cum[k]||0)+(+l.qtd||0);}});
+    // serviço avulso não conta no avanço (mesma regra do avancoServ)
+    lanc.forEach(l=>{if(!l.avulso&&l.dataISO.slice(0,7)<=p.mes){const k=skey(l.rua,l.capId,l.servico);cum[k]=(cum[k]||0)+(+l.qtd||0);}});
     if(!serv.length)return 0;
     return serv.reduce((a,s)=>a+clamp(s.qtdPrev?(cum[skeyS(s)]||0)/s.qtdPrev*100:0),0)/serv.length;
   });

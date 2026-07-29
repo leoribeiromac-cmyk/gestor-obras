@@ -58,6 +58,7 @@ gestor-obras/
 ├── projetos/               PDFs de projeto por rua
 ├── vendor/                 pdfjs, xlsx, gsap, lenis (vendorizados)
 ├── intro/                  Abertura cinematográfica (antes do login)
+├── tests/fisico.test.js    Testes do avanço físico (painel, curva S, medição, desvios)
 ├── tests/notas.test.js     Testes das Notas Fiscais (rodar: node tests/notas.test.js)
 ├── tests/nfe-xml.test.js   Testes do parser do XML oficial da NF-e
 └── .github/workflows/ci.yml
@@ -348,18 +349,40 @@ while((m=re.exec(h))){i++;try{new Function(m[1]);}catch(e){console.log('ERRO',i,
 console.log('ok',i)"
 ```
 
-Testes: `node tests/notas.test.js` e `node tests/nfe-xml.test.js`. O CI roda os dois e
-está **verde**.
+Testes: `node tests/fisico.test.js`, `node tests/notas.test.js` e
+`node tests/nfe-xml.test.js`. O CI roda os três e está **verde**.
 
 > O antigo `tests/sCurve.test.js` foi **apagado** (decisão do Leonardo, jul/26): estava
 > quebrado desde `849e8e9` — pedia `js/domain/rdo.js`, apagado na limpeza dos módulos
 > órfãos, e testava um modelo com R$ que o app não usa. Deixava o CI vermelho o tempo
 > todo, o que faz o aviso perder o sentido.
->
-> **Fica pendente escrever teste para as contas de avanço físico** (`avancoServ`,
-> `mediaPct`, `curvaPrev`, `curvaReal`, `frenteStats`, `nivelDesvio`). Hoje não há
-> rede nenhuma nesses cálculos, que são o coração do sistema. Dá para fazer como o
-> `notas.test.js`: carregar o trecho do `index.html` num sandbox do Node.
+
+#### `tests/fisico.test.js` — a rede do avanço físico (jul/26)
+Cobre o que alimenta o painel executivo, a curva S, a medição e os alertas:
+`avancoServ`, `pctServ`, `mediaPct`, `pontos`/`addMeses`, `curvaPrev`, `curvaReal`,
+`mesIdxHoje`, `frenteStats` e `nivelDesvio`.
+
+**Não tem cópia do código.** Ele recorta as funções do próprio `index.html` (acha
+`function nome(` e conta as chaves até fechar) e roda num sandbox do Node. Se alguém
+mexer na conta lá, o teste acusa aqui — nunca fica testando uma versão velha.
+`hoje()` fica **de fora** de propósito: o sandbox usa uma data fixa (`ctx._hoje`),
+senão o resultado mudaria conforme o dia em que a bateria roda.
+
+Dois detalhes que custam tempo se esquecidos:
+- array criado dentro do sandbox tem outro `prototype`; `assert.deepStrictEqual`
+  reprova mesmo com o conteúdo idêntico. Por isso o helper `lista()` (`Array.from`).
+- os testes foram conferidos por mutação: estragando de propósito `addMeses`,
+  o teto de 100% da média, o filtro de avulso e a faixa do alerta, os quatro
+  ficam vermelhos. Teste que não falha quando o código quebra não serve.
+
+Dois defeitos apareceram ao escrever os testes e foram corrigidos junto:
+1. **`addMeses` pulava mês** em obra iniciada dia 29/30/31. `setMonth` estoura
+   (31/01 + 1 = 03/03), então a malha da curva vinha com março repetido e
+   fevereiro faltando. Agora limita ao último dia do mês de destino, em UTC.
+2. **`curvaReal` contava serviço avulso.** O app diz na tela que avulso "não conta
+   no avanço nem na medição", e o `avancoServ` respeita isso — a curva não. Na
+   prática quase nunca batia (avulso tem `capId` nulo), mas o fim da curva podia
+   não fechar com o número grande do painel. Agora as duas usam a mesma regra.
 
 ### Ícones — `js/ui/icones.js`
 **Não use emoji na interface.** Cada aparelho desenha o emoji do seu jeito (o 🚜 do

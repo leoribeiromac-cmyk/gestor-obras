@@ -19,6 +19,9 @@ jobs:
       with:
         node-version: '20'
 
+    - name: Run Avanço Físico Unit Tests
+      run: node tests/fisico.test.js
+
     - name: Run Notas Fiscais (DANFE) Unit Tests
       run: node tests/notas.test.js
 
