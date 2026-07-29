@@ -210,3 +210,35 @@ Integrada ao pedido de compra → Cancelada`
 Funciona igual, só que as notas ficam **no aparelho** (como o RDO) e a imagem não
 sobe para o Drive. Para ligar a sincronização e a leitura por imagem, veja
 **SETUP-BACKEND.md**.
+
+
+---
+
+## Níveis de acesso
+
+Cada pessoa entra com o seu usuário e vê só o que o perfil dela permite:
+
+| Perfil | O que faz |
+|---|---|
+| **Campo** | Lança serviço, diário, notas fiscais e fotos. Aponta equipamento |
+| **Administrativo** | Suprimentos e escritório: notas, estoque, pedidos, equipamentos, relatórios |
+| **Engenharia** | Tudo da obra — lança, confere, analisa e exporta |
+| **Diretoria** | Só consulta: painel, medição, histórico, notas, projetos |
+| **Administrador** | Tudo, e é o único que apaga registro dos outros |
+
+**Quem apaga:** o administrador, ou a própria pessoa que lançou. A regra vale
+também no servidor — esconder o botão no app não impediria ninguém. Tentativa
+negada fica registrada na aba de Auditoria.
+
+Como cadastrar os perfis: veja **SETUP-BACKEND.md**.
+
+## No celular
+
+O app é usado no canteiro, de pé e com uma mão. Por isso:
+
+- **Barra inferior** com as telas do dia a dia (Lançar, Diário, Notas, Fotos),
+  montada conforme o perfil de quem entrou
+- **Alvos de toque de 44px** — dá para acertar de luva
+- **As tabelas viram cartões**: nome do serviço como título e um valor por linha,
+  sem rolar de lado
+- Campos com letra de 16px, que evita o zoom automático do iPhone

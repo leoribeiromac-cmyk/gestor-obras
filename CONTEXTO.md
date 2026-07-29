@@ -395,6 +395,29 @@ podeEditar(registro)   // o de cima, mais a engenharia
 - Decisões do Leonardo: o campo **vê os valores em R$** das notas, e quem apaga é
   **só ele ou quem lançou** (nem engenharia).
 
+### Celular — é onde o apontador usa o app
+De pé, no sol, com uma mão e às vezes de luva. Três regras mandam:
+
+- **Alvo de toque ≥ 44px.** Havia botão de 24px. `.btn`, `.btn-sm`, `.chip`,
+  `.nav-item` e os campos têm mínimo no `@media (max-width:768px)`.
+- **Campo com `font-size:16px`** — abaixo disso o iPhone dá zoom sozinho ao tocar.
+- **Nada rola de lado.** As tabelas viram cartão: `rotularTabelas()` copia o texto
+  do `<th>` para `data-l` de cada `<td>`, e o CSS mostra com `td::before`. Assim
+  **tabela nova já nasce funcionando**, sem escrever rótulo em toda célula. A
+  primeira coluna vira o título do cartão.
+- **Barra inferior** (`barraInferior()`): as 4 telas do dia a dia que o perfil
+  enxerga, ao alcance do polegar. O CSS `.bottom-nav-mobile` já existia desde a
+  rodada do "antigravity", sem nenhum HTML usando.
+- O menu de cima rola de lado; o `bind()` traz o item ativo para o meio, senão a
+  pessoa não vê em que tela está.
+- **Curva S:** o SVG ocupa 100% da largura, então a letra encolhe junto — com
+  viewBox de 560 num celular de 360 a legenda virava ~6px. Em tela estreita o
+  desenho nasce com viewBox menor e mostra mês sim, mês não.
+
+Para auditar de novo: medir alvo de toque, elemento que passa da largura e fonte
+computada, **ignorando o que está com `display:none`** (senão o `<th>` escondido
+das tabelas aparece como falso positivo).
+
 ### Cuidados aprendidos (erros já cometidos)
 - **Substituição em massa por texto:** um `replace` de um trecho que aparece em
   dois contextos (template literal e string com aspas) quebra o segundo. Sempre

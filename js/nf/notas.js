@@ -1289,7 +1289,7 @@ function nfViewLista(o) {
         <div style="font-size:13px;font-weight:600;margin-top:3px;line-height:1.3">${esc(n.razaoSocial || n.nomeFantasia || nfCNPJfmt(n.cnpj) || 'Fornecedor não informado')}</div>
         <div class="kpi-s nf-1linha">${nfDataBR(n.dataEntrada || n.dataEmissao)}${n.responsavel ? ' · ' + esc(n.responsavel) : ''} · ${(n.itens || []).length} produto(s)${n.municipio ? ' · ' + esc(n.municipio) + (n.uf ? '/' + esc(n.uf) : '') : ''}</div>
         <div class="kpi-s nf-1linha" title="${esc(o.nome)}">${esc(o.nome)}</div>
-        ${div ? `<div class="nf-alerta nf-alerta-ylw" style="margin:8px 0 0;padding:7px 10px;font-size:11.5px">${esc(div)}</div>` : ''}
+        ${div ? `<div class="nf-alerta nf-alerta-ylw" style="margin:8px 0 0;padding:8px 10px">${esc(div)}</div>` : ''}
         <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">
           ${podeEditar(n)?`<button class="btn btn-sm" onclick="nfEditar('${n.id}')">${ic('editar')} Conferir</button>`:''}
           <button class="btn btn-sm btn-ghost" onclick="nfVerImagem('${n.id}')">${ic('lupa')} Nota</button>
