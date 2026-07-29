@@ -48,6 +48,7 @@ gestor-obras/
 │   └── teotonio-vilela.js  Obra externa (só encaminha)
 ├── js/                     Módulos complementares, todos realmente usados
 │   ├── auth/session.js     GestorAuth.setSession (chamado no login)
+│   ├── auth/perfis.js      **Níveis de acesso** — quem vê e quem faz o quê
 │   ├── ui/saveBar.js       Barra de status de sincronização
 │   ├── ui/centralHoje.js   "Central de Campo" (topo do Lançar serviços)
 │   ├── ui/icones.js        **Ícones do app** — conjunto próprio, ver abaixo
@@ -372,6 +373,28 @@ icFrente('Drenagem')   // devolve o nome do ícone da frente, PELO NOME dela
 - Emoji que **devem** continuar: os que citam a interface do Google no passo a
   passo do Apps Script (▸, ✏️, ▶, ⚙) — são o que a pessoa vê na tela do Google.
 
+### Níveis de acesso — `js/auth/perfis.js`
+Cinco perfis: `campo`, `administrativo`, `engenharia`, `diretoria`, `admin`.
+O backend já devolvia o perfil no login e o `session.js` já guardava — faltava a
+interface consultar.
+
+```js
+podeVer('executivo')   // a tela abre para este perfil?
+pode('lancarNota')     // a ação é permitida?
+podeExcluir(registro)  // admin, ou quem lançou
+podeEditar(registro)   // o de cima, mais a engenharia
+```
+
+- O menu mostra só as telas do perfil, **e** o `viewTela()` bloqueia acesso direto.
+- `bind()` também sai cedo em tela bloqueada — senão ele tenta montar formulário
+  que não existe e quebra a página (foi assim que apareceu no teste).
+- `abrirObra()` cai na primeira tela que o perfil enxerga (campo cai em Lançar).
+- **A regra de exclusão vale no `Code.gs` também** (`podeApagarLinha`). Esconder
+  botão não é segurança; tentativa negada vai para a Auditoria.
+- **Sem backend, todo mundo é admin** de propósito — app local é do próprio dono.
+- Decisões do Leonardo: o campo **vê os valores em R$** das notas, e quem apaga é
+  **só ele ou quem lançou** (nem engenharia).
+
 ### Cuidados aprendidos (erros já cometidos)
 - **Substituição em massa por texto:** um `replace` de um trecho que aparece em
   dois contextos (template literal e string com aspas) quebra o segundo. Sempre
@@ -466,7 +489,6 @@ navegador e conferir 404 + erros de console + módulos órfãos** antes de segui
 | Busca e filtros no Histórico | Hoje são 81 RDOs em lista corrida | Baixo |
 | GPS no apontamento + mapa | Comprova presença em campo | Médio |
 | Relatório mensal de efetivo | Mesmo padrão da medição de equipamentos | Baixo-médio |
-| Perfis de acesso na interface (o backend já tem perfil) | Campo × engenheiro × diretoria | Médio |
 | Comparativo entre obras | Linguagem de diretoria | Médio |
 | Replanejamento de cronograma pelo app | Aditivos/paralisações | Médio |
 

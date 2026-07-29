@@ -229,3 +229,55 @@ janela, contingência, SEFAZ fora do ar ou limite de consultas.
 3. **Texto do PDF** → mandado para a IA, sem OCR no meio.
 4. **Imagem** → OCR + IA.
 5. **Digitação**, sempre disponível.
+
+
+---
+
+# Níveis de acesso (perfis)
+
+Cada pessoa entra com o seu usuário e o sistema mostra só o que o perfil dela
+permite. **A regra vale também no servidor** — esconder botão no app não impede
+ninguém de mandar o pedido direto.
+
+## Os cinco perfis
+
+| Perfil | Para quem | O que abre |
+|---|---|---|
+| `campo` | apontador no canteiro | Lançar serviços, Diário, Equipamentos (apontar), Notas Fiscais, Histórico, Serviços, Galeria, Projetos |
+| `administrativo` | escritório / suprimentos | Painel, Medição, Equipamentos (inclusive cadastro), Notas Fiscais, Pedidos, Histórico, Galeria, Projetos |
+| `engenharia` | engenheiro da obra | Tudo da obra: lança, confere, analisa e exporta |
+| `diretoria` | acompanhamento | Só consulta: Painel, Medição, Histórico, Notas, Galeria, Projetos |
+| `admin` | você | Tudo, e é o único que apaga registro dos outros |
+
+Quem entra com um perfil que o sistema não conhece cai em `engenharia`.
+
+## Regra de exclusão
+
+**Apaga quem lançou, ou o administrador.** Nem engenharia nem diretoria apagam
+lançamento de terceiro. Registro antigo sem dono (coluna `usuario` vazia) só o
+administrador apaga. Toda tentativa negada fica na aba **Auditoria**, com a ação
+`EXCLUSAO_NEGADA`.
+
+## Como cadastrar
+
+Em **⚙ Configurações do projeto ▸ Propriedades do script**, na propriedade
+`USUARIOS`, troque a senha simples por um objeto com senha e perfil:
+
+```json
+{
+  "Leonardo":  { "senha": "sua-senha",  "perfil": "admin" },
+  "Wallace":   { "senha": "senha-dele", "perfil": "campo" },
+  "Guilherme": { "senha": "senha-dele", "perfil": "engenharia" },
+  "Marcia":    { "senha": "senha-dela", "perfil": "administrativo" },
+  "Diretoria": { "senha": "senha-dela", "perfil": "diretoria" }
+}
+```
+
+O formato antigo (`"Nome": "senha"`) continua valendo: quem estiver assim entra
+como `engenharia`, menos o Leonardo, que já era tratado como `admin`.
+
+Depois de mexer no `USUARIOS`, **acrescente o nome novo em `CONFIG.usuarios`** no
+`index.html` — é a lista do dropdown do login.
+
+> **Sem servidor** (`CONFIG.appsScript` vazio) todo mundo é admin, de propósito:
+> o app local é do próprio usuário e travar tela ali só atrapalharia.

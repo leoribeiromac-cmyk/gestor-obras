@@ -166,6 +166,30 @@ function usuarioDoToken(token) {
   return s ? s.usuario : null;
 }
 
+// ---- Quem pode apagar: o ADMIN, ou a propria pessoa que lancou. ----
+// Esconder o botao no app nao adianta: quem souber a URL manda o pedido
+// direto. A regra vale aqui, que e onde o dado mora.
+function perfilDoToken(token) {
+  var s = sessaoDoToken(token);
+  var p = s && s.perfil ? String(s.perfil).toLowerCase().trim() : '';
+  var apelidos = { administrador: 'admin', master: 'admin' };
+  return apelidos[p] || p;
+}
+function ehAdminToken(token) {
+  // sem EXIGIR_TOKEN o backend esta aberto de proposito (modo de implantacao):
+  // nesse caso nao ha perfil para checar
+  var exigir = PropertiesService.getScriptProperties().getProperty('EXIGIR_TOKEN');
+  if (String(exigir).toLowerCase() !== 'true') return true;
+  return perfilDoToken(token) === 'admin';
+}
+function podeApagarLinha(token, donoDaLinha) {
+  if (ehAdminToken(token)) return true;
+  var meu = usuarioDoToken(token) || '';
+  var dele = String(donoDaLinha == null ? '' : donoDaLinha).trim();
+  if (!meu || !dele) return false;          // registro sem dono: so o admin
+  return dele.toLowerCase() === String(meu).trim().toLowerCase();
+}
+
 function exigirTokenSeAtivo(token) {
   var exigir = PropertiesService.getScriptProperties().getProperty('EXIGIR_TOKEN');
   if (String(exigir).toLowerCase() !== 'true') return null;
@@ -429,8 +453,13 @@ function deleteLinhaPorId(nomeAba, id, colName, token) {
     var iId = idxCol(cab, colName || 'id');
     var iObra = idxCol(cab, 'obra');
     if (iId === -1) return { ok: false, error: 'Coluna ' + (colName || 'ID') + ' não encontrada' };
+    var iUsu = idxCol(cab, 'usuario');
     for (var i = 1; i < dados.length; i++) {
       if (String(dados[i][iId]).trim() === String(id).trim()) {
+        if (!podeApagarLinha(token, iUsu !== -1 ? dados[i][iUsu] : '')) {
+          registrarAuditoria(sess.usuario, sess.perfil, 'EXCLUSAO_NEGADA', nomeAba, id, '', 'sem permissao');
+          return { ok: false, error: 'SEM_PERMISSAO', mensagem: 'Só quem lançou ou o administrador pode excluir este registro.' };
+        }
         var obraVal = iObra !== -1 ? dados[i][iObra] : '';
         var contAntes = JSON.stringify(dados[i]);
         a.deleteRow(i + 1);
@@ -730,8 +759,13 @@ function nfExcluir(obra, id, token) {
     var bate = (iId !== -1 && String(dados[i][iId]).trim() === String(id).trim()) ||
                (iCli !== -1 && String(dados[i][iCli]).trim() === String(id).trim());
     if (bate) {
+      var iUsu = idxCol(cab, 'usuario');
+      if (!podeApagarLinha(token, iUsu !== -1 ? dados[i][iUsu] : '')) {
+        registrarAuditoria(usuarioDoToken(token), perfilDoToken(token), 'EXCLUSAO_NEGADA', obra, id, '', 'nota fiscal');
+        return { ok: false, error: 'SEM_PERMISSAO', mensagem: 'Só quem lançou ou o administrador pode excluir esta nota.' };
+      }
       a.deleteRow(i + 1);
-      registrarAuditoria(usuarioDoToken(token), 'app', 'nfExcluir', obra, id, '', '');
+      registrarAuditoria(usuarioDoToken(token), perfilDoToken(token), 'nfExcluir', obra, id, '', '');
       return { ok: true, removido: true };
     }
   }

@@ -552,6 +552,7 @@ function nfNovaVazia(obraId) {
 
 function nfAbrirNova() {
   const o = obra(); if (!o) return;
+  if (!pode('lancarNota')) { toast('Seu acesso não cadastra nota fiscal'); return; }
   _nfRascunho = nfNovaVazia(o.id); _nfFull = '';
   abrirModal('Nova nota fiscal', `
     <div id="nfPasso">
@@ -1161,6 +1162,7 @@ function nfSalvarForm() {
 function nfEditar(id) {
   const o = obra(); if (!o) return;
   const n = nfPorId(o.id, id); if (!n) return;
+  if (!podeEditar(n)) { toast('Seu acesso não edita esta nota'); return; }
   _nfRascunho = JSON.parse(JSON.stringify(n));
   _nfFull = '';
   const met = (n.leitura && n.leitura.metodo) || 'manual';
@@ -1169,6 +1171,7 @@ function nfEditar(id) {
 }
 function nfExcluir(id) {
   const o = obra(); const n = nfPorId(o.id, id); if (!n) return;
+  if (!podeExcluir(n)) { toast('Só quem lançou ou o administrador pode excluir'); return; }
   if (!confirm('Excluir a nota ' + (n.numero || '') + '? A entrada de estoque gerada por ela também sai.')) return;
   nfDesfazerEstoque(o.id, id);
   nfSet(o.id, nfGet(o.id).filter(x => x.id !== id));
@@ -1225,7 +1228,7 @@ function viewNotas(o) {
   const topo = `<div class="row nf-topo" style="align-items:center;margin-bottom:16px;gap:9px">
     <div style="display:flex;gap:7px;flex-wrap:wrap">${abas.map(a => `<button class="chip ${tab === a[0] ? 'on' : ''}" onclick="nfTab('${a[0]}')">${ic(a[1])} ${a[2]}</button>`).join('')}</div>
     <button class="btn btn-ghost btn-sm nf-teste" style="margin-left:auto" onclick="nfTestarLeitura()" title="Conferir se a leitura automática está no ar">${ic('lupa')} Testar leitura</button>
-    <button class="btn btn-pri nf-nova" onclick="nfAbrirNova()">${ic('camera')} Nova nota fiscal</button></div>`;
+    ${pode('lancarNota')?`<button class="btn btn-pri nf-nova" onclick="nfAbrirNova()">${ic('camera')} Nova nota fiscal</button>`:''}</div>`;
   const corpo = tab === 'estoque' ? nfViewEstoque(o) : tab === 'pedidos' ? nfViewPedidos(o) : tab === 'painel' ? nfViewPainel(o) : nfViewLista(o);
   return topo + corpo;
 }
@@ -1288,10 +1291,10 @@ function nfViewLista(o) {
         <div class="kpi-s nf-1linha" title="${esc(o.nome)}">${esc(o.nome)}</div>
         ${div ? `<div class="nf-alerta nf-alerta-ylw" style="margin:8px 0 0;padding:7px 10px;font-size:11.5px">${esc(div)}</div>` : ''}
         <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">
-          <button class="btn btn-sm" onclick="nfEditar('${n.id}')">${ic('editar')} Conferir</button>
+          ${podeEditar(n)?`<button class="btn btn-sm" onclick="nfEditar('${n.id}')">${ic('editar')} Conferir</button>`:''}
           <button class="btn btn-sm btn-ghost" onclick="nfVerImagem('${n.id}')">${ic('lupa')} Nota</button>
           ${n.drive && n.drive.link ? `<a class="btn btn-sm btn-ghost" href="${esc(n.drive.link)}" target="_blank" rel="noopener" title="Abrir no Google Drive">${ic('pasta')}</a>` : ''}
-          <button class="btn btn-sm btn-ghost" onclick="nfExcluir('${n.id}')" title="Excluir">${ic('fechar')}</button></div>
+          ${podeExcluir(n)?`<button class="btn btn-sm btn-ghost" onclick="nfExcluir('${n.id}')" title="Excluir">${ic('fechar')}</button>`:''}</div>
       </div></div>`;
   }).join('');
 
@@ -1378,7 +1381,7 @@ function nfViewPedidos(o) {
   const peds = nfPedGet(o.id).slice().sort((a, b) => (b.dataISO || '').localeCompare(a.dataISO || ''));
   const topo = `<div class="row" style="align-items:center;margin-bottom:16px">
     <div class="kpi-s" style="flex:1;min-width:220px">Cadastre o pedido de compra e o sistema baixa os itens sozinho quando a nota daquele fornecedor chegar.</div>
-    <button class="btn" onclick="nfPedidoModal()">+ Pedido de compra</button></div>`;
+    ${pode('pedido')?`<button class="btn" onclick="nfPedidoModal()">+ Pedido de compra</button>`:''}</div>`;
   if (!peds.length) return topo + `<div class="empty">${ic('pedido')}Nenhum pedido de compra cadastrado.</div>`;
   const cards = peds.map(p => {
     const itens = p.itens || [];
@@ -1404,6 +1407,7 @@ function nfViewPedidos(o) {
 }
 function nfPedidoModal() {
   const o = obra();
+  if (!pode('pedido')) { toast('Seu acesso não cadastra pedido de compra'); return; }
   const forn = nfFornecedores(o.id);
   abrirModal('Novo pedido de compra', `
     <div class="row"><div class="field"><label class="fl">Número do pedido</label><input id="pd_numero" placeholder="ex.: PC-2026-014"></div>

@@ -417,6 +417,7 @@ input.nf-confira,select.nf-confira,textarea.nf-confira{border-color:var(--amarel
 <!-- MÓDULOS ARQUITETURA GESTOR OBRAS (FEV 2026) -->
 <script src="js/ui/icones.js"></script>
 <script src="js/auth/session.js"></script>
+<script src="js/auth/perfis.js"></script>
 <script src="js/ui/saveBar.js"></script>
 <script src="js/ui/centralHoje.js"></script>
 <script src="js/nf/notas.js"></script>
@@ -714,11 +715,12 @@ function sidebar(o){
   return `<aside class="side">
     <div class="brand" onclick="irHome()"><img src="assets/logo_gestor.png" alt="Gestor">
       <div class="brand-txt"><div class="brand-t">Gestor</div><div class="brand-s">Controle de Obras</div></div></div>
-    <nav class="nav">${NAV.map(g=>`<div class="nav-label">${g.grupo}</div>${g.itens.map(it=>{
+    <nav class="nav">${NAV.map(g=>{const vis=g.itens.filter(it=>podeVer(it.id));if(!vis.length)return '';
+      return `<div class="nav-label">${g.grupo}</div>${vis.map(it=>{
       const b=it.badge?it.badge(o):0;
       return `<div class="nav-item ${estado.tela===it.id?'active':''}" role="button" tabindex="0" onclick="ir('${it.id}')">
         <span class="nav-ic">${ic(it.ic)}</span><span class="nav-txt">${it.t}</span>${b?`<span class="nav-badge">${b}</span>`:''}</div>`;
-    }).join('')}`).join('')}</nav>
+    }).join('')}`;}).join('')}</nav>
     <div class="side-foot"><button class="btn btn-sm btn-ghost" onclick="irHome()">← Obras</button>
       <button class="btn btn-sm btn-ghost" onclick="abrirApresentacao()" title="Modo apresentação">${ic('apresentar')}</button>
       <button class="btn btn-sm btn-ghost" onclick="toggleTema()" title="Tema">${ic('tema')}</button>
@@ -726,10 +728,14 @@ function sidebar(o){
       <div style="width:100%;font-size:11px;color:var(--muted);margin-top:6px;padding-top:6px;border-top:1px solid var(--border);text-align:center">Criado e desenvolvido por <b>Leonardo Maciel</b></div></div></aside>`;
 }
 function topbar(o){
-  return `<header class="topbar"><div style="flex:1"><h1>${esc(TITULOS[estado.tela]||'')}</h1>
-    <div class="sub">${esc(o.nome)} · ${esc(o.contrato)}</div></div></header>`;
+  const u=usuarioAtual();
+  return `<header class="topbar"><div style="flex:1;min-width:0"><h1>${esc(TITULOS[estado.tela]||'')}</h1>
+    <div class="sub">${esc(o.nome)} · ${esc(o.contrato)}</div></div>
+    ${u?`<div class="chip" title="Você está como ${esc(u)}, acesso de ${esc(perfilNome())}">${esc(u)} · ${esc(perfilNome())}</div>`:''}</header>`;
 }
 function viewTela(o){
+  // esconder o item do menu não basta: alguém pode chegar aqui por outro caminho
+  if(o&&estado.tela!=='home'&&!podeVer(estado.tela))return telaBloqueada(estado.tela);
   switch(estado.tela){
     case 'servicos':return viewServicos(o);
     case 'medicao':return viewMedicao(o);
@@ -1226,7 +1232,7 @@ function viewHistorico(o){
       <td>${esc(l.servico)} ${l.avulso?'<span class="chip" style="padding:0 6px;font-size:10px">avulso</span>':''}<div class="kpi-s">${esc(l.rua)} · ${esc(frenteNome(o,l.capId))}${l.usuario?' · por <b>'+esc(l.usuario)+'</b>':''}</div>
       ${(l.fotos&&l.fotos.length)?`<div style="display:flex;flex-wrap:wrap">${galeriaFotos(l.fotos,52)}</div>`:''}</td>
       <td class="mono">${esc(estacaTxt(l))||'—'}</td><td class="num">${fmtQtd(l.qtd)} ${esc(l.un)}</td>
-      <td class="num" style="white-space:nowrap"><button class="btn btn-sm btn-ghost" onclick="editarServ('${l.id}')" title="Editar">${ic('editar')}</button><button class="btn btn-sm btn-ghost" onclick="excluir('${l.id}')" title="Excluir">✕</button></td></tr>`).join('')
+      <td class="num" style="white-space:nowrap">${podeEditar(l)?`<button class="btn btn-sm btn-ghost" onclick="editarServ('${l.id}')" title="Editar">${ic('editar')}</button>`:''}${podeExcluir(l)?`<button class="btn btn-sm btn-ghost" onclick="excluir('${l.id}')" title="Excluir">${ic('fechar')}</button>`:''}</td></tr>`).join('')
       :`<tr><td colspan="4" class="kpi-s">Nenhum serviço lançado neste dia.</td></tr>`;
     const resumo=dv?`${ic('capacete')} ${totalPessoal(dv.pessoal||[])} · ${ic('equipamentos')} ${(dv.equipamentos||[]).length} equip. · ${ic('nuvem')} ${esc(dv.climaManha||'—')}/${esc(dv.climaTarde||'—')}`:'sem diário — só serviços';
     return `<div class="card" style="margin-bottom:14px"><div class="card-h">
@@ -1273,8 +1279,8 @@ function viewEquip(o){
   <div class="row" style="margin-bottom:14px;align-items:center;gap:8px">
     <div class="chip">${EQUIP.equipamentos.length} equipamentos${EQUIP.locadoras.length?' · '+EQUIP.locadoras.length+' locadoras':''}</div>
     <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn btn-sm" onclick="cadEquipModal()">+ Equipamento</button>
-      <button class="btn btn-sm" onclick="cadLocadoraModal()">+ Locadora</button></div></div>
+      ${pode('cadastrarEquip')?`<button class="btn btn-sm" onclick="cadEquipModal()">+ Equipamento</button>
+      <button class="btn btn-sm" onclick="cadLocadoraModal()">+ Locadora</button>`:''}</div></div>
   <div class="card" style="margin-bottom:16px"><div class="card-b" style="padding:12px 16px;display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
     <div class="field" style="margin:0;max-width:180px"><label class="fl">Medição — período</label>
       <select id="eqFilMes"><option value="Todos">Todos os meses</option>${meses.map(m=>`<option value="${m}">${mesLabel(m+'-01')}</option>`).join('')}</select></div>
@@ -1351,6 +1357,7 @@ function eqLimparSign(){const c=el('eqSign');if(c){c.getContext('2d').clearRect(
 function eqAssinaturaData(){const c=el('eqSign');return (c&&c._has)?c.toDataURL('image/png'):'';}
 /* envio */
 function eqEnviar(){
+  if(!pode('apontarEquip')){toast('Seu acesso não aponta equipamento');return;}
   if(demoBloqueia())return;
   const o=obra();const equip=el('eqEquip').value;
   if(!equip){toast('Selecione um equipamento');return;}
@@ -1369,6 +1376,7 @@ function eqEnviar(){
 function eqApagar(carimbo){if(demoBloqueia())return;if(!confirm('Apagar este apontamento?'))return;postAcao({action:'equipApagar',carimbo:carimbo}).then(r=>{if(r&&r.ok){toast('Apagado');carregarEquip();}else toast('Falha ao apagar');});}
 /* cadastros */
 function cadEquipModal(){
+  if(!pode('cadastrarEquip')){toast('Seu acesso não cadastra equipamento');return;}
   const locOpts=EQUIP.locadoras.map(l=>`<option>${esc(l.nome)}</option>`).join('');
   abrirModal('Cadastrar equipamento',`
     <div class="field"><label class="fl">Nome *</label><input id="ceNome" placeholder="Ex.: Escavadeira 01"></div>
@@ -1380,7 +1388,9 @@ function cadEquipModal(){
 function cadEquipSalvar(){if(demoBloqueia())return;const o=obra();const nome=el('ceNome').value.trim();if(!nome){toast('Informe o nome');return;}
   postAcao({action:'equipCadastrar',obra:o.id,nome:nome,tipo:el('ceTipo').value,vinculo:el('ceVinc').value,locadora:el('ceVinc').value==='Próprio'?'':el('ceLoc').value}).then(r=>{
     if(r&&r.equipamentos){EQUIP.equipamentos=r.equipamentos;EQUIP.locadoras=r.locadoras||EQUIP.locadoras;fecharModal();render();toast('Equipamento cadastrado ✓');}else toast((r&&r.error)||'Falha');});}
-function cadLocadoraModal(){abrirModal('Cadastrar locadora',`
+function cadLocadoraModal(){
+  if(!pode('cadastrarEquip')){toast('Seu acesso não cadastra locadora');return;}
+  abrirModal('Cadastrar locadora',`
     <div class="field"><label class="fl">Nome *</label><input id="clNome" placeholder="Empresa locadora"></div>
     <div class="field"><label class="fl">Observações</label><textarea id="clObs" rows="2"></textarea></div>
     <button class="btn btn-pri" style="width:100%;justify-content:center" onclick="cadLocadoraSalvar()">Cadastrar</button>`);}
@@ -1754,7 +1764,7 @@ function viewDiario(o){
         ${diarios.length?diarios.map(x=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 6px;border-bottom:1px solid var(--border);cursor:pointer" onclick="setDiaData('${x.dataISO}')">
           <div><b>${new Date(x.dataISO+'T00:00:00').toLocaleDateString('pt-BR')}</b>
           <div class="kpi-s">${totalPessoal(x.pessoal)} pessoas · ${(x.equipamentos||[]).length} equip.</div></div>
-          <button class="btn btn-sm btn-ghost" onclick="event.stopPropagation();delDiario('${x.dataISO}')" title="Excluir">${ic('fechar')}</button></div>`).join(''):`<div class="empty" style="padding:14px">Nenhum diário salvo.</div>`}
+          ${podeExcluir(x)?`<button class="btn btn-sm btn-ghost" onclick="event.stopPropagation();delDiario('${x.dataISO}')" title="Excluir">${ic('fechar')}</button>`:''}</div>`).join(''):`<div class="empty" style="padding:14px">Nenhum diário salvo.</div>`}
       </div></div>
     </div>
   </div>`;
@@ -1764,14 +1774,17 @@ function coletaDiario(){
     condicao:el('dCond').value,pessoal:lerPessoal(),equipamentos:lerEquip(),ocorrencias:el('dOcor').value.trim()};
 }
 function salvarDiario(){
+  if(!pode('lancarDiario')){toast('Seu acesso não lança diário');return;}
   const o=obra();const dd=coletaDiario();
   const anterior=diarioDoDia(o.id,dd.dataISO);
   const novo={id:(anterior&&anterior.id)||uid(),...dd,usuario:usuarioAtual(),criadoEm:Date.now()};
   const arr=getDiarios(o.id).filter(x=>x.dataISO!==dd.dataISO);arr.push(novo);
   setDiarios(o.id,arr);enfileirarDiario(o.id,novo);toast('Diário salvo ✓');render();
 }
-function delDiario(dataISO){const o=obra();if(!confirm('Excluir o diário de '+new Date(dataISO+'T00:00:00').toLocaleDateString('pt-BR')+'?'))return;
+function delDiario(dataISO){const o=obra();
   const d=diarioDoDia(o.id,dataISO);
+  if(!podeExcluir(d)){toast('Só quem lançou ou o administrador pode excluir');return;}
+  if(!confirm('Excluir o diário de '+new Date(dataISO+'T00:00:00').toLocaleDateString('pt-BR')+'?'))return;
   setDiarios(o.id,getDiarios(o.id).filter(x=>x.dataISO!==dataISO));
   if(d&&d.id)enfileirarDelDiario(o.id,d.id);render();toast('Diário excluído');}
 // nº do RDO da data (posição cronológica entre todas as datas com diário ou serviço)
@@ -1950,6 +1963,7 @@ function gerarExcelTudo(){const o=obra();const datas=todasDatas(o);if(!datas.len
 /* ---------- editar serviço lançado ---------- */
 function editarServ(id){
   const o=obra();const l=getLanc(o.id).find(x=>x.id===id);if(!l)return;
+  if(!podeEditar(l)){toast('Seu acesso não edita este lançamento');return;}
   const html=`
     <div class="row"><div class="field"><label class="fl">Data</label><input type="date" id="edData" value="${l.dataISO}"></div>
       <div class="field"><label class="fl">Rua</label><select id="edRua">${o.ruas.map(r=>`<option ${r===l.rua?'selected':''}>${esc(r)}</option>`).join('')}</select></div></div>
@@ -1974,13 +1988,14 @@ function enfileirarUpdateRDO(obraId,l){if(!BACKEND||isDemo())return;
   outboxAdd({id:'ob'+uid(),obra:obraId,tipo:'updRdo',params:{action:'updateRDO',payload:JSON.stringify(payload)}});outboxFlush();}
 
 /* ============================================================ AÇÕES */
-function abrirObra(id){estado.obraId=id;estado.tela='executivo';estado.filtroRua='Todas';estado.mesMed='';estado.diarioData='';estado.projSel='';estado.painelFrente='Todas';estado.painelMes='Todos';_pdfDoc=null;_pdfUrl='';_pdfZoom=1;EQUIP=isDemo()?_demoEquip():{equipamentos:[],locadoras:[],apontamentos:[],carregado:false};render();
+function abrirObra(id){estado.obraId=id;
+  estado.tela=['executivo','rdo','notas','servicos'].find(t=>podeVer(t))||'projetos';estado.filtroRua='Todas';estado.mesMed='';estado.diarioData='';estado.projSel='';estado.painelFrente='Todas';estado.painelMes='Todos';_pdfDoc=null;_pdfUrl='';_pdfZoom=1;EQUIP=isDemo()?_demoEquip():{equipamentos:[],locadoras:[],apontamentos:[],carregado:false};render();
   if(BACKEND)carregarObra(id).then(()=>{if(estado.obraId===id&&estado.tela!=='home')render();garantirFotos(id);});}
 function abrirExterno(url){window.open(url,'_blank','noopener');}
 function setPFrente(v){estado.painelFrente=v;render();}
 function setPMes(v){estado.painelMes=v;render();}
 function irHome(){estado.tela='home';estado.obraId=null;render();}
-function ir(t){estado.tela=t;render();}
+function ir(t){if(!podeVer(t)){toast('Seu acesso não abre esta tela');return;}estado.tela=t;render();}
 function setRua(r){estado.filtroRua=r;render();}
 function setMes(m){estado.mesMed=m;render();}
 
@@ -2008,6 +2023,7 @@ function mostraSaldo(){
   el('saldoBox').innerHTML=`Previsto <b>${fmtQtd(s.qtdPrev)} ${esc(s.un)}</b> · executado ${fmtQtd(jaf)} · <span style="color:${cor}">saldo ${fmtQtd(saldo)}</span>`+(saldo<0?(' '+ic('alerta')+' acima do previsto'):'');
 }
 function salvar(){
+  if(!pode('lancarServico')){toast('Seu acesso não lança serviço');return;}
   const o=obra();const qtd=+el('fQtd').value;
   if(!qtd||qtd<=0){toast('Informe a quantidade');return;}
   let lanc;
@@ -2041,7 +2057,10 @@ function salvar(){
   _fotosRDO=[];renderFotosPrev();
   el('ultimos').innerHTML=listaUltimos(o);mostraSaldo();
 }
-function excluir(id){const o=obra();if(!confirm('Excluir este apontamento?'))return;
+function excluir(id){const o=obra();
+  const l=getLanc(o.id).find(x=>x.id===id);
+  if(!podeExcluir(l)){toast('Só quem lançou ou o administrador pode excluir');return;}
+  if(!confirm('Excluir este apontamento?'))return;
   setLanc(o.id,getLanc(o.id).filter(l=>l.id!==id));enfileirarDelRDO(o.id,id);render();toast('Apontamento excluído');}
 function exportaCSV(){
   const o=obra();const mes=estado.mesMed;const lanc=getLanc(o.id).filter(l=>l.dataISO.slice(0,7)===mes && !l.avulso);
@@ -2482,7 +2501,10 @@ function temaAtual(){return localStorage.getItem('gestor:tema')||(matchMedia('(p
 function toggleTema(){const t=temaAtual()==='dark'?'light':'dark';localStorage.setItem('gestor:tema',t);document.documentElement.setAttribute('data-theme',t);}
 function toast(m){let t=el('toast');if(!t){t=document.createElement('div');t.id='toast';t.className='toast';document.body.appendChild(t);}
   t.textContent=m;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),2200);}
-function bind(){if(estado.tela==='rdo')atualizaServ();if(estado.tela==='projetos')renderPdfDoc(estado.projSel);
+function bind(){
+  // tela bloqueada nao tem os campos do formulario: sem isso o bind quebra
+  if(estado.tela!=='home'&&!podeVer(estado.tela)){atualizaDemoUI();return;}
+  if(estado.tela==='rdo')atualizaServ();if(estado.tela==='projetos')renderPdfDoc(estado.projSel);
   if(estado.tela==='galeria'&&estado.obraId)garantirFotos(estado.obraId);
   if(estado.tela==='equip'){if(BACKEND&&!EQUIP.carregado)carregarEquip();eqInitSign();eqCalcHoras();}
   if(estado.tela==='notas'&&estado.obraId)nfCarregar(estado.obraId);
