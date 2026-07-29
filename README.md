@@ -143,6 +143,11 @@ Enquanto o `CONFIG.appsScript` estiver vazio, o backend fica desligado e nada mu
   uma medição contratual.
 - **Curva S**: o previsto vem do **percentual mensal do cronograma** (não de R$); o realizado
   é o % médio acumulado dos apontamentos.
+- **Previsão de término.** Cartão no Painel Executivo com **duas** projeções, de propósito:
+  no **ritmo desde o início** (que conta os meses parados) e no **ritmo dos últimos 3 meses**
+  (como a obra anda agora). Cada uma mostra o mês previsto e quantos meses cai antes ou depois
+  do prazo de contrato. Obra sem avanço lançado não recebe projeção — não há ritmo para
+  calcular. Um número só esconderia obra que parou e voltou a produzir.
 - **Itens indiretos removidos** na curadoria (transporte, taxas de destinação, ensaios de
   laboratório, mão de obra de projeto, locações, placa, vistoria, sondagem etc.). Ajuste livre:
   edite/adicione serviços em `servicos` no arquivo da obra.
@@ -193,6 +198,13 @@ suporte o app avisa e segue pela leitura da imagem ou pela digitação da chave.
 - **Estoque**: ao salvar, gera a entrada com **lote** (`NF <número>/<série>`), atualiza
   saldo e mantém o caminho de volta até a nota que originou cada movimento.
   Reenviar a mesma nota **não** dá entrada em dobro.
+- **Saída de estoque**: registra o consumo (material, quantidade, data, frente, rua,
+  quem retirou). O saldo passa a ser *o que ainda tem*, não *o que chegou*. Saída acima
+  do saldo **avisa e pede confirmação** em vez de bloquear — no canteiro o material sai
+  antes de a nota ser lançada. Só quem registrou, ou o administrador, apaga.
+- **Histórico de preço**: aba **Preços** com menor, médio (ponderado pela quantidade),
+  maior e último preço de cada material, variação desde a primeira compra e o
+  fornecedor que cobrou menos.
 - **Divergências**: aponta itens + frete que não fecham com o total, CNPJ inválido,
   chave inválida e nota sem número.
 - **Painel**: valor recebido, notas por mês, principais fornecedores, materiais mais

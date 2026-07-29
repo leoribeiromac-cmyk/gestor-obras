@@ -25,13 +25,15 @@ var ABA_LOCADORA   = 'Locadoras';
 var ABA_APONT      = 'ApontEquip';
 var ABA_AUDITORIA  = 'Auditoria';
 var ABA_NF         = 'NotasFiscais';
+var ABA_SAIDA      = 'EstoqueSaidas';
 
 var HEADERS = {
   'Equipamentos': ['nome','tipo','vinculo','locadora','obra','ativo'],
   'Locadoras':    ['nome','observacoes','obra'],
   'ApontEquip':   ['carimbo','obra','data','turno','equipamento','operador','inicio','fim','horas','paradas','horimIni','horimFim','combustivel','situacao','observacoes','assinatura','clientId'],
   'Auditoria':    ['carimbo','usuario','perfil','acao','obra','registroId','detalhesAnteriores','detalhesNovos'],
-  'NotasFiscais': ['id','clientId','obra','numero','serie','chave','dataEmissao','dataEntrada','cnpj','razaoSocial','nomeFantasia','municipio','uf','vProd','vFrete','vTotal','vBaseICMS','vICMS','itens','obs','responsavel','status','driveId','driveLink','leitura','historico','usuario','criadoEm','atualizadoEm']
+  'NotasFiscais': ['id','clientId','obra','numero','serie','chave','dataEmissao','dataEntrada','cnpj','razaoSocial','nomeFantasia','municipio','uf','vProd','vFrete','vTotal','vBaseICMS','vICMS','itens','obs','responsavel','status','driveId','driveLink','leitura','historico','usuario','criadoEm','atualizadoEm'],
+  'EstoqueSaidas': ['id','obra','materialId','descricao','un','qtd','data','capid','rua','responsavel','obs','usuario','criadoEm']
 };
 
 function doGet(e)  { return rotear(e); }
@@ -48,6 +50,7 @@ function rotear(e) {
       'equipListar', 'equipCadastrar', 'equipDesativar', 'locadoraCadastrar', 'equipApontar', 'equipApagar', 'equipApontamentos',
       'obterFoto',
       'nfListar', 'nfSalvar', 'nfExcluir', 'nfImagem', 'nfLerIA', 'nfDiag', 'nfConsultarChave',
+      'saidaSalvar', 'saidaExcluir',
       'usuariosListar', 'usuarioSalvar', 'usuarioExcluir'
     ];
     if (PROTEGIDAS.indexOf(action) !== -1) {
@@ -81,6 +84,8 @@ function rotear(e) {
       case 'nfLerIA':           resp = nfLerIA(p); break;
       case 'nfDiag':            resp = nfDiag(); break;
       case 'nfConsultarChave':  resp = nfConsultarChave(p); break;
+      case 'saidaSalvar':       resp = saidaSalvar(p); break;
+      case 'saidaExcluir':      resp = saidaExcluir(p.obra, p.id, p.token); break;
       case 'usuariosListar':    resp = usuariosListar(p.token); break;
       case 'usuarioSalvar':     resp = usuarioSalvar(p); break;
       case 'usuarioExcluir':    resp = usuarioExcluir(p); break;
@@ -682,7 +687,11 @@ function nfListar(obra) {
     n.dataEntrada = normData(n.dataEntrada);
     return n;
   });
-  return { ok: true, notas: notas };
+  var saidas = linhasObj(ABA_SAIDA, obra).map(function (s) {
+    s.data = normData(s.data);
+    return s;
+  });
+  return { ok: true, notas: notas, saidas: saidas };
 }
 
 // upsert pelo clientId — reenviar a mesma nota nunca duplica a linha
@@ -924,6 +933,64 @@ function nfLerIA(p) {
     confianca: out.confianca || {},
     confiancaGeral: typeof out.confiancaGeral === 'number' ? out.confiancaGeral : 0.6
   };
+}
+
+// -------------------- SAIDA DE ESTOQUE (CONSUMO) --------------------
+// A entrada do estoque e derivada da nota e pode ser recalculada. A saida nao:
+// e um registro proprio, por isso tem linha na planilha, upsert pelo id e a
+// mesma regra de exclusao do resto do app.
+function saidaSalvar(p) {
+  var a = getOrCreate(ABA_SAIDA);
+  var cab = cabecalho(a);
+  var dados = a.getDataRange().getValues();
+  var iId = idxCol(cab, 'id');
+  var reg = {
+    id: p.id || gerarId(new Date(), 'sa'),
+    obra: p.obra || '',
+    materialid: p.materialId || '',
+    descricao: p.descricao || '',
+    un: p.un || 'UN',
+    qtd: Number(p.qtd) || 0,
+    data: normData(p.data),
+    capid: p.capid == null ? '' : p.capid,
+    rua: p.rua || '',
+    responsavel: p.responsavel || '',
+    obs: p.obs || '',
+    usuario: p.usuario || usuarioDoToken(p.token) || '',
+    criadoem: p.criadoem || Date.now()
+  };
+  var linha = cab.map(function (nc) { return reg.hasOwnProperty(nc) ? reg[nc] : ''; });
+  var achou = -1;
+  if (iId !== -1) {
+    for (var i = 1; i < dados.length; i++) {
+      if (String(dados[i][iId]).trim() === String(reg.id).trim()) { achou = i; break; }
+    }
+  }
+  if (achou > -1) a.getRange(achou + 1, 1, 1, cab.length).setValues([linha]);
+  else a.getRange(a.getLastRow() + 1, 1, 1, cab.length).setValues([linha]);
+  registrarAuditoria(reg.usuario, perfilDoToken(p.token), achou > -1 ? 'saidaAlterar' : 'saidaRegistrar',
+    reg.obra, reg.id, '', reg.descricao + ' - ' + reg.qtd + ' ' + reg.un);
+  return { ok: true, id: reg.id };
+}
+
+function saidaExcluir(obra, id, token) {
+  var a = getOrCreate(ABA_SAIDA);
+  var dados = a.getDataRange().getValues();
+  if (dados.length < 2) return { ok: true, removido: false };
+  var cab = dados[0].map(function (h) { return String(h).trim().toLowerCase(); });
+  var iId = idxCol(cab, 'id'), iUsu = idxCol(cab, 'usuario');
+  for (var i = dados.length - 1; i >= 1; i--) {
+    if (iId !== -1 && String(dados[i][iId]).trim() === String(id).trim()) {
+      if (!podeApagarLinha(token, iUsu !== -1 ? dados[i][iUsu] : '')) {
+        registrarAuditoria(usuarioDoToken(token), perfilDoToken(token), 'EXCLUSAO_NEGADA', obra, id, '', 'saida de estoque');
+        return { ok: false, error: 'SEM_PERMISSAO', mensagem: 'So quem registrou a saida ou o administrador pode apagar.' };
+      }
+      a.deleteRow(i + 1);
+      registrarAuditoria(usuarioDoToken(token), perfilDoToken(token), 'saidaExcluir', obra, id, '', '');
+      return { ok: true, removido: true };
+    }
+  }
+  return { ok: true, removido: false };
 }
 
 // Chamada ao Gemini isolada: trata a falta de autorizacao do Apps Script para

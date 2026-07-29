@@ -25,20 +25,20 @@ var PERFIS = {
     nome: 'Campo',
     desc: 'Apontador — lança a produção do dia',
     telas: ['servicos', 'rdo', 'diario', 'equip', 'historico', 'notas', 'galeria', 'projetos'],
-    pode: ['lancarServico', 'lancarDiario', 'apontarEquip', 'lancarNota', 'anexarFoto']
+    pode: ['lancarServico', 'lancarDiario', 'apontarEquip', 'lancarNota', 'anexarFoto', 'saidaEstoque']
   },
   administrativo: {
     nome: 'Administrativo',
     desc: 'Escritório — suprimentos, equipamentos e documentos',
     telas: ['executivo', 'servicos', 'medicao', 'equip', 'historico', 'notas', 'galeria', 'projetos'],
-    pode: ['lancarNota', 'apontarEquip', 'cadastrarEquip', 'exportar', 'relatorio']
+    pode: ['lancarNota', 'apontarEquip', 'cadastrarEquip', 'exportar', 'relatorio', 'saidaEstoque']
   },
   engenharia: {
     nome: 'Engenharia',
     desc: 'Engenheiro da obra — lança, confere e analisa',
     telas: ['executivo', 'servicos', 'medicao', 'rdo', 'diario', 'equip', 'historico', 'notas', 'galeria', 'projetos'],
     pode: ['lancarServico', 'lancarDiario', 'apontarEquip', 'cadastrarEquip', 'lancarNota',
-           'anexarFoto', 'editar', 'exportar', 'relatorio']
+           'anexarFoto', 'editar', 'exportar', 'relatorio', 'saidaEstoque']
   },
   diretoria: {
     nome: 'Diretoria',

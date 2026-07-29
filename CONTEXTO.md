@@ -113,7 +113,8 @@ Obra externa: `{id, externo:true, url, nome, contrato, local, valorGlobal}`.
 | `gestor:tema` | light/dark |
 | `gestor:demo` | versão do modo demonstração (`DEMO_VER`) |
 | `gestor:nf:<obraId>` | notas fiscais (com a miniatura da imagem) |
-| `gestor:nfmov:<obraId>` | movimentos de estoque gerados pelas notas |
+| `gestor:nfmov:<obraId>` | entradas de estoque **derivadas** das notas (podem ser recalculadas) |
+| `gestor:nfsaida:<obraId>` | **saídas** de estoque — registro próprio, não derivado de nada |
 | IndexedDB `gestorFotos` / store `fotos` | **imagens em resolução cheia** — fotos do RDO (1280px) e notas fiscais (1600px, chave `nf:<obra>:<id>`) |
 
 **Por que IndexedDB:** o localStorage é pequeno demais para imagens. A miniatura (320px)
@@ -133,7 +134,7 @@ em download e impressão.
 | Operação | Diário de Obra | `diario` | Efetivo, equipamentos, clima, ocorrências, imprimir RDO |
 | Operação | Equipamentos | `equip` | Apontamento (horas/paradas/horímetro/combustível/assinatura), cadastros, medição Excel e PDF |
 | Operação | Histórico | `historico` | RDOs por data, editar/excluir, PDF e Excel |
-| Suprimentos | **Notas Fiscais** | `notas` | Sub-abas Notas / Estoque / Painel. Fotografa a DANFE e preenche sozinho |
+| Suprimentos | **Notas Fiscais** | `notas` | Sub-abas Notas / Estoque / Preços / Painel. Fotografa a DANFE e preenche sozinho |
 | Documentos | **Galeria de Fotos** | `galeria` | Grade de fotos, filtros rua/mês, download com marca d'água |
 | Documentos | Projetos | `projetos` | PDFs renderizados com PDF.js, zoom |
 
@@ -243,6 +244,7 @@ Planilha única para todas as obras. Abas: `RDO`, `Diario`, `Equipamentos`, `Loc
 | `nfConsultarChave` | busca a NF-e pela chave no **consultadanfe.com** (ligado por padrão, sem token) e lê o **XML oficial**; traz o PDF do DANFE junto. `NFE_API_URL=off` desliga |
 | `nfDiag` | diagnóstico da leitura, usado pelo botão "Testar leitura" do app |
 | `autorizarInternet` | só existe para o Google pedir a permissão de acesso à internet |
+| `saidaSalvar` / `saidaExcluir` | saída (consumo) de estoque, aba `EstoqueSaidas`. Exclusão pela mesma regra: admin ou quem registrou |
 | `usuariosListar` / `usuarioSalvar` / `usuarioExcluir` | cadastro de usuários — **só admin e só com `EXIGIR_TOKEN=true`** |
 
 Segurança: senha com **hash SHA-256** (aceita texto puro para compatibilidade), **bloqueio
@@ -312,6 +314,9 @@ Fotos tiradas antes do commit `b21f7bf` não têm a imagem cheia no aparelho. Sa
 | **Sem consulta à SEFAZ** | O XML oficial exige certificado A1/A3, que o Apps Script não usa |
 | Catálogo de materiais **aprendido das notas** | Não existe cadastro de material no app, e obrigar a cadastrar antes de usar mataria o módulo |
 | Módulo de notas em **arquivo próprio** | O `index.html` já tem 2.400 linhas |
+| **Saída acima do saldo avisa, não bloqueia** | No canteiro o material é consumido antes de a nota ser lançada. Bloquear faria o apontador desistir de registrar, e estoque sem registro é pior do que saldo negativo aparente. O app avisa, pede confirmação e destaca o negativo |
+| **Preço médio ponderado pela quantidade** | Média simples mentiria: uma compra de 5 unidades pesaria igual a uma de 5.000 |
+| **Previsão de término com duas leituras** | Um número só esconderia obra que parou e voltou. Mostra o ritmo desde o início (conta mês parado) e o dos últimos 3 meses |
 | **Sem pedido de compra** (removido em jul/26) | Decisão do Leonardo. Quem compra é o escritório, em outro sistema; manter um cadastro paralelo aqui só criava trabalho duplicado. Saíram a aba Pedidos, a baixa automática, a permissão `pedido`, as ações `pedidoSalvar`/`pedidoExcluir` e o status "Integrada ao pedido de compra" (nota antiga com esse status passa a "Conferida"). A aba **Pedidos** da planilha foi deixada de lado, não apagada |
 
 ---
@@ -387,6 +392,45 @@ Dois defeitos apareceram ao escrever os testes e foram corrigidos junto:
    no avanço nem na medição", e o `avancoServ` respeita isso — a curva não. Na
    prática quase nunca batia (avulso tem `capId` nulo), mas o fim da curva podia
    não fechar com o número grande do painel. Agora as duas usam a mesma regra.
+
+### Previsão de término, saída de estoque e preços (jul/26)
+Três funcionalidades pedidas depois da remoção do pedido de compra.
+
+**Previsão de término** (`index.html`: `ritmoDesdeInicio`, `ritmoRecente`,
+`previsaoTermino`, `previsaoCard`). Cartão no Painel Executivo com **duas** projeções:
+ritmo desde o início (acumulado ÷ meses decorridos — conta mês parado) e ritmo dos
+últimos 3 meses. Cada uma mostra o mês previsto e quantos meses cai antes ou depois do
+prazo de contrato. `PREV_MAX_MESES=240`: ritmo quase zero projetaria séculos, então
+mostra só o aviso. Obra sem avanço não recebe projeção nenhuma.
+
+**Saída de estoque** (`js/nf/notas.js`: `nfSaiGet/Set`, `nfSaidaModal`, `nfSaidaSaldo`,
+`nfSaidaSalvar`, `nfSaidaExcluir`, `nfSaldoDe`, `nfSaidaDoServidor`).
+> A distinção que importa: **entrada é derivada** da nota e pode ser recalculada a
+> qualquer momento (`nfIntegrarEstoque` reescreve). **Saída não é derivada de nada** —
+> ninguém reconstrói um consumo depois. Por isso mora em chave própria, tem fila de
+> sincronização e linha na planilha. Reprocessar a nota nunca apaga saída.
+
+`nfSaldos` passou a devolver `saidas`, `saldo`, `unitMedio` (preço médio das entradas) e
+`valorSaldo`. Permissão `saidaEstoque`: campo, administrativo, engenharia e admin.
+Diretoria é consulta, não registra.
+
+**Histórico de preço** (`nfPrecos`, `nfPrecoExtremos`, `nfViewPrecos`, `nfPrecoDetalhe`).
+Sai das próprias notas: item com valor unitário e quantidade é uma compra. Aba **Preços**
+com menor/médio/maior/último preço, variação da primeira para a última compra,
+`NF_PRECO_ALERTA=10` (%) para destacar quem subiu, e detalhe por material com o
+fornecedor de menor preço marcado. Material com uma compra só tem `comparavel:false` —
+não existe variação para comparar.
+
+Cobertura: `tests/fisico.test.js` (previsão) e `tests/notas.test.js` (saída e preços),
+os dois conferidos por mutação.
+
+> Armadilha do sandbox nos testes: `const` no topo de um módulo fica no escopo do
+> script, **não** no objeto do contexto do `vm`. `ctx.NF_PRECO_ALERTA` vem `undefined`;
+> é preciso avaliar o nome dentro do sandbox (helper `cte()` no `notas.test.js`).
+
+> Armadilha da demonstração: `isoAdd` é `const` **local** do `_nfDemoSeed`. Usar em
+> `nfDemoCarregar` quebra o modo demonstração inteiro — foi o que aconteceu, pego no
+> teste de navegador.
 
 ### Ícones — `js/ui/icones.js`
 **Não use emoji na interface.** Cada aparelho desenha o emoji do seu jeito (o 🚜 do
@@ -513,6 +557,9 @@ Em ordem cronológica, do mais antigo ao mais recente:
 | `849e8e9` / `d018582` | **(feitos com outra ferramenta, "antigravity")** endpoints privados, RBAC, CI, Central de Hoje, Pendências |
 | `91fc2d5` | **Revisão dessas mudanças**: corrigiu fotos quebradas, barra de status que mentia, 404, 10 módulos órfãos, CONFIG duplicado |
 | `b45de84` | **Galeria de Fotos**, Central movida para Lançar serviços, endpoints mortos removidos, fallback CSV |
+| _atual_ | **Saída de estoque**, **previsão de término** e **histórico de preço por material** |
+| `56162a3` | Pedido de compra removido do módulo de notas |
+| `4e6c1e8` | Rede de testes do avanço físico + `addMeses` e `curvaReal` corrigidos |
 | `b21f7bf` | Imagem cheia no IndexedDB + marca d'água proporcional |
 | `ffaff22` | Quantidade fora da marca d'água |
 | `5d6c02a` | Cena da Galeria na apresentação |

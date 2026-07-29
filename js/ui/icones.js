@@ -42,8 +42,10 @@ var ICONES = {
   projetos: '<path d="M3.2 6.4a2.6 2.6 0 0 1 2.6-2.6h12.4a2.6 2.6 0 0 1 2.6 2.6v11.2a2.6 2.6 0 0 1-2.6 2.6H5.8a2.6 2.6 0 0 1-2.6-2.6z"/><path d="M3.2 8.6h17.6M8 8.6v11.6M3.2 14.4H8"/><path d="M11 12.2h6.4M11 16.2h4"/>',
   // suprimentos / estoque: caixa
   caixa: '<path d="M3.6 8.2 12 4l8.4 4.2v7.6L12 20l-8.4-4.2z"/><path d="M3.6 8.2 12 12.4l8.4-4.2M12 12.4V20"/>',
-  // pedido de compra: pedido carimbado
-  pedido: '<path d="M9.2 4.6H7.4a2 2 0 0 0-2 2v11.8a2 2 0 0 0 2 2h9.2a2 2 0 0 0 2-2v-4.2"/><rect x="9.2" y="2.9" width="5.6" height="3.4" rx="1.3"/><path d="M8.8 12.4h4.4M8.8 16h3"/><path d="M14.8 7.4h6.2M18.2 4.6 21.4 7.4 18.2 10.2"/>',
+  // preco: etiqueta com o furo
+  dinheiro: '<path d="M12.6 3.4H19a1.6 1.6 0 0 1 1.6 1.6v6.4a1.6 1.6 0 0 1-.47 1.13l-7.4 7.4a1.6 1.6 0 0 1-2.26 0l-6.4-6.4a1.6 1.6 0 0 1 0-2.26l7.4-7.4A1.6 1.6 0 0 1 12.6 3.4z"/><circle cx="16.6" cy="7.4" r="1.5"/>',
+  // saida de material: caixa com a seta para fora
+  saida: '<path d="M2.8 10.6 10 7l7.2 3.6v6.6L10 20.8l-7.2-3.6z"/><path d="M2.8 10.6 10 14.2l7.2-3.6M10 14.2v6.6"/><path d="M15.6 8.4 21.2 2.8M21.2 2.8h-3.9M21.2 2.8v3.9"/>',
 
   /* ---------- ações ---------- */
   baixar: '<path d="M12 3.6v11.2"/><path d="M7.9 10.9 12 15l4.1-4.1"/><path d="M4.6 19.4h14.8"/>',

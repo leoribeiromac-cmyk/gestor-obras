@@ -41,12 +41,16 @@ function recortar(nomes) {
 const linhaMeses = /^const MESES = \[.*\];$/m.exec(html);
 assert.ok(linhaMeses, 'não encontrei a constante MESES no index.html');
 
+const linhaPrevMax = /^const PREV_MAX_MESES=.*$/m.exec(html);
+assert.ok(linhaPrevMax, 'não encontrei a constante PREV_MAX_MESES no index.html');
+
 // hoje() fica de fora de propósito: no teste ele precisa ser uma data fixa,
 // senão o resultado muda conforme o dia em que a bateria roda.
-const fonte = linhaMeses[0] + '\n' + recortar([
+const fonte = linhaMeses[0] + '\n' + linhaPrevMax[0] + '\n' + recortar([
   'mesLabel', 'addMeses', 'clamp', 'keyL', 'getLanc',
   'skey', 'skeyS', 'avancoServ', 'pctServ', 'mediaPct',
-  'pontos', 'curvaPrev', 'curvaReal', 'mesIdxHoje', 'frenteStats', 'nivelDesvio'
+  'pontos', 'curvaPrev', 'curvaReal', 'mesIdxHoje', 'frenteStats', 'nivelDesvio',
+  'ritmoDesdeInicio', 'ritmoRecente', 'previsaoTermino'
 ]);
 
 // ---------- ambiente mínimo ----------
@@ -285,5 +289,79 @@ assert.strictEqual(fsC.concl, 1, 'o serviço aparece como concluído');
 perto(fsC.desvio, 50, 'terminou no 1º mês, previsto era 50% → 50 pontos adiantado');
 assert.strictEqual(ctx.nivelDesvio(fsC.desvio), 'bom', 'e o alerta mostra adiantado');
 console.log('  ✓ obra concluída: 100%, serviço contado como concluído e adiantada');
+
+// ==================================================================
+// Obra D — previsão de término pelo ritmo realizado
+// ==================================================================
+// 4 serviços iguais, um por mês: o avanço sobe 25 pontos por mês.
+const obraD = {
+  id: 'OBRA-D', inicioISO: '2026-01-01', prazoMeses: 6,
+  frentes: [{ id: 1, nome: 'Única' }],
+  servicos: [1, 2, 3, 4].map(i => ({ rua: 'R', capId: 1, servico: 'S' + i, un: 'un', qtdPrev: 10 })),
+  cronograma: [{ frenteId: 1, pctMes: [17, 17, 17, 17, 16, 16] }]
+};
+guardado['gestor:rdo:OBRA-D'] = JSON.stringify([
+  { dataISO: '2026-01-15', rua: 'R', capId: 1, servico: 'S1', qtd: 10 },
+  { dataISO: '2026-02-15', rua: 'R', capId: 1, servico: 'S2', qtd: 10 }
+]);
+ctx._hoje = '2026-02-20';   // 2 meses decorridos, 50% feito
+
+let pv = ctx.previsaoTermino(obraD);
+perto(pv.atual, 50, 'metade dos serviços concluídos = 50%');
+assert.strictEqual(pv.mesesDecorridos, 2, 'dois meses decorridos');
+assert.strictEqual(pv.fimContratoMes, '2026-06', 'prazo de 6 meses termina em jun/26');
+perto(pv.desdeInicio.ritmo, 25, 'ritmo desde o início: 50% em 2 meses = 25 por mês');
+assert.strictEqual(pv.desdeInicio.meses, 2, 'faltam 50 pontos a 25 por mês = 2 meses');
+assert.strictEqual(pv.desdeInicio.mes, '2026-04', 'termina em abr/26');
+assert.strictEqual(pv.desdeInicio.atraso, -2, 'dois meses antes do prazo de contrato');
+assert.ok(!pv.concluida && !pv.parada, 'obra em andamento tem projeção');
+console.log('  ✓ previsão: ritmo, meses restantes, mês final e folga sobre o prazo');
+
+// obra parada há 3 meses: o ritmo recente cai a zero, o desde-o-início não
+ctx._hoje = '2026-05-20';
+pv = ctx.previsaoTermino(obraD);
+assert.strictEqual(pv.mesesDecorridos, 5, 'cinco meses decorridos');
+perto(pv.desdeInicio.ritmo, 10, 'ritmo desde o início cai para 50/5 = 10 por mês');
+assert.strictEqual(pv.recente, null, 'sem avanço nos últimos 3 meses: não projeta pelo recente');
+assert.strictEqual(pv.desdeInicio.meses, 5, 'faltam 50 pontos a 10 por mês');
+assert.strictEqual(pv.desdeInicio.mes, '2026-10', 'projeta o término para out/26');
+assert.strictEqual(pv.desdeInicio.atraso, 4, 'out/26 é 4 meses depois de jun/26, o fim do contrato');
+assert.ok(!pv.parada, 'ainda existe uma das duas leituras');
+console.log('  ✓ obra parada: o ritmo recente zera e o atraso aparece');
+
+// obra sem nenhum lançamento: nada a projetar
+guardado['gestor:rdo:OBRA-D2'] = JSON.stringify([]);
+const obraD2 = Object.assign({}, obraD, { id: 'OBRA-D2' });
+const pvZero = ctx.previsaoTermino(obraD2);
+assert.strictEqual(pvZero.parada, true, 'sem avanço não há previsão');
+assert.strictEqual(pvZero.desdeInicio, null, 'nenhuma das duas leituras projeta');
+assert.strictEqual(pvZero.recente, null, 'nem a recente');
+
+// obra concluída
+guardado['gestor:rdo:OBRA-D3'] = JSON.stringify(
+  [1, 2, 3, 4].map(i => ({ dataISO: '2026-01-15', rua: 'R', capId: 1, servico: 'S' + i, qtd: 10 })));
+const pvFim = ctx.previsaoTermino(Object.assign({}, obraD, { id: 'OBRA-D3' }));
+assert.strictEqual(pvFim.concluida, true, '100% executado marca como concluída');
+perto(pvFim.atual, 100, 'avanço em 100%');
+
+// ritmo muito baixo: não mostra data absurda
+guardado['gestor:rdo:OBRA-D4'] = JSON.stringify([
+  { dataISO: '2026-01-15', rua: 'R', capId: 1, servico: 'S1', qtd: 0.02 }
+]);
+ctx._hoje = '2026-02-20';
+const pvLento = ctx.previsaoTermino(Object.assign({}, obraD, { id: 'OBRA-D4' }));
+assert.strictEqual(pvLento.desdeInicio.longe, true, 'ritmo mínimo não gera data, só o aviso');
+assert.strictEqual(pvLento.desdeInicio.mes, '', 'sem mês quando a projeção passa de 20 anos');
+console.log('  ✓ casos-limite: obra sem avanço, obra concluída e ritmo desprezível');
+
+// as duas contas de ritmo, isoladas
+const curva = [10, 20, 30, 40, 50];
+perto(ctx.ritmoDesdeInicio(curva, 4), 10, 'ritmo desde o início = acumulado / meses');
+perto(ctx.ritmoRecente(curva, 4, 3), 10, 'ritmo recente = ganho dos 3 últimos / 3');
+perto(ctx.ritmoRecente([0, 0, 0, 60, 60], 4, 3), 20, 'ritmo recente pega só a janela');
+perto(ctx.ritmoRecente(curva, 0, 3), 0, 'no primeiro mês não existe janela recente');
+console.log('  ✓ as duas medidas de ritmo, conferidas separadamente');
+
+ctx._hoje = '2026-03-15';
 
 console.log('\n✅ Avanço físico: todas as contas conferidas.');

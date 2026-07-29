@@ -47,8 +47,14 @@ function nfMigrarStatus(n) {
   return n;
 }
 function nfSet(obraId, arr) { localStorage.setItem(nfKey(obraId), JSON.stringify(arr)); }
+/* ENTRADAS sao derivadas: nascem da nota e podem ser recalculadas a qualquer
+   momento. SAIDAS nao — ninguem consegue reconstruir um consumo depois. Por
+   isso ficam em chave propria, com fila de sincronizacao e linha na planilha. */
 function nfMovGet(obraId) { try { return JSON.parse(localStorage.getItem('gestor:nfmov:' + obraId) || '[]'); } catch (e) { return []; } }
 function nfMovSet(obraId, arr) { localStorage.setItem('gestor:nfmov:' + obraId, JSON.stringify(arr)); }
+function nfSaiKey(obraId) { return 'gestor:nfsaida:' + obraId; }
+function nfSaiGet(obraId) { try { return JSON.parse(localStorage.getItem(nfSaiKey(obraId)) || '[]'); } catch (e) { return []; } }
+function nfSaiSet(obraId, arr) { localStorage.setItem(nfSaiKey(obraId), JSON.stringify(arr)); }
 function nfPorId(obraId, id) { return nfGet(obraId).find(n => n.id === id) || null; }
 
 /* imagem em resolucao cheia: mesmo IndexedDB das fotos do RDO */
@@ -377,6 +383,69 @@ function nfMateriais(obraId) {
   });
   return Object.values(cat).sort((a, b) => b.valor - a.valor);
 }
+/* ============================================================
+   HISTORICO DE PRECO POR MATERIAL
+   ------------------------------------------------------------
+   Sai das proprias notas: cada item com valor unitario e uma compra.
+   Serve para responder "esse material subiu?" e "qual fornecedor
+   cobrou mais barato" sem cadastrar nada a mais.
+
+   O preco medio e PONDERADO pela quantidade. Media simples mentiria:
+   uma compra de 5 unidades pesaria igual a uma de 5.000.
+   ============================================================ */
+const NF_PRECO_ALERTA = 10;   // variacao em % a partir da qual vale destacar
+
+function nfPrecos(obraId) {
+  const cat = {};
+  nfGet(obraId).forEach(n => {
+    if (n.status === 'Cancelada') return;
+    const data = n.dataEmissao || n.dataEntrada || '';
+    (n.itens || []).forEach(it => {
+      const vu = nfNum(it.vUnit);
+      const qtd = nfNum(it.qtd);
+      // sem valor unitario nao ha preco; qtd zero nao pondera
+      if (vu <= 0 || qtd <= 0) return;
+      const k = it.materialId || nfNorm(it.descricao);
+      if (!k) return;
+      const m = cat[k] || (cat[k] = { id: k, descricao: it.descricao, un: it.un || 'UN', compras: [] });
+      m.compras.push({
+        dataISO: data, vUnit: vu, qtd: qtd,
+        cnpj: n.cnpj || '', fornecedor: n.razaoSocial || n.nomeFantasia || '',
+        notaId: n.id, numero: n.numero || ''
+      });
+    });
+  });
+  return Object.values(cat).map(m => {
+    // mais antiga primeiro: a variacao e do primeiro ao ultimo preco
+    m.compras.sort((a, b) => (a.dataISO || '').localeCompare(b.dataISO || ''));
+    const qt = m.compras.reduce((a, c) => a + c.qtd, 0);
+    const vt = m.compras.reduce((a, c) => a + c.qtd * c.vUnit, 0);
+    const precos = m.compras.map(c => c.vUnit);
+    m.n = m.compras.length;
+    m.qtdTotal = qt;
+    m.valorTotal = vt;
+    m.medio = qt ? vt / qt : 0;
+    m.min = Math.min.apply(null, precos);
+    m.max = Math.max.apply(null, precos);
+    m.primeiro = m.compras[0].vUnit;
+    m.ultimo = m.compras[m.compras.length - 1].vUnit;
+    m.ultimaData = m.compras[m.compras.length - 1].dataISO;
+    m.variacao = m.primeiro > 0 ? (m.ultimo - m.primeiro) / m.primeiro * 100 : 0;
+    m.vsMedio = m.medio > 0 ? (m.ultimo - m.medio) / m.medio * 100 : 0;
+    m.fornecedores = [...new Set(m.compras.map(c => c.fornecedor || c.cnpj).filter(Boolean))];
+    // com um preco so nao existe variacao para comparar
+    m.comparavel = m.n > 1;
+    return m;
+  }).sort((a, b) => b.valorTotal - a.valorTotal);
+}
+
+/* o fornecedor mais barato e o mais caro de um material, pelo preco unitario */
+function nfPrecoExtremos(mat) {
+  if (!mat || !mat.compras.length) return null;
+  const ord = mat.compras.slice().sort((a, b) => a.vUnit - b.vUnit);
+  return { barato: ord[0], caro: ord[ord.length - 1] };
+}
+
 function nfSugerirMaterial(desc, obraId) {
   return nfMateriais(obraId)
     .map(m => ({ material: m, score: nfSim(desc, m.descricao) }))
@@ -428,16 +497,33 @@ function nfDesfazerEstoque(obraId, notaId) {
 }
 function nfSaldos(obraId) {
   const s = {};
-  nfMovGet(obraId).forEach(m => {
+  const pega = m => {
     const k = m.materialId || nfNorm(m.descricao);
-    const x = s[k] || (s[k] = { id: k, descricao: m.descricao, un: m.un, entradas: 0, saidas: 0, valor: 0, lotes: [], ultima: '' });
-    if (m.tipo === 'saida') x.saidas += nfNum(m.qtd);
-    else { x.entradas += nfNum(m.qtd); x.valor += nfNum(m.vTotal); }
-    if (x.lotes.indexOf(m.lote) === -1) x.lotes.push(m.lote);
+    return s[k] || (s[k] = { id: k, descricao: m.descricao, un: m.un || 'UN', entradas: 0, saidas: 0, valor: 0, lotes: [], ultima: '' });
+  };
+  nfMovGet(obraId).forEach(m => {
+    const x = pega(m);
+    x.entradas += nfNum(m.qtd); x.valor += nfNum(m.vTotal);
+    if (m.lote && x.lotes.indexOf(m.lote) === -1) x.lotes.push(m.lote);
     if (!x.ultima || (m.dataISO || '') > x.ultima) x.ultima = m.dataISO || '';
   });
-  return Object.values(s).map(x => { x.saldo = x.entradas - x.saidas; return x; })
-    .sort((a, b) => b.valor - a.valor);
+  nfSaiGet(obraId).forEach(m => {
+    const x = pega(m);
+    x.saidas += nfNum(m.qtd);
+    if (!x.ultima || (m.dataISO || '') > x.ultima) x.ultima = m.dataISO || '';
+  });
+  return Object.values(s).map(x => {
+    x.saldo = x.entradas - x.saidas;
+    // preco medio do que entrou: serve para valorizar o que ainda tem
+    x.unitMedio = x.entradas > 0 ? x.valor / x.entradas : 0;
+    x.valorSaldo = x.saldo * x.unitMedio;
+    return x;
+  }).sort((a, b) => b.valor - a.valor);
+}
+/* saldo de um material so — usado na validacao da saida */
+function nfSaldoDe(obraId, materialId) {
+  const s = nfSaldos(obraId).find(x => x.id === materialId);
+  return s ? s.saldo : 0;
 }
 
 /* ============================================================
@@ -1177,14 +1263,14 @@ function nfVerHistorico(id) {
    TELAS
    ============================================================ */
 function viewNotas(o) {
-  const abas = [['notas', 'notas', 'Notas'], ['estoque', 'caixa', 'Estoque'], ['painel', 'grafico', 'Painel']];
+  const abas = [['notas', 'notas', 'Notas'], ['estoque', 'caixa', 'Estoque'], ['precos', 'dinheiro', 'Preços'], ['painel', 'grafico', 'Painel']];
   // 'pedidos' era uma aba: quem tinha ela guardada no aparelho cai na lista de notas
   const tab = abas.some(a => a[0] === estado.nfTab) ? estado.nfTab : 'notas';
   const topo = `<div class="row nf-topo" style="align-items:center;margin-bottom:16px;gap:9px">
     <div style="display:flex;gap:7px;flex-wrap:wrap">${abas.map(a => `<button class="chip ${tab === a[0] ? 'on' : ''}" onclick="nfTab('${a[0]}')">${ic(a[1])} ${a[2]}</button>`).join('')}</div>
     <button class="btn btn-ghost btn-sm nf-teste" style="margin-left:auto" onclick="nfTestarLeitura()" title="Conferir se a leitura automática está no ar">${ic('lupa')} Testar leitura</button>
     ${pode('lancarNota')?`<button class="btn btn-pri nf-nova" onclick="nfAbrirNova()">${ic('camera')} Nova nota fiscal</button>`:''}</div>`;
-  const corpo = tab === 'estoque' ? nfViewEstoque(o) : tab === 'painel' ? nfViewPainel(o) : nfViewLista(o);
+  const corpo = tab === 'estoque' ? nfViewEstoque(o) : tab === 'precos' ? nfViewPrecos(o) : tab === 'painel' ? nfViewPainel(o) : nfViewLista(o);
   return topo + corpo;
 }
 function nfTab(t) { estado.nfTab = t; estado.nfLimite = NF_PAGINA; render(); }
@@ -1299,24 +1385,53 @@ function nfExportarCSV() {
 function nfViewEstoque(o) {
   const saldos = nfSaldos(o.id);
   const movs = nfMovGet(o.id).slice().sort((a, b) => (b.dataISO || '').localeCompare(a.dataISO || '') || b.criadoEm - a.criadoEm);
+  const sai = nfSaiGet(o.id).slice().sort((a, b) => (b.dataISO || '').localeCompare(a.dataISO || '') || b.criadoEm - a.criadoEm);
+  const btnSaida = pode('saidaEstoque')
+    ? `<button class="btn" onclick="nfSaidaModal('')">${ic('saida')} Registrar saída</button>` : '';
   if (!saldos.length) return `<div class="empty">${ic('caixa')}Nada no estoque ainda.<br>
     <span class="kpi-s">A entrada é gerada quando você salva uma nota com os produtos preenchidos.</span></div>`;
+
   const total = saldos.reduce((a, s) => a + s.valor, 0);
+  const emMao = saldos.reduce((a, s) => a + s.valorSaldo, 0);
+  const negativos = saldos.filter(s => s.saldo < -0.0001);
+  const topo = `<div class="row" style="align-items:center;margin-bottom:16px;gap:9px">
+    <div class="kpi-s" style="flex:1;min-width:200px">A entrada vem da nota. A saída é o consumo, registrada aqui.</div>
+    ${btnSaida}</div>`;
   const kpis = `<div class="grid g4" style="margin-bottom:18px">
-    <div class="kpi"><div class="kpi-l">Materiais</div><div class="kpi-v">${saldos.length}</div><div class="kpi-s">itens distintos recebidos</div></div>
-    <div class="kpi"><div class="kpi-l">Entradas</div><div class="kpi-v">${movs.length}</div><div class="kpi-s">movimentos registrados</div></div>
+    <div class="kpi"><div class="kpi-l">Materiais</div><div class="kpi-v">${saldos.length}</div><div class="kpi-s">itens distintos</div></div>
+    <div class="kpi"><div class="kpi-l">Movimentos</div><div class="kpi-v">${movs.length} <span style="font-size:15px;color:var(--muted)">/ ${sai.length}</span></div><div class="kpi-s">entradas / saídas</div></div>
     <div class="kpi"><div class="kpi-l">Valor recebido</div><div class="kpi-v" style="font-size:24px">${fmtBRLc(total)}</div><div class="kpi-s">soma das entradas</div></div>
-    <div class="kpi"><div class="kpi-l">Lotes</div><div class="kpi-v">${[...new Set(movs.map(m => m.lote))].length}</div><div class="kpi-s">notas que geraram entrada</div></div></div>`;
+    <div class="kpi"><div class="kpi-l">Saldo em mão</div><div class="kpi-v" style="font-size:24px">${fmtBRLc(emMao)}</div><div class="kpi-s">pelo preço médio de entrada</div></div></div>`;
+
+  const aviso = negativos.length ? `<div class="nf-alerta nf-alerta-ylw">
+    ${negativos.length} material(is) com <b>saldo negativo</b>: saiu mais do que entrou.
+    Normalmente falta lançar a nota de entrada — ${esc(negativos.slice(0, 3).map(s => s.descricao).join(', '))}${negativos.length > 3 ? ' e outros' : ''}.</div>` : '';
+
   const tab = `<div class="tbl-wrap" style="margin-bottom:20px"><table class="t">
-    <thead><tr><th>Material</th><th class="num">Un</th><th class="num">Entradas</th><th class="num">Saldo</th><th class="num">Valor</th><th>Lotes</th><th class="num">Última</th></tr></thead>
+    <thead><tr><th>Material</th><th class="num">Un</th><th class="num">Entrou</th><th class="num">Saiu</th><th class="num">Saldo</th><th class="num">Valor em mão</th><th>Lotes</th><th class="num">Última</th><th></th></tr></thead>
     <tbody>${saldos.map(s => `<tr>
       <td style="font-weight:600">${esc(s.descricao)}</td>
       <td class="num">${esc(s.un)}</td>
       <td class="num">${fmtQtd(s.entradas)}</td>
-      <td class="num" style="font-weight:700">${fmtQtd(s.saldo)}</td>
-      <td class="num">${fmtBRL(s.valor)}</td>
+      <td class="num" style="color:${s.saidas ? 'var(--text-2)' : 'var(--muted)'}">${s.saidas ? fmtQtd(s.saidas) : '—'}</td>
+      <td class="num" style="font-weight:700;color:${s.saldo < -0.0001 ? 'var(--vermelho)' : 'inherit'}">${fmtQtd(s.saldo)}</td>
+      <td class="num">${fmtBRL(s.valorSaldo)}</td>
       <td class="kpi-s">${esc(s.lotes.slice(0, 3).join(', '))}${s.lotes.length > 3 ? ' +' + (s.lotes.length - 3) : ''}</td>
-      <td class="num kpi-s">${nfDataBR(s.ultima)}</td></tr>`).join('')}</tbody></table></div>`;
+      <td class="num kpi-s">${nfDataBR(s.ultima)}</td>
+      <td>${pode('saidaEstoque') ? `<button class="btn btn-sm btn-ghost" onclick="nfSaidaModal('${esc(s.id).replace(/'/g, '')}')" title="Registrar saída deste material">${ic('saida')}</button>` : ''}</td></tr>`).join('')}</tbody></table></div>`;
+
+  const tabSaidas = !sai.length ? '' : `<div class="card" style="margin-bottom:20px"><div class="card-h"><div><div class="card-t">Saídas registradas</div>
+    <div class="card-st">consumo lançado na obra · ${sai.length} movimento(s)</div></div></div>
+    <div class="tbl-wrap" style="border:none"><table class="t">
+    <thead><tr><th>Data</th><th>Material</th><th class="num">Qtd</th><th>Onde</th><th>Quem retirou</th><th></th></tr></thead>
+    <tbody>${sai.slice(0, 60).map(m => `<tr>
+      <td class="num kpi-s">${nfDataBR(m.dataISO)}</td>
+      <td>${esc(m.descricao)}${m.obs ? `<div class="kpi-s">${esc(m.obs)}</div>` : ''}</td>
+      <td class="num">${fmtQtd(m.qtd)} ${esc(m.un)}</td>
+      <td class="kpi-s">${esc([m.capId != null ? frenteNome(o, m.capId) : '', m.rua].filter(Boolean).join(' · ')) || '—'}</td>
+      <td class="kpi-s">${esc(m.responsavel || m.usuario || '—')}</td>
+      <td>${podeExcluir(m) ? `<button class="btn btn-sm btn-ghost" onclick="nfSaidaExcluir('${m.id}')" title="Apagar">${ic('fechar')}</button>` : ''}</td></tr>`).join('')}</tbody></table></div></div>`;
+
   const rastro = `<div class="card"><div class="card-h"><div><div class="card-t">Rastreabilidade das entradas</div>
     <div class="card-st">cada movimento aponta para a nota que o gerou</div></div></div>
     <div class="tbl-wrap" style="border:none"><table class="t">
@@ -1328,8 +1443,209 @@ function nfViewEstoque(o) {
       <td class="mono" style="font-size:12px">${esc(m.lote)}</td>
       <td class="kpi-s">${esc(m.fornecedor || nfCNPJfmt(m.cnpj))}</td>
       <td><button class="btn btn-sm btn-ghost" onclick="nfEditar('${m.notaId}')">abrir</button></td></tr>`).join('')}</tbody></table></div></div>`;
-  return kpis + tab + rastro;
+  return topo + kpis + aviso + tab + tabSaidas + rastro;
 }
+
+/* ============================================================
+   SAIDA DE ESTOQUE (CONSUMO)
+   ------------------------------------------------------------
+   Sem isso o estoque so cresce e o saldo mostrado e "o que chegou",
+   nao "o que ainda tem".
+
+   Decisao: saida acima do saldo NAO e bloqueada, so avisada e pedida
+   confirmacao. No canteiro o material e consumido antes de a nota ser
+   lancada. Bloquear faria o apontador desistir de registrar, e estoque
+   sem registro e pior do que estoque com saldo negativo aparente.
+   ============================================================ */
+function nfSaidaModal(materialId) {
+  const o = obra();
+  if (!pode('saidaEstoque')) { toast('Seu acesso não registra saída de material'); return; }
+  const saldos = nfSaldos(o.id).filter(s => s.entradas > 0);
+  if (!saldos.length) { toast('Nada no estoque para dar saída'); return; }
+  const sel = saldos.find(s => s.id === materialId) || saldos[0];
+  const frentes = o.frentes || [];
+  abrirModal('Saída de material', `
+    <div class="field"><label class="fl">Material</label>
+      <select id="sa_mat" onchange="nfSaidaSaldo()">${saldos.map(s =>
+        `<option value="${esc(s.id)}" ${s.id === sel.id ? 'selected' : ''}>${esc(s.descricao)} — saldo ${fmtQtd(s.saldo)} ${esc(s.un)}</option>`).join('')}</select></div>
+    <div class="row">
+      <div class="field"><label class="fl">Quantidade</label>
+        <input id="sa_qtd" class="num" inputmode="decimal" placeholder="0,00" oninput="nfSaidaSaldo()"></div>
+      <div class="field"><label class="fl">Data</label><input type="date" id="sa_data" value="${hoje()}"></div></div>
+    <div id="sa_saldo" class="kpi-s" style="margin:-6px 0 12px"></div>
+    <div class="row">
+      <div class="field"><label class="fl">Frente de serviço</label>
+        <select id="sa_frente"><option value="">— não informar —</option>
+          ${frentes.map(f => `<option value="${f.id}">${esc(f.nome)}</option>`).join('')}</select></div>
+      <div class="field"><label class="fl">Rua / local</label>
+        <select id="sa_rua"><option value="">— não informar —</option>
+          ${(o.ruas || []).map(r => `<option>${esc(r)}</option>`).join('')}</select></div></div>
+    <div class="field"><label class="fl">Quem retirou</label>
+      <input id="sa_resp" value="${esc(usuarioAtual())}" placeholder="Nome de quem levou o material"></div>
+    <div class="field"><label class="fl">Observação</label>
+      <textarea id="sa_obs" rows="2" placeholder="Onde foi aplicado, nº do RDO, motivo…"></textarea></div>
+    <div id="sa_erro" class="kpi-s" style="color:var(--vermelho);min-height:16px;margin:-4px 0 10px"></div>
+    <div style="display:flex;gap:9px">
+      <button class="btn" style="flex:1;justify-content:center" onclick="fecharModal()">Cancelar</button>
+      <button class="btn btn-pri" style="flex:2;justify-content:center" onclick="nfSaidaSalvar()">Registrar saída</button></div>`, 580);
+  nfSaidaSaldo();
+}
+/* mostra o saldo que sobra enquanto a pessoa digita */
+function nfSaidaSaldo() {
+  const o = obra(), cx = el('sa_saldo'); if (!cx) return;
+  const s = nfSaldos(o.id).find(x => x.id === (el('sa_mat') || {}).value);
+  if (!s) { cx.textContent = ''; return; }
+  const q = nfNum((el('sa_qtd') || {}).value);
+  const resta = s.saldo - q;
+  cx.innerHTML = `Saldo hoje: <b>${fmtQtd(s.saldo)} ${esc(s.un)}</b>` +
+    (q > 0 ? ` · depois desta saída: <b style="color:${resta < -0.0001 ? 'var(--vermelho)' : 'var(--text)'}">${fmtQtd(resta)} ${esc(s.un)}</b>` : '') +
+    (resta < -0.0001 ? ` — <span style="color:var(--vermelho)">maior que o saldo; confira se falta lançar a nota de entrada</span>` : '');
+}
+function nfSaidaSalvar() {
+  const o = obra(), erro = el('sa_erro');
+  const dizer = t => { if (erro) erro.textContent = t; };
+  if (!pode('saidaEstoque')) { dizer('Seu acesso não registra saída.'); return; }
+  const matId = (el('sa_mat') || {}).value || '';
+  const qtd = nfNum((el('sa_qtd') || {}).value);
+  const s = nfSaldos(o.id).find(x => x.id === matId);
+  if (!s) { dizer('Escolha o material.'); return; }
+  if (qtd <= 0) { dizer('Informe a quantidade.'); return; }
+  if (qtd - s.saldo > 0.0001 && !confirm('A saída de ' + fmtQtd(qtd) + ' ' + s.un +
+      ' é maior que o saldo de ' + fmtQtd(s.saldo) + ' ' + s.un + '.\n\n' +
+      'O saldo vai ficar negativo. Isso costuma significar que falta lançar a nota de entrada.\n\nRegistrar assim mesmo?')) return;
+  const frenteId = (el('sa_frente') || {}).value;
+  const reg = {
+    id: 'sa' + uid(), obraId: o.id, materialId: s.id, descricao: s.descricao, un: s.un,
+    qtd: qtd, dataISO: (el('sa_data') || {}).value || hoje(),
+    capId: frenteId === '' ? null : (isNaN(+frenteId) ? frenteId : +frenteId),
+    rua: (el('sa_rua') || {}).value || '',
+    responsavel: (el('sa_resp') || {}).value || '',
+    obs: (el('sa_obs') || {}).value || '',
+    usuario: usuarioAtual(), criadoEm: Date.now()
+  };
+  nfSaiSet(o.id, [reg].concat(nfSaiGet(o.id)));
+  nfEnfileirarSaida(o.id, reg);
+  fecharModal();
+  toast('Saída registrada — saldo agora ' + fmtQtd(s.saldo - qtd) + ' ' + s.un);
+  render();
+}
+function nfSaidaExcluir(id) {
+  const o = obra();
+  const reg = nfSaiGet(o.id).find(x => x.id === id);
+  if (!reg) return;
+  if (!podeExcluir(reg)) { toast('Só quem registrou a saída, ou o administrador, pode apagar'); return; }
+  if (!confirm('Apagar esta saída de ' + fmtQtd(reg.qtd) + ' ' + reg.un + ' de ' + reg.descricao + '?\n\nO saldo volta ao que era.')) return;
+  nfSaiSet(o.id, nfSaiGet(o.id).filter(x => x.id !== id));
+  if (BACKEND && !isDemo()) {
+    outboxAdd({ id: 'ob' + uid(), obra: o.id, tipo: 'saidaDel', params: { action: 'saidaExcluir', obra: o.id, id: id } });
+    outboxFlush();
+  }
+  toast('Saída apagada'); render();
+}
+function nfEnfileirarSaida(obraId, reg) {
+  if (!BACKEND || isDemo()) return;
+  outboxAdd({ id: 'ob' + uid(), obra: obraId, tipo: 'saida', clientId: reg.id, params: {
+    action: 'saidaSalvar', obra: obraId, id: reg.id, materialId: reg.materialId,
+    descricao: reg.descricao, un: reg.un, qtd: reg.qtd, data: reg.dataISO,
+    capid: reg.capId == null ? '' : reg.capId, rua: reg.rua,
+    responsavel: reg.responsavel, obs: reg.obs, usuario: reg.usuario, criadoem: reg.criadoEm
+  } });
+  outboxFlush();
+}
+function nfSaidaDoServidor(s, obraId) {
+  return {
+    id: s.id, obraId: obraId, materialId: s.materialId || nfNorm(s.descricao),
+    descricao: s.descricao || '', un: s.un || 'UN', qtd: nfNum(s.qtd),
+    dataISO: nfISO(s.data), capId: s.capid === '' || s.capid == null ? null : s.capid,
+    rua: s.rua || '', responsavel: s.responsavel || '', obs: s.obs || '',
+    usuario: s.usuario || '', criadoEm: nfNum(s.criadoem) || Date.now()
+  };
+}
+
+/* ---------- historico de preco por material ---------- */
+function nfViewPrecos(o) {
+  const mats = nfPrecos(o.id);
+  if (!mats.length) return `<div class="empty">${ic('dinheiro')}Nenhum preço para comparar ainda.<br>
+    <span class="kpi-s">O histórico sai das notas: é preciso ter o <b>valor unitário</b> e a <b>quantidade</b>
+    dos itens preenchidos.</span></div>`;
+
+  const comp = mats.filter(m => m.comparavel);
+  const subiram = comp.filter(m => m.variacao >= NF_PRECO_ALERTA).sort((a, b) => b.variacao - a.variacao);
+  const cairam = comp.filter(m => m.variacao <= -NF_PRECO_ALERTA).sort((a, b) => a.variacao - b.variacao);
+  const gasto = mats.reduce((a, m) => a + m.valorTotal, 0);
+
+  const kpis = `<div class="grid g4" style="margin-bottom:18px">
+    <div class="kpi"><div class="kpi-l">Materiais com preço</div><div class="kpi-v">${mats.length}</div>
+      <div class="kpi-s">${comp.length} com duas compras ou mais</div></div>
+    <div class="kpi"><div class="kpi-l">Subiram</div><div class="kpi-v" style="color:${subiram.length ? 'var(--vermelho)' : 'inherit'}">${subiram.length}</div>
+      <div class="kpi-s">${NF_PRECO_ALERTA}% ou mais desde a 1ª compra</div></div>
+    <div class="kpi"><div class="kpi-l">Caíram</div><div class="kpi-v" style="color:${cairam.length ? 'var(--accent)' : 'inherit'}">${cairam.length}</div>
+      <div class="kpi-s">${NF_PRECO_ALERTA}% ou mais de queda</div></div>
+    <div class="kpi"><div class="kpi-l">Valor comprado</div><div class="kpi-v" style="font-size:24px">${fmtBRLc(gasto)}</div>
+      <div class="kpi-s">itens com preço unitário</div></div></div>`;
+
+  const sinal = v => (v >= 0 ? '+' : '') + fmtPct(v);
+  const corVar = v => v >= NF_PRECO_ALERTA ? 'var(--vermelho)' : (v <= -NF_PRECO_ALERTA ? 'var(--accent)' : 'var(--text-2)');
+
+  const destaque = !subiram.length ? '' : `<div class="card" style="margin-bottom:18px;border-left:3px solid var(--vermelho)">
+    <div class="card-h"><div><div class="card-t"><span class="ic-tx">${ic('alerta')}</span>Materiais que subiram de preço</div>
+      <div class="card-st">comparando a primeira compra com a última</div></div>
+      <span class="pill pill-red">${subiram.length}</span></div>
+    <div class="card-b" style="padding:6px 22px 14px">
+      ${subiram.slice(0, 6).map(m => `<div style="display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--border)">
+        <div style="flex:1;min-width:0"><div style="font-weight:600;font-size:13.5px">${esc(m.descricao)}</div>
+          <div class="kpi-s">${fmtBRL(m.primeiro)} → ${fmtBRL(m.ultimo)} por ${esc(m.un)} · ${m.n} compra(s) · última em ${nfDataBR(m.ultimaData)}</div></div>
+        <span class="pill pill-red" style="white-space:nowrap">${sinal(m.variacao)}</span></div>`).join('')}</div></div>`;
+
+  const tabela = `<div class="card"><div class="card-h"><div><div class="card-t">Preço por material</div>
+    <div class="card-st">preço médio ponderado pela quantidade · ordenado pelo valor comprado</div></div></div>
+    <div class="tbl-wrap" style="border:none"><table class="t">
+    <thead><tr><th>Material</th><th class="num">Un</th><th class="num">Compras</th><th class="num">Menor</th>
+      <th class="num">Médio</th><th class="num">Maior</th><th class="num">Último</th><th class="num">Variação</th><th></th></tr></thead>
+    <tbody>${mats.map(m => `<tr>
+      <td style="font-weight:600">${esc(m.descricao)}<div class="kpi-s">${fmtQtd(m.qtdTotal)} ${esc(m.un)} · ${fmtBRL(m.valorTotal)} · ${m.fornecedores.length} fornecedor(es)</div></td>
+      <td class="num">${esc(m.un)}</td>
+      <td class="num">${m.n}</td>
+      <td class="num kpi-s">${fmtBRL(m.min)}</td>
+      <td class="num" style="font-weight:700">${fmtBRL(m.medio)}</td>
+      <td class="num kpi-s">${fmtBRL(m.max)}</td>
+      <td class="num">${fmtBRL(m.ultimo)}</td>
+      <td class="num" style="color:${m.comparavel ? corVar(m.variacao) : 'var(--muted)'};font-weight:600">${m.comparavel ? sinal(m.variacao) : '—'}</td>
+      <td><button class="btn btn-sm btn-ghost" onclick="nfPrecoDetalhe('${esc(m.id).replace(/'/g, '')}')">ver</button></td></tr>`).join('')}</tbody></table></div></div>`;
+
+  return kpis + destaque + tabela;
+}
+
+/* todas as compras de um material, na ordem, com o mais barato marcado */
+function nfPrecoDetalhe(id) {
+  const o = obra();
+  const m = nfPrecos(o.id).find(x => x.id === id);
+  if (!m) { toast('Material não encontrado'); return; }
+  const ex = nfPrecoExtremos(m);
+  const linhas = m.compras.slice().reverse().map(c => {
+    const marca = ex && c === ex.barato ? '<span class="pill pill-grn" style="margin-left:7px">menor preço</span>'
+      : (ex && c === ex.caro && m.n > 1 ? '<span class="pill pill-ylw" style="margin-left:7px">maior preço</span>' : '');
+    return `<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)">
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:600;font-size:13.5px">${fmtBRL(c.vUnit)} <span class="kpi-s" style="text-transform:none;letter-spacing:0">por ${esc(m.un)}</span>${marca}</div>
+        <div class="kpi-s">${nfDataBR(c.dataISO)} · ${esc(c.fornecedor || nfCNPJfmt(c.cnpj) || 'fornecedor não informado')} · ${fmtQtd(c.qtd)} ${esc(m.un)}</div></div>
+      <button class="btn btn-sm btn-ghost" onclick="fecharModal();nfEditar('${c.notaId}')">nota ${esc(c.numero)}</button></div>`;
+  }).join('');
+  const economia = ex && m.n > 1 ? (m.ultimo - ex.barato.vUnit) * m.qtdTotal : 0;
+  abrirModal(esc(m.descricao), `
+    <div class="grid g2" style="margin-bottom:14px">
+      <div class="kpi"><div class="kpi-l">Preço médio</div><div class="kpi-v" style="font-size:20px">${fmtBRL(m.medio)}</div>
+        <div class="kpi-s">ponderado pela quantidade</div></div>
+      <div class="kpi"><div class="kpi-l">Último preço</div><div class="kpi-v" style="font-size:20px">${fmtBRL(m.ultimo)}</div>
+        <div class="kpi-s">${m.comparavel ? sinalTxt(m.vsMedio) + ' que a média' : 'primeira compra'}</div></div></div>
+    ${economia > 0.01 ? `<div class="nf-alerta nf-alerta-ylw">Comprando sempre pelo menor preço já praticado
+      (${fmtBRL(ex.barato.vUnit)}, de ${esc(ex.barato.fornecedor || nfCNPJfmt(ex.barato.cnpj) || 'fornecedor não informado')}),
+      o volume já adquirido sairia por ${fmtBRL(economia)} menos.</div>` : ''}
+    <div class="nf-sep">Compras (${m.n})</div>
+    ${linhas}
+    <button class="btn" style="width:100%;justify-content:center;margin-top:14px" onclick="fecharModal()">Fechar</button>`, 620);
+}
+function sinalTxt(v) { return (v >= 0 ? '+' : '') + fmtPct(v); }
 
 /* ---------- painel ---------- */
 function nfViewPainel(o) {
@@ -1425,6 +1741,15 @@ async function nfCarregar(obraId) {
       r.notas.forEach(s => { mapa[s.clientId || s.id] = nfDoServidor(s, obraId, locais); });
       naoConf.forEach(l => { mapa[l.clientId || l.id] = l; });
       nfSet(obraId, Object.values(mapa).sort((a, b) => (b.dataEntrada || '').localeCompare(a.dataEntrada || '')));
+    }
+    if (r && r.ok && Array.isArray(r.saidas)) {
+      // saida pendente na fila nao pode ser sobrescrita pelo servidor
+      const pendS = new Set(outboxLer().filter(it => it.tipo === 'saida').map(it => it.clientId));
+      const locaisS = nfSaiGet(obraId).filter(x => pendS.has(x.id));
+      const mapaS = {};
+      r.saidas.forEach(s => { const x = nfSaidaDoServidor(s, obraId); mapaS[x.id] = x; });
+      locaisS.forEach(x => { mapaS[x.id] = x; });
+      nfSaiSet(obraId, Object.values(mapaS).sort((a, b) => (b.dataISO || '').localeCompare(a.dataISO || '')));
     }
     if (estado.tela === 'notas' && estado.obraId === obraId) render();
   } catch (e) { /* offline: fica com o que ja esta no aparelho */ }
@@ -1582,9 +1907,24 @@ function nfDemoCarregar(o) {
     if (n.status !== 'Cancelada' && n.status !== 'Recebida') nfIntegrarEstoque(o.id, n);
   });
   nfSet(o.id, d.notas);
+  // algumas saidas, para a aba abrir com saldo de verdade na apresentacao
+  const saldos = nfSaldos(o.id).filter(s => s.entradas > 0).slice(0, 4);
+  const frentes = o.frentes || [];
+  const diasAtras = d => { const x = new Date(hoje() + 'T00:00:00'); x.setDate(x.getDate() - d); return x.toISOString().slice(0, 10); };
+  nfSaiSet(o.id, saldos.map((s, i) => ({
+    id: 'sad' + i + '_' + o.id, obraId: o.id, materialId: s.id, descricao: s.descricao, un: s.un,
+    // unidade contavel nao sai pela metade: 3 aros, nao 3,42
+    qtd: (function (q) { return ['UN', 'PC', 'CX', 'SC', 'CJ', 'RL', 'BR', 'MIL', 'PAR'].indexOf(String(s.un).toUpperCase()) > -1 ? Math.max(1, Math.round(q)) : +q.toFixed(2); })(s.entradas * (0.3 + i * 0.15)),
+    dataISO: diasAtras(3 + i * 4),
+    capId: frentes.length ? frentes[i % frentes.length].id : null,
+    rua: (o.ruas || [])[i % Math.max(1, (o.ruas || []).length)] || '',
+    responsavel: ['Wallace', 'Guilherme', 'Leonardo'][i % 3], obs: 'Aplicado na frente de serviço',
+    usuario: ['Wallace', 'Guilherme', 'Leonardo'][i % 3], criadoEm: Date.now() - i * 86400000
+  })));
 }
 function nfDemoLimpar(o) {
   localStorage.removeItem(nfKey(o.id));
   localStorage.removeItem('gestor:nfmov:' + o.id);
+  localStorage.removeItem(nfSaiKey(o.id));
   localStorage.removeItem('gestor:pedidos:' + o.id);   // sobra da versao com pedido de compra
 }

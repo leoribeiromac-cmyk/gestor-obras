@@ -33,6 +33,10 @@ ctx.globalThis = ctx;
 vm.createContext(ctx);
 vm.runInContext(fonte, ctx, { filename: 'notas.js' });
 
+// const no topo do módulo fica no escopo do script, não no objeto do contexto:
+// para ler uma constante é preciso avaliar o nome dentro do próprio sandbox.
+const cte = nome => vm.runInContext(nome, ctx);
+
 console.log('🧪 Testes do módulo de Notas Fiscais…');
 
 // ------------------------------------------------------------------
@@ -187,7 +191,133 @@ assert.strictEqual(ctx.nfMovGet('obra-teste').length, 0, 'cancelar a nota remove
 console.log('  ✓ entrada no estoque: lote, saldo, rastreabilidade e sem duplicidade');
 
 // ------------------------------------------------------------------
-// 9. Divergências que a conferência precisa apontar
+// 9. Saída de estoque (consumo): saldo, valorização e saldo negativo
+// ------------------------------------------------------------------
+ctx.nfIntegrarEstoque('obra-teste', nota);   // 30 M3 de brita a R$ 118, 20 de areia a R$ 92
+const kBrita = ctx.nfNorm('BRITA 1 GRADUADA');
+const kAreia = ctx.nfNorm('AREIA MEDIA LAVADA');
+
+ctx.nfSaiSet('obra-teste', [
+  { id: 'sa1', materialId: kBrita, descricao: 'BRITA 1 GRADUADA', un: 'M3', qtd: 12,
+    dataISO: '2026-07-25', capId: 2, rua: 'Rua A', responsavel: 'Wallace', usuario: 'Wallace' }
+]);
+let sal = ctx.nfSaldos('obra-teste');
+let br = sal.find(x => x.id === kBrita);
+assert.strictEqual(br.entradas, 30, 'a entrada continua vindo da nota');
+assert.strictEqual(br.saidas, 12, 'a saída é somada separadamente');
+assert.strictEqual(br.saldo, 18, 'saldo = 30 entrou − 12 saiu');
+assert.strictEqual(br.unitMedio, 118, 'preço médio de entrada da brita');
+assert.strictEqual(br.valorSaldo, 18 * 118, 'valor em mão = saldo × preço médio');
+assert.strictEqual(ctx.nfSaldoDe('obra-teste', kBrita), 18, 'nfSaldoDe devolve o saldo de um material');
+
+// material sem nenhuma saída não é afetado
+const ar = sal.find(x => x.id === kAreia);
+assert.strictEqual(ar.saidas, 0, 'areia não teve saída');
+assert.strictEqual(ar.saldo, 20, 'saldo da areia intacto');
+
+// duas entradas com preços diferentes: o médio é PONDERADO pela quantidade
+ctx.nfIntegrarEstoque('obra-teste', {
+  id: 'nf2', numero: '18500', serie: '1', cnpj: '61304455000195', dataEntrada: '2026-08-02',
+  itens: [{ descricao: 'BRITA 1 GRADUADA', qtd: 10, un: 'M3', vUnit: 148, vTotal: 1480 }]
+});
+br = ctx.nfSaldos('obra-teste').find(x => x.id === kBrita);
+assert.strictEqual(br.entradas, 40, '30 + 10 = 40 entraram');
+assert.strictEqual(br.saldo, 28, 'saldo sobe com a nova entrada');
+// (30×118 + 10×148) / 40 = 125,50 — e não a média simples de 133
+assert.strictEqual(+br.unitMedio.toFixed(2), 125.50, 'médio ponderado, não média simples dos preços');
+assert.strictEqual(br.lotes.length, 2, 'as duas notas aparecem como lote');
+
+// saída maior que o saldo: o app avisa, mas o cálculo tem que refletir o negativo
+ctx.nfSaiSet('obra-teste', ctx.nfSaiGet('obra-teste').concat([
+  { id: 'sa2', materialId: kAreia, descricao: 'AREIA MEDIA LAVADA', un: 'M3', qtd: 25,
+    dataISO: '2026-08-05', capId: null, rua: '', responsavel: 'Guilherme', usuario: 'Guilherme' }
+]));
+const arNeg = ctx.nfSaldos('obra-teste').find(x => x.id === kAreia);
+assert.strictEqual(arNeg.saldo, -5, 'saiu 25 de 20: saldo fica negativo, não some');
+assert.ok(arNeg.valorSaldo < 0, 'valor em mão acompanha o saldo negativo');
+
+// apagar a saída devolve o saldo
+ctx.nfSaiSet('obra-teste', ctx.nfSaiGet('obra-teste').filter(x => x.id !== 'sa2'));
+assert.strictEqual(ctx.nfSaldoDe('obra-teste', kAreia), 20, 'apagar a saída devolve o saldo');
+
+// a saída não é derivada da nota: recalcular a entrada não a apaga
+ctx.nfIntegrarEstoque('obra-teste', nota);
+assert.strictEqual(ctx.nfSaiGet('obra-teste').length, 1, 'reprocessar a nota não mexe nas saídas');
+assert.strictEqual(ctx.nfSaldoDe('obra-teste', kBrita), 28, 'saldo preservado');
+
+// ida e volta pelo servidor
+const doServ = ctx.nfSaidaDoServidor({
+  id: 'sa9', materialId: kBrita, descricao: 'BRITA 1 GRADUADA', un: 'M3', qtd: '7,5',
+  data: '2026-08-10', capid: '', rua: 'Rua B', responsavel: 'Leonardo', usuario: 'Leonardo', criadoem: '0'
+}, 'obra-teste');
+assert.strictEqual(doServ.qtd, 7.5, 'quantidade em vírgula vira número');
+assert.strictEqual(doServ.dataISO, '2026-08-10', 'data normalizada');
+assert.strictEqual(doServ.capId, null, 'frente vazia vira nulo, não string');
+assert.ok(doServ.criadoEm > 0, 'sem criadoEm o registro recebe a hora atual');
+console.log('  ✓ saída de estoque: saldo, médio ponderado, negativo e independência da nota');
+
+// ------------------------------------------------------------------
+// 10. Histórico de preço por material
+// ------------------------------------------------------------------
+ctx.nfSet('obra-teste', [
+  { id: 'p1', status: 'Conferida', dataEmissao: '2026-03-10', cnpj: '61304455000195',
+    razaoSocial: 'FORNECEDOR A', numero: '100',
+    itens: [{ descricao: 'VERGALHAO CA-50 10,0MM', qtd: 100, un: 'KG', vUnit: 8.00, vTotal: 800 }] },
+  { id: 'p2', status: 'Integrada ao estoque', dataEmissao: '2026-05-10', cnpj: '11222333000181',
+    razaoSocial: 'FORNECEDOR B', numero: '200',
+    itens: [{ descricao: 'VERGALHAO CA-50 10,0MM', qtd: 300, un: 'KG', vUnit: 10.00, vTotal: 3000 }] },
+  { id: 'p3', status: 'Conferida', dataEmissao: '2026-07-10', cnpj: '61304455000195',
+    razaoSocial: 'FORNECEDOR A', numero: '300',
+    itens: [
+      { descricao: 'VERGALHAO CA-50 10,0MM', qtd: 100, un: 'KG', vUnit: 9.00, vTotal: 900 },
+      { descricao: 'TELA SOLDADA Q-196', qtd: 50, un: 'M2', vUnit: 27.5, vTotal: 1375 },
+      // item sem preço unitário não entra no histórico
+      { descricao: 'ARAME QUEIMADO', qtd: 10, un: 'KG', vUnit: 0, vTotal: 0 }
+    ] },
+  // nota cancelada não conta em nada
+  { id: 'p4', status: 'Cancelada', dataEmissao: '2026-07-20', cnpj: '61304455000195',
+    razaoSocial: 'FORNECEDOR A', numero: '400',
+    itens: [{ descricao: 'VERGALHAO CA-50 10,0MM', qtd: 999, un: 'KG', vUnit: 99, vTotal: 98901 }] }
+]);
+
+const precos = ctx.nfPrecos('obra-teste');
+assert.strictEqual(precos.length, 2, 'só materiais com preço unitário: vergalhão e tela');
+assert.ok(!precos.some(m => /ARAME/.test(m.descricao)), 'item sem valor unitário fica fora');
+
+const verg = precos.find(m => /VERGALHAO/.test(m.descricao));
+assert.strictEqual(verg.n, 3, 'três compras do vergalhão (a cancelada não conta)');
+assert.strictEqual(verg.qtdTotal, 500, '100 + 300 + 100 kg');
+assert.strictEqual(verg.valorTotal, 4700, '800 + 3000 + 900');
+// (100×8 + 300×10 + 100×9) / 500 = 9,40 — a média simples dos preços daria 9,00
+assert.strictEqual(+verg.medio.toFixed(2), 9.40, 'médio ponderado pela quantidade');
+assert.strictEqual(verg.min, 8, 'menor preço praticado');
+assert.strictEqual(verg.max, 10, 'maior preço praticado');
+assert.strictEqual(verg.primeiro, 8, 'a primeira compra é a mais antiga, não a primeira da lista');
+assert.strictEqual(verg.ultimo, 9, 'último preço é o da nota mais recente');
+assert.strictEqual(verg.ultimaData, '2026-07-10', 'data da última compra');
+assert.strictEqual(+verg.variacao.toFixed(2), 12.50, 'de 8 para 9 = +12,5%');
+assert.strictEqual(verg.comparavel, true, 'com mais de uma compra dá para comparar');
+assert.strictEqual(verg.fornecedores.length, 2, 'dois fornecedores diferentes');
+assert.ok(verg.variacao >= cte('NF_PRECO_ALERTA'), 'a alta passa do limite de alerta');
+
+const tela = precos.find(m => /TELA/.test(m.descricao));
+assert.strictEqual(tela.n, 1, 'a tela foi comprada uma vez');
+assert.strictEqual(tela.comparavel, false, 'com uma compra só não existe variação');
+assert.strictEqual(tela.variacao, 0, 'variação zero, não NaN');
+assert.strictEqual(tela.medio, 27.5, 'médio de uma compra é o próprio preço');
+
+// ordenado pelo valor comprado: o vergalhão (R$ 4.700) vem antes da tela (R$ 1.375)
+assert.strictEqual(precos[0].descricao, 'VERGALHAO CA-50 10,0MM', 'ordena pelo valor comprado');
+
+const ex = ctx.nfPrecoExtremos(verg);
+assert.strictEqual(ex.barato.vUnit, 8, 'o mais barato é a compra de R$ 8,00');
+assert.strictEqual(ex.barato.fornecedor, 'FORNECEDOR A', 'traz de quem foi o menor preço');
+assert.strictEqual(ex.caro.vUnit, 10, 'o mais caro é a compra de R$ 10,00');
+assert.strictEqual(ctx.nfPrecoExtremos({ compras: [] }), null, 'material sem compra não quebra');
+console.log('  ✓ histórico de preço: médio ponderado, variação, extremos e limites');
+
+// ------------------------------------------------------------------
+// 11. Divergências que a conferência precisa apontar
 // ------------------------------------------------------------------
 assert.ok(/não fecham/.test(ctx.nfDivergencia({
   numero: '1', vTotal: 5000, vFrete: 0, itens: [{ vTotal: 3540 }]
@@ -201,7 +331,7 @@ console.log('  ✓ detecção de divergência na conferência');
 
 
 // ------------------------------------------------------------------
-// 10. CNPJ alfanumérico e chave com letras (Nota Técnica 2026.004)
+// 12. CNPJ alfanumérico e chave com letras (Nota Técnica 2026.004)
 //     O dígito verificador passou a converter cada caractere por
 //     ASCII menos 48. Para chave só de números tem de dar o MESMO
 //     resultado de antes — a regra nova engloba a antiga.

@@ -729,6 +729,76 @@ function frenteStats(o){
 }
 // -15 ou pior = crítico · -5 a -15 = atenção · +5 ou mais = adiantado
 function nivelDesvio(d){if(d==null)return'na';if(d<=-15)return'crit';if(d<=-5)return'aten';if(d>=5)return'bom';return'ok';}
+/* ---------- previsao de termino pelo ritmo realizado ---------- */
+/* Duas leituras de proposito. O ritmo desde o inicio conta os meses parados;
+   o ritmo recente mostra como a obra esta andando agora. Um numero so
+   esconderia obra que ficou parada e voltou a produzir — ou o contrario. */
+function ritmoDesdeInicio(real,idx){const meses=idx+1;return meses>0?(real[idx]||0)/meses:0;}
+function ritmoRecente(real,idx,n){
+  n=n||3;const de=Math.max(0,idx-n);const meses=idx-de;
+  return meses>0?((real[idx]||0)-(real[de]||0))/meses:0;
+}
+const PREV_MAX_MESES=240;   // ritmo quase zero projeta seculos: nao vale mostrar
+function previsaoTermino(o){
+  const pts=pontos(o);if(!pts.length)return null;
+  const real=curvaReal(o,pts),idx=mesIdxHoje(o);
+  const atual=real[idx]||0;
+  const idxFimContrato=(o.prazoMeses||pts.length)-1;
+  const base={atual:atual,mesesDecorridos:idx+1,idxHoje:idx,
+    fimContratoMes:addMeses(o.inicioISO,idxFimContrato).slice(0,7),
+    baseCurta:idx<2};
+  if(atual>=99.95)return Object.assign(base,{concluida:true});
+  const proj=r=>{
+    if(r<=0.0001)return null;
+    const meses=Math.ceil((100-atual)/r);
+    if(meses>PREV_MAX_MESES)return {ritmo:r,meses:null,mes:'',atraso:null,longe:true};
+    return {ritmo:r,meses:meses,mes:addMeses(o.inicioISO,idx+meses).slice(0,7),
+      atraso:idx+meses-idxFimContrato,longe:false};
+  };
+  const a=proj(ritmoDesdeInicio(real,idx)),b=proj(ritmoRecente(real,idx,3));
+  return Object.assign(base,{desdeInicio:a,recente:b,parada:!a&&!b});
+}
+/* cartao da previsao no Painel Executivo */
+function previsaoCard(o){
+  const p=previsaoTermino(o);if(!p)return '';
+  const mes=iso=>iso?mesLabel(iso+'-01'):'—';
+  if(p.concluida)return `<div class="card" style="margin-bottom:18px;border-left:3px solid var(--accent)">
+    <div class="card-b" style="padding:14px 20px;display:flex;align-items:center;gap:12px">
+    <span style="font-size:22px;color:var(--accent);display:flex">${ic('checkCirculo')}</span>
+    <div><div style="font-weight:700;font-size:14px">Avanço físico em 100%</div>
+    <div class="kpi-s">Prazo de contrato até ${mes(p.fimContratoMes)}.</div></div></div></div>`;
+  if(p.parada)return `<div class="card" style="margin-bottom:18px;border-left:3px solid var(--amarelo)">
+    <div class="card-b" style="padding:14px 20px;display:flex;align-items:center;gap:12px">
+    <span style="font-size:22px;color:var(--amarelo);display:flex">${ic('alerta')}</span>
+    <div><div style="font-weight:700;font-size:14px">Sem previsão de término</div>
+    <div class="kpi-s">Não há avanço lançado para calcular ritmo. Prazo de contrato até ${mes(p.fimContratoMes)}.</div></div></div></div>`;
+  const cor=at=>at==null?'var(--muted)':(at>0?'var(--vermelho)':(at<0?'var(--accent)':'var(--text-2)'));
+  const txtAtraso=at=>at==null?'fora de alcance':(at>0?at+' mês(es) depois do prazo':(at<0?Math.abs(at)+' mês(es) antes do prazo':'no prazo'));
+  const bloco=(rot,sub,x)=>{
+    if(!x)return `<div style="flex:1;min-width:200px;padding:10px 0">
+      <div class="kpi-l">${rot}</div><div class="kpi-v" style="font-size:20px">—</div>
+      <div class="kpi-s">${sub} · sem avanço no período</div></div>`;
+    if(x.longe)return `<div style="flex:1;min-width:200px;padding:10px 0">
+      <div class="kpi-l">${rot}</div><div class="kpi-v" style="font-size:20px">além de 20 anos</div>
+      <div class="kpi-s">${sub} · ritmo de ${fmtPct(x.ritmo)} por mês</div></div>`;
+    return `<div style="flex:1;min-width:200px;padding:10px 0">
+      <div class="kpi-l">${rot}</div>
+      <div class="kpi-v" style="font-size:20px">${mes(x.mes)}</div>
+      <div class="kpi-s">${sub} · ${fmtPct(x.ritmo)} por mês · faltam ${x.meses} mês(es)</div>
+      <div class="kpi-s" style="color:${cor(x.atraso)};font-weight:600">${txtAtraso(x.atraso)}</div></div>`;
+  };
+  return `<div class="card" style="margin-bottom:18px">
+    <div class="card-h"><div><div class="card-t"><span class="ic-tx">${ic('relogio')}</span>Previsão de término</div>
+      <div class="card-st">projeção pelo avanço já lançado · prazo de contrato até ${mes(p.fimContratoMes)}</div></div>
+      <span class="chip">${fmtPct(p.atual)} em ${p.mesesDecorridos} mês(es)</span></div>
+    <div class="card-b" style="padding:6px 20px 16px">
+      <div class="row" style="gap:22px">
+        ${bloco('No ritmo desde o início','conta os meses parados',p.desdeInicio)}
+        ${bloco('No ritmo dos últimos 3 meses','como a obra anda agora',p.recente)}
+      </div>
+      ${p.baseCurta?`<div class="kpi-s" style="margin-top:8px;color:var(--amarelo)">Obra com pouco tempo de lançamento — a projeção fica sensível a um mês fora do normal.</div>`:''}
+    </div></div>`;
+}
 function alertasCard(o){
   const fs=frenteStats(o).filter(f=>f.desvio!=null);
   if(!fs.length)return '';
@@ -973,6 +1043,7 @@ function viewExecutivo(o){
       <div class="kpi-s">${k.s}</div>${k.bar!=null?`<div class="bar"><i style="width:${clamp(k.bar).toFixed(1)}%"></i></div>`:''}</div>`).join('')}
   </div>
   ${alertasCard(o)}
+  ${previsaoCard(o)}
   <div class="grid g2" style="grid-template-columns:1.3fr 1fr;margin-bottom:18px">
     <div class="card"><div class="card-h"><div><div class="card-t">Curva S — Avanço físico</div>
       <div class="card-st">Previsto (cronograma) × Realizado (RDO) — % médio acumulado</div></div>
