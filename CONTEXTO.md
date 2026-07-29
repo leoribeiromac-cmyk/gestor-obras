@@ -57,7 +57,6 @@ gestor-obras/
 ├── projetos/               PDFs de projeto por rua
 ├── vendor/                 pdfjs, xlsx, gsap, lenis (vendorizados)
 ├── intro/                  Abertura cinematográfica (antes do login)
-├── tests/sCurve.test.js    ⚠ QUEBRADO desde `849e8e9` (pede js/domain/rdo.js, apagado)
 ├── tests/notas.test.js     Testes das Notas Fiscais (rodar: node tests/notas.test.js)
 ├── tests/nfe-xml.test.js   Testes do parser do XML oficial da NF-e
 └── .github/workflows/ci.yml
@@ -277,10 +276,14 @@ Confirmado em teste: `obterRDO` responde "Ação desconhecida". Consequências:
 
 **Ação:** republicar o Apps Script (seção 6).
 
-### 🟡 CSVs ainda públicos
-`CONFIG.csv` aponta para planilhas publicadas na web. Depois de republicar o backend e
-confirmar que `obterRDO` funciona, **despublicar os CSVs** no Google Sheets — hoje eles
-anulam parte do ganho da leitura privada.
+### ✅ CSVs públicos — resolvido (jul/26)
+As abas foram despublicadas no Google Sheets e o `CONFIG.csv` saiu do código, junto com
+o `parseCSV`/`fetchCSV`. A leitura hoje é só pelo backend, com login.
+
+> Ao tirar o CSV apareceu um risco escondido: o caminho de reserva seguia com lista
+> vazia quando o backend não conhecia `obterRDO`, e isso **apagaria do aparelho** tudo o
+> que já tinha sido lançado. Agora, se o backend estiver desatualizado, `carregarObra()`
+> mantém o que está no aparelho e avisa no console.
 
 ### 🟡 Fotos anteriores à correção
 Fotos tiradas antes do commit `b21f7bf` não têm a imagem cheia no aparelho. Saem em 320px
@@ -343,10 +346,18 @@ while((m=re.exec(h))){i++;try{new Function(m[1]);}catch(e){console.log('ERRO',i,
 console.log('ok',i)"
 ```
 
-Testes: `node tests/notas.test.js` (passa) e `node tests/sCurve.test.js` (**quebrado desde
-`849e8e9`** — pede `js/domain/rdo.js`, que foi apagado na limpeza dos módulos órfãos, e
-testa um modelo com R$ que o app não usa). O CI roda os dois, então está vermelho por
-causa do segundo. Decidir com o Leonardo: consertar ou apagar.
+Testes: `node tests/notas.test.js` e `node tests/nfe-xml.test.js`. O CI roda os dois e
+está **verde**.
+
+> O antigo `tests/sCurve.test.js` foi **apagado** (decisão do Leonardo, jul/26): estava
+> quebrado desde `849e8e9` — pedia `js/domain/rdo.js`, apagado na limpeza dos módulos
+> órfãos, e testava um modelo com R$ que o app não usa. Deixava o CI vermelho o tempo
+> todo, o que faz o aviso perder o sentido.
+>
+> **Fica pendente escrever teste para as contas de avanço físico** (`avancoServ`,
+> `mediaPct`, `curvaPrev`, `curvaReal`, `frenteStats`, `nivelDesvio`). Hoje não há
+> rede nenhuma nesses cálculos, que são o coração do sistema. Dá para fazer como o
+> `notas.test.js`: carregar o trecho do `index.html` num sandbox do Node.
 
 ### Ícones — `js/ui/icones.js`
 **Não use emoji na interface.** Cada aparelho desenha o emoji do seu jeito (o 🚜 do

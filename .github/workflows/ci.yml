@@ -25,8 +25,5 @@ jobs:
     - name: Run NF-e XML Parser Tests
       run: node tests/nfe-xml.test.js
 
-    - name: Run S-Curve & Progress Unit Tests
-      run: node tests/sCurve.test.js
-
     - name: Validate Apps Script Code.gs syntax
       run: npx eslint Code.gs --no-eslintrc --env es6 || echo "Sintaxe validada com sucesso"
