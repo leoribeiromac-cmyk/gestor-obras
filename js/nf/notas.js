@@ -21,11 +21,11 @@
 'use strict';
 
 /* ---------- constantes ---------- */
-const NF_STATUS = ['Recebida', 'Em análise', 'Conferida', 'Divergência encontrada', 'Integrada ao estoque', 'Integrada ao pedido de compra', 'Cancelada'];
+const NF_STATUS = ['Recebida', 'Em análise', 'Conferida', 'Divergência encontrada', 'Integrada ao estoque', 'Cancelada'];
 const NF_STATUS_COR = {
   'Recebida': 'pill-blu', 'Em análise': 'pill-ylw', 'Conferida': 'pill-grn',
   'Divergência encontrada': 'pill-red', 'Integrada ao estoque': 'pill-grn',
-  'Integrada ao pedido de compra': 'pill-grn', 'Cancelada': 'pill-red'
+  'Cancelada': 'pill-red'
 };
 const NF_UF = {11:'RO',12:'AC',13:'AM',14:'RR',15:'PA',16:'AP',17:'TO',21:'MA',22:'PI',23:'CE',24:'RN',25:'PB',26:'PE',27:'AL',28:'SE',29:'BA',31:'MG',32:'ES',33:'RJ',35:'SP',41:'PR',42:'SC',43:'RS',50:'MS',51:'MT',52:'GO',53:'DF'};
 const NF_UN = ['UN','PC','CX','SC','KG','TON','M','M2','M3','L','MIL','CJ','BR','RL','GL','PAR'];
@@ -34,12 +34,21 @@ const NF_PAGINA = 24;        // quantas notas a lista mostra por vez
 
 /* ---------- armazenamento local ---------- */
 function nfKey(obraId) { return 'gestor:nf:' + obraId; }
-function nfGet(obraId) { try { return JSON.parse(localStorage.getItem(nfKey(obraId)) || '[]'); } catch (e) { return []; } }
+function nfGet(obraId) {
+  try {
+    const arr = JSON.parse(localStorage.getItem(nfKey(obraId)) || '[]');
+    arr.forEach(nfMigrarStatus);
+    return arr;
+  } catch (e) { return []; }
+}
+/* nota gravada quando existia pedido de compra: o status vira Conferida */
+function nfMigrarStatus(n) {
+  if (n && n.status === 'Integrada ao pedido de compra') n.status = 'Conferida';
+  return n;
+}
 function nfSet(obraId, arr) { localStorage.setItem(nfKey(obraId), JSON.stringify(arr)); }
 function nfMovGet(obraId) { try { return JSON.parse(localStorage.getItem('gestor:nfmov:' + obraId) || '[]'); } catch (e) { return []; } }
 function nfMovSet(obraId, arr) { localStorage.setItem('gestor:nfmov:' + obraId, JSON.stringify(arr)); }
-function nfPedGet(obraId) { try { return JSON.parse(localStorage.getItem('gestor:pedidos:' + obraId) || '[]'); } catch (e) { return []; } }
-function nfPedSet(obraId, arr) { localStorage.setItem('gestor:pedidos:' + obraId, JSON.stringify(arr)); }
 function nfPorId(obraId, id) { return nfGet(obraId).find(n => n.id === id) || null; }
 
 /* imagem em resolucao cheia: mesmo IndexedDB das fotos do RDO */
@@ -285,7 +294,7 @@ function nfMesclarLeitura(base, daChave, daIA) {
         un: String(it.un || 'UN').trim().toUpperCase().slice(0, 6),
         vUnit: nfNum(it.vUnit),
         vTotal: nfNum(it.vTotal) || (nfNum(it.qtd) * nfNum(it.vUnit)),
-        materialId: '', pedidoItemId: ''
+        materialId: ''
       })).filter(it => it.descricao);
       conf.itens = c('itens');
     }
@@ -392,21 +401,6 @@ function nfFornecedorConhecido(obraId, cnpj) {
   if (d.length !== 14) return null;
   return nfFornecedores(obraId).find(f => f.cnpj === d) || null;
 }
-/* itens de pedido de compra compativeis com um item da nota */
-function nfSugerirPedidoItem(obraId, item, cnpj) {
-  const out = [];
-  nfPedGet(obraId).forEach(p => {
-    if (p.status === 'Cancelado') return;
-    if (cnpj && p.cnpj && nfDigitos(p.cnpj) !== nfDigitos(cnpj)) return;
-    (p.itens || []).forEach(pi => {
-      const falta = nfNum(pi.qtd) - nfNum(pi.qtdAtendida);
-      if (falta <= 0.0001) return;
-      const s = nfSim(item.descricao, pi.descricao);
-      if (s >= 0.62) out.push({ pedido: p, item: pi, score: s, falta: falta });
-    });
-  });
-  return out.sort((a, b) => b.score - a.score).slice(0, 4);
-}
 
 /* ============================================================
    ESTOQUE — entrada gerada a partir da nota confirmada
@@ -444,26 +438,6 @@ function nfSaldos(obraId) {
   });
   return Object.values(s).map(x => { x.saldo = x.entradas - x.saidas; return x; })
     .sort((a, b) => b.valor - a.valor);
-}
-/* baixa dos itens de pedido vinculados */
-function nfBaixarPedidos(obraId, nota) {
-  const peds = nfPedGet(obraId);
-  let baixados = 0;
-  (nota.itens || []).forEach(it => {
-    if (!it.pedidoItemId) return;
-    peds.forEach(p => (p.itens || []).forEach(pi => {
-      if (pi.id !== it.pedidoItemId) return;
-      const jaDesta = (pi.entregas || []).find(e => e.notaId === nota.id);
-      pi.entregas = (pi.entregas || []).filter(e => e.notaId !== nota.id);
-      pi.entregas.push({ notaId: nota.id, numero: nota.numero, qtd: nfNum(it.qtd), dataISO: nota.dataEntrada || nota.dataEmissao || hoje() });
-      pi.qtdAtendida = pi.entregas.reduce((a, e) => a + nfNum(e.qtd), 0);
-      if (!jaDesta) baixados++;
-      const completo = (p.itens || []).every(x => nfNum(x.qtdAtendida) >= nfNum(x.qtd) - 0.0001);
-      p.status = completo ? 'Atendido' : 'Parcial';
-    }));
-  });
-  if (baixados) nfPedSet(obraId, peds);
-  return baixados;
 }
 
 /* ============================================================
@@ -781,10 +755,6 @@ function nfAutoVincular(obraId, nota) {
       const s = nfSugerirMaterial(it.descricao, obraId);
       if (s.length && s[0].score >= 0.85 && (s.length === 1 || s[0].score - s[1].score > 0.12)) it.materialId = s[0].material.id;
     }
-    if (!it.pedidoItemId) {
-      const p = nfSugerirPedidoItem(obraId, it, nota.cnpj);
-      if (p.length && p[0].score >= 0.85 && (p.length === 1 || p[0].score - p[1].score > 0.12)) it.pedidoItemId = p[0].item.id;
-    }
   });
 }
 
@@ -955,8 +925,6 @@ function nfConferir() {
       <div class="field"><label class="fl">Observações</label><textarea id="nf_obs" rows="2" placeholder="Divergência, avaria, local de descarga…">${esc(n.obs)}</textarea></div>
       <label style="display:flex;gap:9px;align-items:flex-start;font-size:13.5px;margin-bottom:6px;cursor:pointer">
         <input type="checkbox" id="nf_estoque" style="width:auto;margin-top:3px" checked> <span>Dar entrada dos materiais no estoque ao salvar</span></label>
-      <label style="display:flex;gap:9px;align-items:flex-start;font-size:13.5px;margin-bottom:10px;cursor:pointer">
-        <input type="checkbox" id="nf_baixa" style="width:auto;margin-top:3px" checked> <span>Baixar os itens vinculados no pedido de compra</span></label>
     </div>
 
     <button class="btn btn-ghost btn-sm" id="nfBtnCampos" style="width:100%;justify-content:center;margin:4px 0 14px" onclick="nfAlternarCampos()">
@@ -1009,9 +977,7 @@ function nfRenderItens() {
   } else {
     box.innerHTML = itens.map((it, i) => {
       const sugM = it.materialId ? [] : nfSugerirMaterial(it.descricao, o.id);
-      const sugP = it.pedidoItemId ? [] : nfSugerirPedidoItem(o.id, it, _nfRascunho.cnpj);
       const mat = it.materialId ? nfMateriais(o.id).find(m => m.id === it.materialId) : null;
-      const ped = it.pedidoItemId ? nfPedItemPorId(o.id, it.pedidoItemId) : null;
       return `<div class="nf-item">
         <div class="row" style="gap:7px;margin-bottom:6px">
           <div class="field" style="margin:0;flex:3;min-width:150px"><input value="${esc(it.descricao)}" placeholder="Item (descrição do material)" oninput="nfItemCampo(${i},'descricao',this.value)"></div>
@@ -1021,20 +987,13 @@ function nfRenderItens() {
           <div class="field" style="margin:0;max-width:118px"><input class="num" inputmode="decimal" value="${it.vTotal ? fmtNum(it.vTotal) : ''}" placeholder="Valor do item" oninput="nfItemCampo(${i},'vTotal',this.value)"></div>
           <button class="btn btn-sm btn-ghost" onclick="nfDelItem(${i})" title="Remover">${ic('fechar')}</button></div>
         ${mat ? `<div class="nf-vinc">${ic('vinculo')} Material <b>${esc(mat.descricao)}</b> · ${mat.notas} nota(s) <button class="btn btn-sm btn-ghost" onclick="nfItemCampo(${i},'materialId','');nfRenderItens()">desvincular</button></div>` : ''}
-        ${ped ? `<div class="nf-vinc">${ic('pedido')} Pedido <b>${esc(ped.pedido.numero)}</b> · ${esc(ped.item.descricao)} (falta ${fmtQtd(nfNum(ped.item.qtd) - nfNum(ped.item.qtdAtendida))} ${esc(ped.item.un || '')}) <button class="btn btn-sm btn-ghost" onclick="nfItemCampo(${i},'pedidoItemId','');nfRenderItens()">desvincular</button></div>` : ''}
         ${sugM.length ? `<div class="nf-vinc">Material parecido: ${sugM.map(s => `<button class="chip nf-chip-sug" onclick="nfItemCampo(${i},'materialId','${esc(s.material.id).replace(/'/g, '')}');nfRenderItens()">${esc(s.material.descricao)} · ${Math.round(s.score * 100)}%</button>`).join(' ')}</div>` : ''}
-        ${sugP.length ? `<div class="nf-vinc">Pedido em aberto: ${sugP.map(s => `<button class="chip nf-chip-sug" onclick="nfItemCampo(${i},'pedidoItemId','${esc(s.item.id)}');nfRenderItens()">${esc(s.pedido.numero)} · ${esc(s.item.descricao)}</button>`).join(' ')}</div>` : ''}
       </div>`;
     }).join('');
   }
   const t = (itens).reduce((a, it) => a + nfNum(it.vTotal), 0);
   const tt = el('nfItensTot');
   if (tt) tt.innerHTML = itens.length ? `Soma dos itens: <b class="mono">${fmtBRL(t)}</b>` : '';
-}
-function nfPedItemPorId(obraId, itemId) {
-  let r = null;
-  nfPedGet(obraId).forEach(p => (p.itens || []).forEach(i => { if (i.id === itemId) r = { pedido: p, item: i }; }));
-  return r;
 }
 function nfItemCampo(i, campo, valor) {
   const it = (_nfRascunho.itens || [])[i]; if (!it) return;
@@ -1051,7 +1010,7 @@ function nfItemCampo(i, campo, valor) {
 }
 function nfAddItem() {
   _nfRascunho.itens = _nfRascunho.itens || [];
-  _nfRascunho.itens.push({ codigo: '', descricao: '', qtd: 0, un: 'UN', vUnit: 0, vTotal: 0, materialId: '', pedidoItemId: '' });
+  _nfRascunho.itens.push({ codigo: '', descricao: '', qtd: 0, un: 'UN', vUnit: 0, vTotal: 0, materialId: '' });
   nfRenderItens();
 }
 function nfDelItem(i) { _nfRascunho.itens.splice(i, 1); nfRenderItens(); }
@@ -1125,7 +1084,6 @@ function nfSalvarForm() {
   if (!n.numero && !n.chave && !n.vTotal) { toast('Informe ao menos o número ou o valor da nota'); return; }
 
   const paraEstoque = el('nf_estoque') && el('nf_estoque').checked;
-  const paraPedido = el('nf_baixa') && el('nf_baixa').checked;
 
   // item digitado à mão também entra na associação automática
   nfAutoVincular(o.id, n);
@@ -1141,10 +1099,6 @@ function nfSalvarForm() {
     const q = nfIntegrarEstoque(o.id, n);
     if (q) { msg = q + ' material(is) no estoque'; if (n.status === 'Recebida' || n.status === 'Conferida') n.status = 'Integrada ao estoque'; nfRegistrar(n, 'entrada no estoque', q + ' item(ns)'); }
   } else if (!paraEstoque) nfDesfazerEstoque(o.id, n.id);
-  if (paraPedido) {
-    const b = nfBaixarPedidos(o.id, n);
-    if (b) { msg += ' · ' + b + ' item(ns) baixado(s) no pedido'; if (n.status === 'Recebida') n.status = 'Integrada ao pedido de compra'; nfRegistrar(n, 'baixa em pedido', b + ' item(ns)'); }
-  }
   nfSet(o.id, nfGet(o.id).map(x => x.id === n.id ? n : x));
 
   // imagem em resolucao cheia: IndexedDB local + Drive em segundo plano
@@ -1223,13 +1177,14 @@ function nfVerHistorico(id) {
    TELAS
    ============================================================ */
 function viewNotas(o) {
-  const abas = [['notas', 'notas', 'Notas'], ['estoque', 'caixa', 'Estoque'], ['pedidos', 'pedido', 'Pedidos'], ['painel', 'grafico', 'Painel']];
-  const tab = estado.nfTab || 'notas';
+  const abas = [['notas', 'notas', 'Notas'], ['estoque', 'caixa', 'Estoque'], ['painel', 'grafico', 'Painel']];
+  // 'pedidos' era uma aba: quem tinha ela guardada no aparelho cai na lista de notas
+  const tab = abas.some(a => a[0] === estado.nfTab) ? estado.nfTab : 'notas';
   const topo = `<div class="row nf-topo" style="align-items:center;margin-bottom:16px;gap:9px">
     <div style="display:flex;gap:7px;flex-wrap:wrap">${abas.map(a => `<button class="chip ${tab === a[0] ? 'on' : ''}" onclick="nfTab('${a[0]}')">${ic(a[1])} ${a[2]}</button>`).join('')}</div>
     <button class="btn btn-ghost btn-sm nf-teste" style="margin-left:auto" onclick="nfTestarLeitura()" title="Conferir se a leitura automática está no ar">${ic('lupa')} Testar leitura</button>
     ${pode('lancarNota')?`<button class="btn btn-pri nf-nova" onclick="nfAbrirNova()">${ic('camera')} Nova nota fiscal</button>`:''}</div>`;
-  const corpo = tab === 'estoque' ? nfViewEstoque(o) : tab === 'pedidos' ? nfViewPedidos(o) : tab === 'painel' ? nfViewPainel(o) : nfViewLista(o);
+  const corpo = tab === 'estoque' ? nfViewEstoque(o) : tab === 'painel' ? nfViewPainel(o) : nfViewLista(o);
   return topo + corpo;
 }
 function nfTab(t) { estado.nfTab = t; estado.nfLimite = NF_PAGINA; render(); }
@@ -1376,99 +1331,6 @@ function nfViewEstoque(o) {
   return kpis + tab + rastro;
 }
 
-/* ---------- pedidos de compra ---------- */
-function nfViewPedidos(o) {
-  const peds = nfPedGet(o.id).slice().sort((a, b) => (b.dataISO || '').localeCompare(a.dataISO || ''));
-  const topo = `<div class="row" style="align-items:center;margin-bottom:16px">
-    <div class="kpi-s" style="flex:1;min-width:220px">Cadastre o pedido de compra e o sistema baixa os itens sozinho quando a nota daquele fornecedor chegar.</div>
-    ${pode('pedido')?`<button class="btn" onclick="nfPedidoModal()">+ Pedido de compra</button>`:''}</div>`;
-  if (!peds.length) return topo + `<div class="empty">${ic('pedido')}Nenhum pedido de compra cadastrado.</div>`;
-  const cards = peds.map(p => {
-    const itens = p.itens || [];
-    const at = itens.reduce((a, i) => a + nfNum(i.qtdAtendida), 0), tt = itens.reduce((a, i) => a + nfNum(i.qtd), 0);
-    const pct = tt ? Math.min(100, at / tt * 100) : 0;
-    return `<div class="card" style="margin-bottom:14px"><div class="card-h">
-      <div><div class="card-t">Pedido ${esc(p.numero)}</div>
-        <div class="card-st">${esc(p.fornecedor || nfCNPJfmt(p.cnpj) || '—')} · ${nfDataBR(p.dataISO)}</div></div>
-      <div style="display:flex;gap:8px;align-items:center">
-        <span class="pill ${p.status === 'Atendido' ? 'pill-grn' : p.status === 'Parcial' ? 'pill-ylw' : 'pill-blu'}">${esc(p.status || 'Em aberto')}</span>
-        <button class="btn btn-sm btn-ghost" onclick="nfPedidoExcluir('${p.id}')" title="Excluir">${ic('fechar')}</button></div></div>
-      <div class="card-b" style="padding:14px 20px">
-        <div class="bar" style="margin:0 0 12px"><i style="width:${pct.toFixed(1)}%"></i></div>
-        <table class="t" style="font-size:12.5px"><thead><tr><th>Item</th><th class="num">Pedido</th><th class="num">Entregue</th><th class="num">Falta</th></tr></thead>
-        <tbody>${itens.map(i => {
-      const falta = nfNum(i.qtd) - nfNum(i.qtdAtendida);
-      return `<tr><td>${esc(i.descricao)}</td><td class="num">${fmtQtd(i.qtd)} ${esc(i.un || '')}</td>
-        <td class="num">${fmtQtd(i.qtdAtendida)}</td>
-        <td class="num" style="color:${falta > 0.0001 ? 'var(--amarelo)' : 'var(--accent)'};font-weight:700">${falta > 0.0001 ? fmtQtd(falta) : ic('check')}</td></tr>`;
-    }).join('')}</tbody></table></div></div>`;
-  }).join('');
-  return topo + cards;
-}
-function nfPedidoModal() {
-  const o = obra();
-  if (!pode('pedido')) { toast('Seu acesso não cadastra pedido de compra'); return; }
-  const forn = nfFornecedores(o.id);
-  abrirModal('Novo pedido de compra', `
-    <div class="row"><div class="field"><label class="fl">Número do pedido</label><input id="pd_numero" placeholder="ex.: PC-2026-014"></div>
-      <div class="field"><label class="fl">Data</label><input type="date" id="pd_data" value="${hoje()}"></div></div>
-    <div class="field"><label class="fl">Fornecedor</label><input id="pd_forn" list="pdFornLista" placeholder="Razão social">
-      <datalist id="pdFornLista">${forn.map(f => `<option value="${esc(f.nome)}">`).join('')}</datalist></div>
-    <div class="field"><label class="fl">CNPJ (opcional)</label><input id="pd_cnpj" class="mono" inputmode="numeric" placeholder="só números"></div>
-    <div class="nf-sep" style="display:flex;justify-content:space-between;align-items:center"><span>Itens</span>
-      <button class="btn btn-sm" onclick="nfPedAddItem()">+ Item</button></div>
-    <div id="pdItens"></div>
-    <div style="display:flex;gap:9px;margin-top:14px">
-      <button class="btn" style="flex:1;justify-content:center" onclick="fecharModal()">Cancelar</button>
-      <button class="btn btn-pri" style="flex:2;justify-content:center" onclick="nfPedidoSalvar()">Salvar pedido</button></div>`, 620);
-  nfPedAddItem();
-}
-function nfPedAddItem() {
-  const box = el('pdItens'); if (!box) return;
-  const row = document.createElement('div');
-  row.className = 'pd-row row';
-  row.style.cssText = 'gap:6px;margin-bottom:6px;align-items:flex-end';
-  row.innerHTML = `<div class="field" style="margin:0;flex:3;min-width:150px"><input class="pd-desc" placeholder="Descrição do material"></div>
-    <div class="field" style="margin:0;max-width:88px"><input class="pd-qtd num" inputmode="decimal" placeholder="Qtd"></div>
-    <div class="field" style="margin:0;max-width:80px"><input class="pd-un" placeholder="Un" style="text-transform:uppercase"></div>
-    <button class="btn btn-sm btn-ghost" onclick="this.closest('.pd-row').remove()" title="Remover">${ic('fechar')}</button>`;
-  box.appendChild(row);
-}
-function nfPedidoSalvar() {
-  const o = obra();
-  const num = (el('pd_numero') || {}).value || '';
-  if (!num.trim()) { toast('Informe o número do pedido'); return; }
-  const itens = [...document.querySelectorAll('#pdItens .pd-row')].map(r => ({
-    id: 'pi' + uid(),
-    descricao: r.querySelector('.pd-desc').value.trim(),
-    qtd: nfNum(r.querySelector('.pd-qtd').value),
-    un: (r.querySelector('.pd-un').value || 'UN').toUpperCase(),
-    qtdAtendida: 0, entregas: []
-  })).filter(i => i.descricao && i.qtd);
-  if (!itens.length) { toast('Adicione ao menos um item'); return; }
-  const p = {
-    id: 'pd' + uid(), obraId: o.id, numero: num.trim(),
-    dataISO: (el('pd_data') || {}).value || hoje(),
-    fornecedor: (el('pd_forn') || {}).value || '',
-    cnpj: nfDigitos((el('pd_cnpj') || {}).value || ''),
-    itens: itens, status: 'Em aberto',
-    usuario: usuarioAtual(), criadoEm: Date.now()
-  };
-  const arr = nfPedGet(o.id); arr.unshift(p); nfPedSet(o.id, arr);
-  if (BACKEND && !isDemo()) {
-    outboxAdd({ id: 'ob' + uid(), obra: o.id, tipo: 'pedido', params: { action: 'pedidoSalvar', obra: o.id, id: p.id, numero: p.numero, data: p.dataISO, fornecedor: p.fornecedor, cnpj: p.cnpj, itens: JSON.stringify(p.itens), status: p.status, usuario: p.usuario } });
-    outboxFlush();
-  }
-  fecharModal(); toast('Pedido cadastrado'); render();
-}
-function nfPedidoExcluir(id) {
-  const o = obra();
-  if (!confirm('Excluir este pedido de compra?')) return;
-  nfPedSet(o.id, nfPedGet(o.id).filter(p => p.id !== id));
-  if (BACKEND && !isDemo()) { outboxAdd({ id: 'ob' + uid(), obra: o.id, tipo: 'pedidoDel', params: { action: 'pedidoExcluir', obra: o.id, id: id } }); outboxFlush(); }
-  toast('Pedido excluído'); render();
-}
-
 /* ---------- painel ---------- */
 function nfViewPainel(o) {
   const notas = nfGet(o.id).filter(n => n.status !== 'Cancelada');
@@ -1564,7 +1426,6 @@ async function nfCarregar(obraId) {
       naoConf.forEach(l => { mapa[l.clientId || l.id] = l; });
       nfSet(obraId, Object.values(mapa).sort((a, b) => (b.dataEntrada || '').localeCompare(a.dataEntrada || '')));
     }
-    if (r && r.ok && Array.isArray(r.pedidos)) nfPedSet(obraId, r.pedidos.map(nfPedidoDoServidor));
     if (estado.tela === 'notas' && estado.obraId === obraId) render();
   } catch (e) { /* offline: fica com o que ja esta no aparelho */ }
   finally { _nfCarregando = false; }
@@ -1583,17 +1444,13 @@ function nfDoServidor(s, obraId, locais) {
     vProd: nfNum(s.vProd), vFrete: nfNum(s.vFrete), vTotal: nfNum(s.vTotal),
     vBaseICMS: nfNum(s.vBaseICMS), vICMS: nfNum(s.vICMS),
     itens: itens, obs: s.obs || '', responsavel: s.responsavel || '',
-    status: NF_STATUS.indexOf(s.status) > -1 ? s.status : 'Recebida',
+    status: s.status === 'Integrada ao pedido de compra' ? 'Conferida' : (NF_STATUS.indexOf(s.status) > -1 ? s.status : 'Recebida'),
     drive: s.driveId ? { fileId: s.driveId, link: s.driveLink || '' } : null,
     thumb: (local && local.thumb) || '',
     leitura: leitura, leituraConf: (local && local.leituraConf) || {},
     historico: hist, usuario: s.usuario || '',
     criadoEm: nfNum(s.criadoEm) || Date.now(), atualizadoEm: Date.now()
   };
-}
-function nfPedidoDoServidor(p) {
-  let itens = []; try { itens = JSON.parse(p.itens || '[]'); } catch (e) { itens = []; }
-  return { id: p.id, obraId: p.obra, numero: p.numero, dataISO: nfISO(p.data), fornecedor: p.fornecedor || '', cnpj: nfDigitos(p.cnpj), itens: itens, status: p.status || 'Em aberto', usuario: p.usuario || '', criadoEm: nfNum(p.criadoEm) || Date.now() };
 }
 
 /* quantas notas a obra tem — usado no badge da navegação */
@@ -1675,7 +1532,7 @@ function _nfDemoSeed(o) {
   // no futuro entrega na hora que os dados sao ficticios
   const base = hoje();
   const notas = [];
-  const status = ['Integrada ao estoque', 'Conferida', 'Integrada ao estoque', 'Em análise', 'Recebida', 'Divergência encontrada', 'Integrada ao estoque', 'Conferida', 'Integrada ao pedido de compra'];
+  const status = ['Integrada ao estoque', 'Conferida', 'Integrada ao estoque', 'Em análise', 'Recebida', 'Divergência encontrada', 'Integrada ao estoque', 'Conferida', 'Integrada ao estoque'];
   for (let i = 0; i < 9; i++) {
     const f = forn[i % forn.length];
     const dia = isoAdd(base, -(6 + i * 11 + Math.floor(rnd() * 6)));
@@ -1687,7 +1544,7 @@ function _nfDemoSeed(o) {
       const c = meus[(k + i) % meus.length];
       const q = +(c[2] === 'KG' ? 300 + rnd() * 900 : 8 + rnd() * 40).toFixed(2);
       const vu = +(c[3] * (0.94 + rnd() * 0.12)).toFixed(2);
-      itens.push({ codigo: 'P' + (100 + k + i * 3), descricao: c[1], qtd: q, un: c[2], vUnit: vu, vTotal: +(q * vu).toFixed(2), materialId: '', pedidoItemId: '' });
+      itens.push({ codigo: 'P' + (100 + k + i * 3), descricao: c[1], qtd: q, un: c[2], vUnit: vu, vTotal: +(q * vu).toFixed(2), materialId: '' });
     }
     const vProd = +itens.reduce((a, it) => a + it.vTotal, 0).toFixed(2);
     const vFrete = +(vProd * 0.025).toFixed(2);
@@ -1711,40 +1568,23 @@ function _nfDemoSeed(o) {
       usuario: ['Wallace', 'Guilherme', 'Leonardo'][i % 3], criadoEm: Date.now() - i * 86400000, atualizadoEm: Date.now() - i * 86400000
     });
   }
-  // pedidos de compra: um atendido em parte pelas notas acima
-  const pedidos = [
-    {
-      id: 'pdd1_' + o.id, obraId: o.id, numero: 'PC-2026-011', dataISO: isoAdd(base, -70),
-      fornecedor: forn[1].nome, cnpj: forn[1].cnpj, status: 'Parcial', usuario: 'Leonardo', criadoEm: Date.now(),
-      itens: [
-        { id: 'pid1_' + o.id, descricao: 'TUBO DE CONCRETO PA-1 DN 400MM', qtd: 120, un: 'M', qtdAtendida: 0, entregas: [] },
-        { id: 'pid2_' + o.id, descricao: 'ARO E TAMPA DE FERRO FUNDIDO D400', qtd: 18, un: 'UN', qtdAtendida: 0, entregas: [] }
-      ]
-    },
-    {
-      id: 'pdd2_' + o.id, obraId: o.id, numero: 'PC-2026-019', dataISO: isoAdd(base, -20),
-      fornecedor: forn[3].nome, cnpj: forn[3].cnpj, status: 'Em aberto', usuario: 'Leonardo', criadoEm: Date.now(),
-      itens: [{ id: 'pid3_' + o.id, descricao: 'VERGALHAO CA-50 10,0MM', qtd: 2500, un: 'KG', qtdAtendida: 0, entregas: [] }]
-    }
-  ];
-  return { notas: notas, pedidos: pedidos };
+  return { notas: notas };
 }
-/* grava a demo das notas e ja gera estoque e baixa de pedido, para as
-   abas Estoque, Pedidos e Painel abrirem com conteudo na apresentacao */
+
+/* grava a demo das notas e ja gera o estoque, para as abas Estoque e
+   Painel abrirem com conteudo na apresentacao */
 function nfDemoCarregar(o) {
   const d = _nfDemoSeed(o);
   nfSet(o.id, d.notas);
-  nfPedSet(o.id, d.pedidos);
   nfMovSet(o.id, []);
   d.notas.forEach(n => {
     nfAutoVincular(o.id, n);
     if (n.status !== 'Cancelada' && n.status !== 'Recebida') nfIntegrarEstoque(o.id, n);
-    nfBaixarPedidos(o.id, n);
   });
   nfSet(o.id, d.notas);
 }
 function nfDemoLimpar(o) {
   localStorage.removeItem(nfKey(o.id));
   localStorage.removeItem('gestor:nfmov:' + o.id);
-  localStorage.removeItem('gestor:pedidos:' + o.id);
+  localStorage.removeItem('gestor:pedidos:' + o.id);   // sobra da versao com pedido de compra
 }

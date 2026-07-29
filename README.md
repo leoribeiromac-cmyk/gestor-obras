@@ -21,7 +21,7 @@ Ata 079/SMSUB/COGEL).
 ```
 gestor-obras/
   index.html            App completo (telas + lógica)
-  js/nf/notas.js        Módulo de Notas Fiscais (DANFE): leitura, estoque, pedidos, painel
+  js/nf/notas.js        Módulo de Notas Fiscais (DANFE): leitura, estoque, painel
   dados/
     _index.js           Lista/ordem das obras exibidas
     ruas-de-terra.js    Dados da obra 119 (identidade + frentes + serviços + cronograma)
@@ -192,9 +192,7 @@ suporte o app avisa e segue pela leitura da imagem ou pela digitação da chave.
   quando a descrição bate (e **não** confunde bitolas — "DN 400" não casa com "DN 600").
 - **Estoque**: ao salvar, gera a entrada com **lote** (`NF <número>/<série>`), atualiza
   saldo e mantém o caminho de volta até a nota que originou cada movimento.
-- **Pedido de compra**: cadastre o pedido e, quando a nota chegar, os itens são
-  **baixados sozinhos**; o pedido vira Parcial ou Atendido. Reenviar a mesma nota
-  não baixa em dobro.
+  Reenviar a mesma nota **não** dá entrada em dobro.
 - **Divergências**: aponta itens + frete que não fecham com o total, CNPJ inválido,
   chave inválida e nota sem número.
 - **Painel**: valor recebido, notas por mês, principais fornecedores, materiais mais
@@ -204,7 +202,7 @@ suporte o app avisa e segue pela leitura da imagem ou pela digitação da chave.
 
 ### Status
 `Recebida → Em análise → Conferida → Divergência encontrada → Integrada ao estoque →
-Integrada ao pedido de compra → Cancelada`
+Cancelada`
 
 ### Sem backend
 Funciona igual, só que as notas ficam **no aparelho** (como o RDO) e a imagem não
@@ -221,7 +219,7 @@ Cada pessoa entra com o seu usuário e vê só o que o perfil dela permite:
 | Perfil | O que faz |
 |---|---|
 | **Campo** | Lança serviço, diário, notas fiscais e fotos. Aponta equipamento |
-| **Administrativo** | Suprimentos e escritório: notas, estoque, pedidos, equipamentos, relatórios |
+| **Administrativo** | Suprimentos e escritório: notas, estoque, equipamentos, relatórios |
 | **Engenharia** | Tudo da obra — lança, confere, analisa e exporta |
 | **Diretoria** | Só consulta: painel, medição, histórico, notas, projetos |
 | **Administrador** | Tudo, e é o único que apaga registro dos outros |

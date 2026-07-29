@@ -25,15 +25,13 @@ var ABA_LOCADORA   = 'Locadoras';
 var ABA_APONT      = 'ApontEquip';
 var ABA_AUDITORIA  = 'Auditoria';
 var ABA_NF         = 'NotasFiscais';
-var ABA_PEDIDO     = 'Pedidos';
 
 var HEADERS = {
   'Equipamentos': ['nome','tipo','vinculo','locadora','obra','ativo'],
   'Locadoras':    ['nome','observacoes','obra'],
   'ApontEquip':   ['carimbo','obra','data','turno','equipamento','operador','inicio','fim','horas','paradas','horimIni','horimFim','combustivel','situacao','observacoes','assinatura','clientId'],
   'Auditoria':    ['carimbo','usuario','perfil','acao','obra','registroId','detalhesAnteriores','detalhesNovos'],
-  'NotasFiscais': ['id','clientId','obra','numero','serie','chave','dataEmissao','dataEntrada','cnpj','razaoSocial','nomeFantasia','municipio','uf','vProd','vFrete','vTotal','vBaseICMS','vICMS','itens','obs','responsavel','status','driveId','driveLink','leitura','historico','usuario','criadoEm','atualizadoEm'],
-  'Pedidos':      ['id','obra','numero','data','fornecedor','cnpj','itens','status','usuario','criadoEm']
+  'NotasFiscais': ['id','clientId','obra','numero','serie','chave','dataEmissao','dataEntrada','cnpj','razaoSocial','nomeFantasia','municipio','uf','vProd','vFrete','vTotal','vBaseICMS','vICMS','itens','obs','responsavel','status','driveId','driveLink','leitura','historico','usuario','criadoEm','atualizadoEm']
 };
 
 function doGet(e)  { return rotear(e); }
@@ -49,7 +47,7 @@ function rotear(e) {
       'addDiario', 'updateDiario', 'deleteDiario',
       'equipListar', 'equipCadastrar', 'equipDesativar', 'locadoraCadastrar', 'equipApontar', 'equipApagar', 'equipApontamentos',
       'obterFoto',
-      'nfListar', 'nfSalvar', 'nfExcluir', 'nfImagem', 'nfLerIA', 'nfDiag', 'nfConsultarChave', 'pedidoSalvar', 'pedidoExcluir',
+      'nfListar', 'nfSalvar', 'nfExcluir', 'nfImagem', 'nfLerIA', 'nfDiag', 'nfConsultarChave',
       'usuariosListar', 'usuarioSalvar', 'usuarioExcluir'
     ];
     if (PROTEGIDAS.indexOf(action) !== -1) {
@@ -83,8 +81,6 @@ function rotear(e) {
       case 'nfLerIA':           resp = nfLerIA(p); break;
       case 'nfDiag':            resp = nfDiag(); break;
       case 'nfConsultarChave':  resp = nfConsultarChave(p); break;
-      case 'pedidoSalvar':      resp = pedidoSalvar(p); break;
-      case 'pedidoExcluir':     resp = pedidoExcluir(p.obra, p.id, p.token); break;
       case 'usuariosListar':    resp = usuariosListar(p.token); break;
       case 'usuarioSalvar':     resp = usuarioSalvar(p); break;
       case 'usuarioExcluir':    resp = usuarioExcluir(p); break;
@@ -686,11 +682,7 @@ function nfListar(obra) {
     n.dataEntrada = normData(n.dataEntrada);
     return n;
   });
-  var pedidos = linhasObj(ABA_PEDIDO, obra).map(function (p) {
-    p.data = normData(p.data);
-    return p;
-  });
-  return { ok: true, notas: notas, pedidos: pedidos };
+  return { ok: true, notas: notas };
 }
 
 // upsert pelo clientId — reenviar a mesma nota nunca duplica a linha
@@ -932,52 +924,6 @@ function nfLerIA(p) {
     confianca: out.confianca || {},
     confiancaGeral: typeof out.confiancaGeral === 'number' ? out.confiancaGeral : 0.6
   };
-}
-
-// -------------------- PEDIDOS DE COMPRA --------------------
-function pedidoSalvar(p) {
-  var a = getOrCreate(ABA_PEDIDO);
-  var cab = cabecalho(a);
-  var dados = a.getDataRange().getValues();
-  var iId = idxCol(cab, 'id');
-  var reg = {
-    id: p.id || gerarId(new Date(), 'pd'),
-    obra: p.obra || '',
-    numero: p.numero || '',
-    data: normData(p.data),
-    fornecedor: p.fornecedor || '',
-    cnpj: "'" + String(p.cnpj || ''),
-    itens: p.itens || '[]',
-    status: p.status || 'Em aberto',
-    usuario: p.usuario || usuarioDoToken(p.token) || '',
-    criadoem: p.criadoem || Date.now()
-  };
-  var linha = cab.map(function (nc) { return reg.hasOwnProperty(nc) ? reg[nc] : ''; });
-  var achou = -1;
-  if (iId !== -1) {
-    for (var i = 1; i < dados.length; i++) {
-      if (String(dados[i][iId]).trim() === String(reg.id).trim()) { achou = i; break; }
-    }
-  }
-  if (achou > -1) a.getRange(achou + 1, 1, 1, cab.length).setValues([linha]);
-  else a.getRange(a.getLastRow() + 1, 1, 1, cab.length).setValues([linha]);
-  registrarAuditoria(reg.usuario, 'app', achou > -1 ? 'pedidoAlterar' : 'pedidoCadastrar', reg.obra, reg.id, '', 'Pedido ' + reg.numero);
-  return { ok: true, id: reg.id };
-}
-
-function pedidoExcluir(obra, id, token) {
-  var a = getOrCreate(ABA_PEDIDO);
-  var dados = a.getDataRange().getValues();
-  var cab = dados[0].map(function (h) { return String(h).trim().toLowerCase(); });
-  var iId = idxCol(cab, 'id');
-  for (var i = dados.length - 1; i >= 1; i--) {
-    if (iId !== -1 && String(dados[i][iId]).trim() === String(id).trim()) {
-      a.deleteRow(i + 1);
-      registrarAuditoria(usuarioDoToken(token), 'app', 'pedidoExcluir', obra, id, '', '');
-      return { ok: true, removido: true };
-    }
-  }
-  return { ok: true, removido: false };
 }
 
 // Chamada ao Gemini isolada: trata a falta de autorizacao do Apps Script para

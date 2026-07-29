@@ -187,30 +187,7 @@ assert.strictEqual(ctx.nfMovGet('obra-teste').length, 0, 'cancelar a nota remove
 console.log('  ✓ entrada no estoque: lote, saldo, rastreabilidade e sem duplicidade');
 
 // ------------------------------------------------------------------
-// 9. Baixa de pedido de compra
-// ------------------------------------------------------------------
-ctx.nfPedSet('obra-teste', [{
-  id: 'pd1', numero: 'PC-2026-011', cnpj: '61304455000195', status: 'Em aberto',
-  itens: [{ id: 'pi1', descricao: 'BRITA 1 GRADUADA', qtd: 100, un: 'M3', qtdAtendida: 0, entregas: [] }]
-}]);
-const comVinculo = JSON.parse(JSON.stringify(nota));
-comVinculo.itens[0].pedidoItemId = 'pi1';
-assert.strictEqual(ctx.nfBaixarPedidos('obra-teste', comVinculo), 1, 'um item baixado');
-let ped = ctx.nfPedGet('obra-teste')[0];
-assert.strictEqual(ped.itens[0].qtdAtendida, 30, 'quantidade entregue registrada');
-assert.strictEqual(ped.status, 'Parcial', 'pedido fica parcial');
-
-ctx.nfBaixarPedidos('obra-teste', comVinculo);   // mesma nota de novo
-ped = ctx.nfPedGet('obra-teste')[0];
-assert.strictEqual(ped.itens[0].qtdAtendida, 30, 'reenviar a nota não baixa em dobro');
-
-// sugestão de vínculo pelo texto do item
-const sug = ctx.nfSugerirPedidoItem('obra-teste', { descricao: 'BRITA 1 GRADUADA' }, '61304455000195');
-assert.ok(sug.length && sug[0].item.id === 'pi1', 'sugere o item de pedido compatível');
-console.log('  ✓ baixa de pedido de compra, sem duplicar, com sugestão automática');
-
-// ------------------------------------------------------------------
-// 10. Divergências que a conferência precisa apontar
+// 9. Divergências que a conferência precisa apontar
 // ------------------------------------------------------------------
 assert.ok(/não fecham/.test(ctx.nfDivergencia({
   numero: '1', vTotal: 5000, vFrete: 0, itens: [{ vTotal: 3540 }]
@@ -224,7 +201,7 @@ console.log('  ✓ detecção de divergência na conferência');
 
 
 // ------------------------------------------------------------------
-// 11. CNPJ alfanumérico e chave com letras (Nota Técnica 2026.004)
+// 10. CNPJ alfanumérico e chave com letras (Nota Técnica 2026.004)
 //     O dígito verificador passou a converter cada caractere por
 //     ASCII menos 48. Para chave só de números tem de dar o MESMO
 //     resultado de antes — a regra nova engloba a antiga.

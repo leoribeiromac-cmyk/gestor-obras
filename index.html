@@ -2217,7 +2217,7 @@ function apSlideHTML(sl){
       ['equipamentos','Equipamentos','Horas, paradas, horímetro, combustível e assinatura'],
       ['medicao','Medição Física','Produção do mês por serviço, com exportação'],
       ['notas','Notas Fiscais','O apontador fotografa a DANFE e o sistema busca os dados oficiais na SEFAZ'],
-      ['caixa','Estoque e Pedidos','Entrada automática por lote, com baixa no pedido de compra'],
+      ['caixa','Estoque por lote','Entrada automática, com o caminho de volta até a nota'],
       ['galeria','Galeria de Fotos','Registro fotográfico com marca d\'água para prestação de contas'],
       ['projetos','Projetos','Pranchas renderizadas offline, com zoom'],
       ['historico','Histórico','Consulta auditável por data, com edição'],
@@ -2292,7 +2292,7 @@ function apSlideHTML(sl){
       ['codigoBarras','Fotografa a nota','O código de barras da DANFE entrega a chave de acesso — conferida pelo dígito verificador'],
       ['chave','Busca na SEFAZ','A nota volta com os dados oficiais do XML: fornecedor, valores e todos os itens'],
       ['check','Confere e salva','Campo que a leitura não teve certeza vem marcado; nada trava se a leitura falhar'],
-      ['caixa','Entra no estoque','Entrada por lote, com o caminho de volta até a nota e baixa no pedido de compra']
+      ['caixa','Entra no estoque','Entrada por lote, com o caminho de volta até a nota que originou']
     ];
     return `<div class="ap-slide"><div class="ap-kicker">${esc(o.nome)} · suprimentos</div>
       <h2>Da nota fiscal ao estoque, sem digitação</h2>

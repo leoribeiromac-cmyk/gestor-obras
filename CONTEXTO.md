@@ -53,7 +53,7 @@ gestor-obras/
 │   ├── ui/saveBar.js       Barra de status de sincronização
 │   ├── ui/centralHoje.js   "Central de Campo" (topo do Lançar serviços)
 │   ├── ui/icones.js        **Ícones do app** — conjunto próprio, ver abaixo
-│   └── nf/notas.js         Notas Fiscais (DANFE): leitura, estoque, pedidos, painel
+│   └── nf/notas.js         Notas Fiscais (DANFE): leitura, estoque, painel
 ├── assets/                 Logo, ícones, favicon
 ├── projetos/               PDFs de projeto por rua
 ├── vendor/                 pdfjs, xlsx, gsap, lenis (vendorizados)
@@ -114,7 +114,6 @@ Obra externa: `{id, externo:true, url, nome, contrato, local, valorGlobal}`.
 | `gestor:demo` | versão do modo demonstração (`DEMO_VER`) |
 | `gestor:nf:<obraId>` | notas fiscais (com a miniatura da imagem) |
 | `gestor:nfmov:<obraId>` | movimentos de estoque gerados pelas notas |
-| `gestor:pedidos:<obraId>` | pedidos de compra |
 | IndexedDB `gestorFotos` / store `fotos` | **imagens em resolução cheia** — fotos do RDO (1280px) e notas fiscais (1600px, chave `nf:<obra>:<id>`) |
 
 **Por que IndexedDB:** o localStorage é pequeno demais para imagens. A miniatura (320px)
@@ -134,7 +133,7 @@ em download e impressão.
 | Operação | Diário de Obra | `diario` | Efetivo, equipamentos, clima, ocorrências, imprimir RDO |
 | Operação | Equipamentos | `equip` | Apontamento (horas/paradas/horímetro/combustível/assinatura), cadastros, medição Excel e PDF |
 | Operação | Histórico | `historico` | RDOs por data, editar/excluir, PDF e Excel |
-| Suprimentos | **Notas Fiscais** | `notas` | Sub-abas Notas / Estoque / Pedidos / Painel. Fotografa a DANFE e preenche sozinho |
+| Suprimentos | **Notas Fiscais** | `notas` | Sub-abas Notas / Estoque / Painel. Fotografa a DANFE e preenche sozinho |
 | Documentos | **Galeria de Fotos** | `galeria` | Grade de fotos, filtros rua/mês, download com marca d'água |
 | Documentos | Projetos | `projetos` | PDFs renderizados com PDF.js, zoom |
 
@@ -244,7 +243,6 @@ Planilha única para todas as obras. Abas: `RDO`, `Diario`, `Equipamentos`, `Loc
 | `nfConsultarChave` | busca a NF-e pela chave no **consultadanfe.com** (ligado por padrão, sem token) e lê o **XML oficial**; traz o PDF do DANFE junto. `NFE_API_URL=off` desliga |
 | `nfDiag` | diagnóstico da leitura, usado pelo botão "Testar leitura" do app |
 | `autorizarInternet` | só existe para o Google pedir a permissão de acesso à internet |
-| `pedidoSalvar` / `pedidoExcluir` | pedidos de compra |
 | `usuariosListar` / `usuarioSalvar` / `usuarioExcluir` | cadastro de usuários — **só admin e só com `EXIGIR_TOKEN=true`** |
 
 Segurança: senha com **hash SHA-256** (aceita texto puro para compatibilidade), **bloqueio
@@ -314,6 +312,7 @@ Fotos tiradas antes do commit `b21f7bf` não têm a imagem cheia no aparelho. Sa
 | **Sem consulta à SEFAZ** | O XML oficial exige certificado A1/A3, que o Apps Script não usa |
 | Catálogo de materiais **aprendido das notas** | Não existe cadastro de material no app, e obrigar a cadastrar antes de usar mataria o módulo |
 | Módulo de notas em **arquivo próprio** | O `index.html` já tem 2.400 linhas |
+| **Sem pedido de compra** (removido em jul/26) | Decisão do Leonardo. Quem compra é o escritório, em outro sistema; manter um cadastro paralelo aqui só criava trabalho duplicado. Saíram a aba Pedidos, a baixa automática, a permissão `pedido`, as ações `pedidoSalvar`/`pedidoExcluir` e o status "Integrada ao pedido de compra" (nota antiga com esse status passa a "Conferida"). A aba **Pedidos** da planilha foi deixada de lado, não apagada |
 
 ---
 
@@ -517,7 +516,7 @@ Em ordem cronológica, do mais antigo ao mais recente:
 | `b21f7bf` | Imagem cheia no IndexedDB + marca d'água proporcional |
 | `ffaff22` | Quantidade fora da marca d'água |
 | `5d6c02a` | Cena da Galeria na apresentação |
-| _anterior_ | **Controle de Notas Fiscais (DANFE)**: leitura por código de barras/chave/IA, imagem no Drive por obra→ano→mês, estoque com lote e rastreabilidade, pedidos de compra com baixa automática, painel, pesquisa, status e auditoria |
+| _anterior_ | **Controle de Notas Fiscais (DANFE)**: leitura por código de barras/chave/IA, imagem no Drive por obra→ano→mês, estoque com lote e rastreabilidade, painel, pesquisa, status e auditoria |
 
 **Depois disso**, no mesmo módulo: upload de **PDF** (texto extraído com o PDF.js
 que já estava vendorizado — leitura exata, sem OCR), **consulta da NF-e pela chave**
@@ -531,7 +530,7 @@ que mudou o cálculo do dígito verificador para ASCII−48).
 **Cena de Notas Fiscais na apresentação** (`tipo:'notas'`): entra depois da galeria,
 quando a obra tem nota lançada. Mostra o caminho em 4 passos (código de barras → SEFAZ →
 conferência → estoque), os KPIs, miniaturas das notas e os principais fornecedores. O
-módulo também entrou na cena de **capacidades**, junto com Estoque e Pedidos.
+módulo também entrou na cena de **capacidades**, junto com o Estoque.
 
 **`apCaber()` — nenhuma cena rola.** Numa apresentação, barra de rolagem estraga. Cada
 cena foi pensada para caber, mas a altura da tela varia muito (notebook de 720, projetor,

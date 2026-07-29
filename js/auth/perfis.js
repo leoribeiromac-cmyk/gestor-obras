@@ -6,7 +6,7 @@
 
    Cinco perfis:
      campo          apontador: lança produção, diário, notas e fotos
-     administrativo escritório: notas, estoque, pedidos, equipamentos
+     administrativo escritório: notas, estoque, equipamentos
      engenharia     tudo da obra, análise e relatórios
      diretoria      só consulta
      admin          tudo, e é o único que apaga registro dos outros
@@ -31,14 +31,14 @@ var PERFIS = {
     nome: 'Administrativo',
     desc: 'Escritório — suprimentos, equipamentos e documentos',
     telas: ['executivo', 'servicos', 'medicao', 'equip', 'historico', 'notas', 'galeria', 'projetos'],
-    pode: ['lancarNota', 'apontarEquip', 'cadastrarEquip', 'exportar', 'relatorio', 'pedido']
+    pode: ['lancarNota', 'apontarEquip', 'cadastrarEquip', 'exportar', 'relatorio']
   },
   engenharia: {
     nome: 'Engenharia',
     desc: 'Engenheiro da obra — lança, confere e analisa',
     telas: ['executivo', 'servicos', 'medicao', 'rdo', 'diario', 'equip', 'historico', 'notas', 'galeria', 'projetos'],
     pode: ['lancarServico', 'lancarDiario', 'apontarEquip', 'cadastrarEquip', 'lancarNota',
-           'anexarFoto', 'editar', 'exportar', 'relatorio', 'pedido']
+           'anexarFoto', 'editar', 'exportar', 'relatorio']
   },
   diretoria: {
     nome: 'Diretoria',
