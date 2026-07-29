@@ -48,13 +48,28 @@ async function usuariosCarregarLista() {
 function usuariosRender() {
   const box = el('usBox'); if (!box) return;
   if (USUARIOS_ESTADO.erro) {
-    box.innerHTML = `<div class="nf-alerta nf-alerta-red">${esc(USUARIOS_ESTADO.erro)}</div>
-      ${/EXIGIR_TOKEN/i.test(USUARIOS_ESTADO.erro) ? `<div style="font-size:13.5px;line-height:1.7">
+    // "Ação desconhecida" = o servidor ainda está rodando o Code.gs antigo.
+    // Quase sempre o código foi colado e salvo, mas a IMPLANTAÇÃO não foi
+    // atualizada — o link continua servindo a versão velha.
+    const antigo = /desconhecid/i.test(USUARIOS_ESTADO.erro);
+    box.innerHTML = `<div class="nf-alerta nf-alerta-red">
+        ${antigo ? 'O servidor ainda está com a versão anterior do Code.gs.' : esc(USUARIOS_ESTADO.erro)}</div>
+      ${antigo ? `<div style="font-size:13.5px;line-height:1.75">
+        Salvar o código no Apps Script <b>não basta</b>: enquanto a implantação não for
+        atualizada, o endereço do app continua entregando a versão antiga.<br><br>
+        <b>Passo a passo:</b><br>
+        1. Planilha → <b>Extensões ▸ Apps Script</b><br>
+        2. Cole o <b>Code.gs</b> novo por cima e salve (💾)<br>
+        3. <b>Implantar ▸ Gerenciar implantações</b><br>
+        4. No lápis <b>✏️ (editar)</b>, em <b>Versão</b> escolha <b>Nova versão</b><br>
+        5. <b>Implantar</b> — o endereço não muda<br>
+        6. Volte aqui e toque em <b>Conferir de novo</b></div>` : ''}
+      ${/EXIGIR_TOKEN/i.test(USUARIOS_ESTADO.erro) ? `<div style="font-size:13.5px;line-height:1.75">
         <b>Como resolver:</b><br>
         1. Planilha → <b>Extensões ▸ Apps Script</b><br>
         2. <b>⚙ Configurações do projeto ▸ Propriedades do script</b><br>
         3. Acrescente <b>EXIGIR_TOKEN</b> com o valor <b>true</b></div>` : ''}
-      <button class="btn" style="width:100%;justify-content:center;margin-top:12px" onclick="usuariosCarregarLista()">Tentar de novo</button>`;
+      <button class="btn" style="width:100%;justify-content:center;margin-top:12px" onclick="usuariosCarregarLista()">Conferir de novo</button>`;
     return;
   }
 
