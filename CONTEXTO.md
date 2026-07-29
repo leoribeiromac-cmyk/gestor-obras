@@ -271,13 +271,18 @@ Resumo:
 
 ## 7. Pendências e riscos conhecidos
 
-### 🔴 O backend publicado está DESATUALIZADO
-Confirmado em teste: `obterRDO` responde "Ação desconhecida". Consequências:
-- A leitura cai no **CSV publicado** (funciona, mas os CSVs são públicos)
-- `obterFoto` não existe → fotos antigas (sem imagem cheia local) não recuperam a versão
-  grande
+### ✅ Backend publicado — resolvido (jul/26)
+O Leonardo republicou o Apps Script e **confirmou funcionando**: a tela de Usuários
+abre e lista as pessoas, o que só acontece com o `Code.gs` novo no ar *e* com
+`EXIGIR_TOKEN=true`. Ou seja, valem agora no servidor:
+- a regra de exclusão (só o admin ou quem fez o lançamento),
+- o cadastro de usuários e perfis pelo próprio app,
+- `obterRDO` / `obterDiario` / `obterFoto` e as ações de nota fiscal.
 
-**Ação:** republicar o Apps Script (seção 6).
+> Antes de dar como resolvido, confira do jeito rápido: entre como administrador e
+> toque em **Usuários**. Se a lista aparecer, está publicado. Se disser que o servidor
+> está com a versão anterior, faltou o passo da **implantação** (seção 6) — a própria
+> tela mostra o passo a passo.
 
 ### ✅ CSVs públicos — resolvido (jul/26)
 As abas foram despublicadas no Google Sheets e o `CONFIG.csv` saiu do código, junto com
