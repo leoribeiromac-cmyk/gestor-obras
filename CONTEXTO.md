@@ -431,9 +431,15 @@ quando a obra tem nota lançada. Mostra o caminho em 4 passos (código de barras
 conferência → estoque), os KPIs, miniaturas das notas e os principais fornecedores. O
 módulo também entrou na cena de **capacidades**, junto com Estoque e Pedidos.
 
-> ⚠ As três cenas de `relatorios` passam ~41px do palco (aparece barra de rolagem).
-> **Isso é anterior** ao módulo de notas — medido nas duas versões. Não foi mexido porque
-> ajustar o encaixe A4 (`apFitDocs`) é delicado e deu trabalho para acertar.
+**`apCaber()` — nenhuma cena rola.** Numa apresentação, barra de rolagem estraga. Cada
+cena foi pensada para caber, mas a altura da tela varia muito (notebook de 720, projetor,
+monitor grande). O `apCaber()` mede o palco e, se sobrar conteúdo, **dá zoom para baixo na
+cena inteira** o tanto exato que falta, até 62%. Roda depois de cada `apRender()` e ao
+redimensionar. Medido de 720 a 1080 de altura: nenhuma cena passa do palco.
+
+> **Use `zoom`, não `transform: scale()`.** O `transform` é só visual — o elemento continua
+> ocupando a mesma altura e o palco continua rolando. Foi exatamente esse o erro na
+> primeira tentativa. O `zoom` muda o layout, então o `scrollHeight` responde.
 
 ### Sobre a revisão do "antigravity"
 Outra ferramenta de IA gerou ~1.400 linhas. Trouxe coisas boas (**leitura privada**, **hash

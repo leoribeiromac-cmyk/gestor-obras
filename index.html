@@ -2246,7 +2246,27 @@ function apRender(){
   box.innerHTML=apSlideHTML(APRES.slides[APRES.idx]);box.scrollTop=0;
   [...document.querySelectorAll('#apres .ap-prog .seg')].forEach((s,i)=>{s.classList.toggle('done',i<APRES.idx);s.classList.toggle('cur',i===APRES.idx);});
   if(APRES.slides[APRES.idx].tipo==='relatorios'){apFitDocs();setTimeout(apFitDocs,90);}
+  apCaber();setTimeout(apCaber,120);
   apArmar();
+}
+/* Rede de segurança do palco: numa apresentação NADA pode rolar. Cada cena foi
+   pensada para caber, mas a altura da tela varia muito (notebook de 768, projetor,
+   monitor grande). Se sobrar conteúdo, a cena inteira encolhe o tanto exato que
+   falta — até 78%, abaixo disso a letra ficaria pequena demais e é melhor rolar. */
+function apCaber(){
+  const palco=el('apStage');if(!palco)return;
+  const sl=palco.querySelector('.ap-slide');if(!sl)return;
+  sl.style.zoom='';
+  // zoom e nao transform: transform e so visual, o elemento continua ocupando a
+  // mesma altura e o palco continuaria rolando. Duas ou tres passadas bastam.
+  for(let i=0;i<3;i++){
+    const conteudo=palco.scrollHeight, disponivel=palco.clientHeight;
+    if(conteudo-disponivel<=2)return;
+    const z=parseFloat(sl.style.zoom||'1');
+    const novo=Math.max(0.62,z*(disponivel-6)/conteudo);
+    if(Math.abs(novo-z)<0.004)return;
+    sl.style.zoom=novo.toFixed(4);
+  }
 }
 // escala os relatórios medindo o TAMANHO REAL do documento — cabe inteiro, sem corte
 function apFitDocs(){
@@ -2270,6 +2290,21 @@ function apFitDoc1(ifr){
     const scale=Math.min(maxW/cW,maxH/cH);
     ifr.style.width=cW+'px';ifr.style.height=cH+'px';ifr.style.transform='scale('+scale+')';
     fr.style.width=Math.round(cW*scale)+'px';fr.style.height=Math.round(cH*scale)+'px';
+    // Numa apresentação o palco não pode rolar. Medir 66% da JANELA não bastava:
+    // o kicker, o título, o subtítulo e o rótulo do documento também ocupam altura,
+    // e o documento acabava passando ~40px. Aqui se mede o palco de verdade e se
+    // encolhe exatamente o que sobrou — uma passada resolve, porque tirar N px do
+    // documento tira N px do palco.
+    const palco=document.getElementById('apStage');
+    if(palco){
+      const excesso=palco.scrollHeight-palco.clientHeight;
+      if(excesso>2){
+        const alvo=Math.max(180,Math.round(cH*scale)-excesso-4);
+        const s2=Math.min(scale,alvo/cH);
+        ifr.style.transform='scale('+s2+')';
+        fr.style.width=Math.round(cW*s2)+'px';fr.style.height=Math.round(cH*s2)+'px';
+      }
+    }
     return true;
   }catch(e){return false;}
 }
@@ -2300,7 +2335,9 @@ function abrirApresentacao(){
   document.body.appendChild(ov);
   APRES.keyH=e=>{if(e.key==='Escape')apFechar();else if(e.key==='ArrowRight')apGo(1);else if(e.key==='ArrowLeft')apGo(-1);else if(e.key===' '){e.preventDefault();apPlayPause();}};
   document.addEventListener('keydown',APRES.keyH);
-  APRES.rz=()=>{if(APRES.on&&APRES.slides[APRES.idx]&&APRES.slides[APRES.idx].tipo==='relatorios')apFitDocs();};
+  APRES.rz=()=>{if(!APRES.on)return;
+    if(APRES.slides[APRES.idx]&&APRES.slides[APRES.idx].tipo==='relatorios')apFitDocs();
+    apCaber();};
   window.addEventListener('resize',APRES.rz);
   try{if(document.documentElement.requestFullscreen)document.documentElement.requestFullscreen().catch(()=>{});}catch(e){}
   apRender();
