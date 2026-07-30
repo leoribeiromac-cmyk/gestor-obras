@@ -628,12 +628,15 @@ function equipApontamentos(obra, mes) {
 
 
 
-// -------------------- BACKUP DIÁRIO --------------------
+// -------------------- BACKUP DIÁRIO E CLIMA --------------------
 function configurarGatilhos() {
   ScriptApp.getProjectTriggers().forEach(function (t) {
-    if (t.getHandlerFunction() === 'backupDiario') ScriptApp.deleteTrigger(t);
+    var fn = t.getHandlerFunction();
+    if (fn === 'backupDiario' || fn === 'registrarClimaAuto') ScriptApp.deleteTrigger(t);
   });
   ScriptApp.newTrigger('backupDiario').timeBased().everyDays(1).atHour(2).create();
+  ScriptApp.newTrigger('registrarClimaAuto').timeBased().everyDays(1).atHour(5).create();
+  Logger.log('Gatilhos criados: backupDiario (02h) e registrarClimaAuto (05h).');
   return { ok: true };
 }
 
@@ -649,6 +652,98 @@ function backupDiario() {
   copias.sort(function (a, b) { return b.getDateCreated() - a.getDateCreated(); });
   for (var i = 14; i < copias.length; i++) copias[i].setTrashed(true);
   return { ok: true, backup: nome };
+}
+
+// ------------------------------------------------------------
+// CLIMA AUTOMÁTICO — chuva de ONTEM pela Open-Meteo (grátis, sem
+// chave), gravada na aba Diario nas colunas chuvaAuto e climaFonte
+// (criadas sozinhas). É a contraprova objetiva do clima apontado no
+// RDO — base de pleito de prorrogação por dia improdutivo, que só se
+// sustenta com dado de fonte independente.
+//
+// Como este app é MULTI-OBRA, as coordenadas vêm da propriedade do
+// script COORDENADAS, uma entrada por obra:
+//   COORDENADAS = {"ruas-de-terra":{"lat":-23.53,"lon":-46.45}}
+// Obra sem coordenada é simplesmente pulada.
+// ------------------------------------------------------------
+function coordenadasDasObras() {
+  var raw = PropertiesService.getScriptProperties().getProperty('COORDENADAS');
+  if (!raw) return {};
+  try { return JSON.parse(raw) || {}; } catch (e) { return {}; }
+}
+
+function registrarClimaAuto() {
+  var coords = coordenadasDasObras();
+  var obras = Object.keys(coords);
+  if (!obras.length) {
+    Logger.log('Nenhuma obra em COORDENADAS — clima automático não rodou.');
+    return { ok: false, error: 'SEM_COORDENADAS' };
+  }
+  var ontem = new Date(Date.now() - 24 * 3600 * 1000);
+  var iso = Utilities.formatDate(ontem, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  var resultados = [];
+  obras.forEach(function (obraId) {
+    try { resultados.push(climaDeUmaObra(obraId, coords[obraId], iso)); }
+    catch (e) { resultados.push({ obra: obraId, ok: false, error: String(e && e.message || e) }); }
+  });
+  Logger.log(JSON.stringify(resultados, null, 2));
+  return { ok: true, data: iso, obras: resultados };
+}
+
+function climaDeUmaObra(obraId, coord, iso) {
+  if (!coord || coord.lat == null || coord.lon == null) return { obra: obraId, ok: false, error: 'sem lat/lon' };
+
+  var url = 'https://archive-api.open-meteo.com/v1/archive?latitude=' + coord.lat +
+            '&longitude=' + coord.lon + '&start_date=' + iso + '&end_date=' + iso +
+            '&daily=precipitation_sum&timezone=America%2FSao_Paulo';
+  var chuva = null;
+  try {
+    var resp = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+    var dados = JSON.parse(resp.getContentText());
+    if (dados.daily && dados.daily.precipitation_sum) chuva = dados.daily.precipitation_sum[0];
+  } catch (e) {
+    return { obra: obraId, ok: false, error: 'Open-Meteo indisponível' };
+  }
+  if (chuva === null || chuva === undefined) return { obra: obraId, ok: false, error: 'sem dado para ' + iso };
+
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var a = aba(ABA_DIARIO);
+    var cab = cabecalho(a);
+    ['chuvaAuto', 'climaFonte'].forEach(function (nome) {
+      if (idxCol(cabecalho(a), nome.toLowerCase()) === -1) {
+        a.getRange(1, a.getLastColumn() + 1).setValue(nome);
+      }
+    });
+    cab = cabecalho(a);
+    var iData = idxCol(cab, 'data'), iObra = idxCol(cab, 'obra');
+    var iChuva = idxCol(cab, 'chuvaauto'), iFonte = idxCol(cab, 'climafonte');
+    var dados = a.getDataRange().getValues();
+
+    for (var i = 1; i < dados.length; i++) {
+      var mesmaObra = iObra === -1 || String(dados[i][iObra]).trim() === String(obraId).trim();
+      if (mesmaObra && normData(dados[i][iData]) === iso) {
+        a.getRange(i + 1, iChuva + 1).setValue(chuva);
+        a.getRange(i + 1, iFonte + 1).setValue('Open-Meteo');
+        return { obra: obraId, ok: true, chuva_mm: chuva, atualizado: true };
+      }
+    }
+
+    // Não havia diário nessa data: cria a linha só com data e chuva, para o
+    // dia ficar documentado mesmo sem ninguém ter apontado.
+    var reg = {};
+    reg['id'] = gerarId(new Date(), 0);
+    reg['obra'] = obraId;
+    reg['data'] = iso;
+    reg['chuvaauto'] = chuva;
+    reg['climafonte'] = 'Open-Meteo';
+    var linha = cab.map(function (nc) { return reg.hasOwnProperty(nc) ? reg[nc] : ''; });
+    a.getRange(a.getLastRow() + 1, 1, 1, cab.length).setValues([linha]);
+    return { obra: obraId, ok: true, chuva_mm: chuva, inserido: true };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 // ============================================================

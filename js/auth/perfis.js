@@ -30,21 +30,21 @@ var PERFIS = {
   administrativo: {
     nome: 'Administrativo',
     desc: 'Escritório — suprimentos, equipamentos e documentos',
-    telas: ['executivo', 'servicos', 'medicao', 'equip', 'historico', 'notas', 'galeria', 'projetos'],
+    telas: ['executivo', 'servicos', 'medicao', 'apoio', 'reverso', 'equip', 'historico', 'notas', 'galeria', 'projetos'],
     pode: ['lancarNota', 'apontarEquip', 'cadastrarEquip', 'exportar', 'relatorio', 'saidaEstoque']
   },
   engenharia: {
     nome: 'Engenharia',
     desc: 'Engenheiro da obra — lança, confere e analisa',
-    telas: ['executivo', 'servicos', 'medicao', 'rdo', 'diario', 'equip', 'historico', 'notas', 'galeria', 'projetos'],
+    telas: ['executivo', 'servicos', 'medicao', 'apoio', 'reverso', 'ia', 'rdo', 'diario', 'equip', 'historico', 'notas', 'galeria', 'projetos'],
     pode: ['lancarServico', 'lancarDiario', 'apontarEquip', 'cadastrarEquip', 'lancarNota',
-           'anexarFoto', 'editar', 'exportar', 'relatorio', 'saidaEstoque']
+           'anexarFoto', 'editar', 'exportar', 'relatorio', 'saidaEstoque', 'analiseIA']
   },
   diretoria: {
     nome: 'Diretoria',
     desc: 'Consulta — acompanha sem lançar',
-    telas: ['executivo', 'servicos', 'medicao', 'historico', 'notas', 'galeria', 'projetos'],
-    pode: ['exportar', 'relatorio']
+    telas: ['executivo', 'servicos', 'medicao', 'apoio', 'reverso', 'ia', 'historico', 'notas', 'galeria', 'projetos'],
+    pode: ['exportar', 'relatorio', 'analiseIA']
   },
   admin: {
     nome: 'Administrador',
@@ -105,7 +105,8 @@ function podeEditar(reg) {
 function telaBloqueada(tela) {
   var nomes = {
     executivo: 'o Painel Executivo', medicao: 'a Medição Física', rdo: 'o lançamento de serviços',
-    diario: 'o Diário de Obra', equip: 'os Equipamentos', notas: 'as Notas Fiscais'
+    diario: 'o Diário de Obra', equip: 'os Equipamentos', notas: 'as Notas Fiscais',
+    ia: 'o Analista IA', apoio: 'o Apoio à Medição', reverso: 'o Planejamento reverso'
   };
   return '<div class="empty">' + (typeof ic === 'function' ? ic('chave') : '') +
     'Seu acesso de <b>' + perfilNome() + '</b> não abre ' + (nomes[tela] || 'esta tela') + '.' +

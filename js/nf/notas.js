@@ -1584,7 +1584,9 @@ function nfViewPrecos(o) {
     <div class="kpi"><div class="kpi-l">Valor comprado</div><div class="kpi-v" style="font-size:24px">${fmtBRLc(gasto)}</div>
       <div class="kpi-s">itens com preço unitário</div></div></div>`;
 
-  const sinal = v => (v >= 0 ? '+' : '') + fmtPct(v);
+  // fmtPct: no app "Gestor" recebe 0–100; no Teotônio recebe fração. Como este
+  // arquivo é compartilhado entre os dois, a variação é formatada aqui mesmo.
+  const sinal = v => (v >= 0 ? '+' : '') + (v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%';
   const corVar = v => v >= NF_PRECO_ALERTA ? 'var(--vermelho)' : (v <= -NF_PRECO_ALERTA ? 'var(--accent)' : 'var(--text-2)');
 
   const destaque = !subiram.length ? '' : `<div class="card" style="margin-bottom:18px;border-left:3px solid var(--vermelho)">
@@ -1645,7 +1647,7 @@ function nfPrecoDetalhe(id) {
     ${linhas}
     <button class="btn" style="width:100%;justify-content:center;margin-top:14px" onclick="fecharModal()">Fechar</button>`, 620);
 }
-function sinalTxt(v) { return (v >= 0 ? '+' : '') + fmtPct(v); }
+function sinalTxt(v) { return (v >= 0 ? '+' : '') + (v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%'; }
 
 /* ---------- painel ---------- */
 function nfViewPainel(o) {

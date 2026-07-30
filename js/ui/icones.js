@@ -26,6 +26,10 @@ var ICONES = {
   servicos: '<path d="M9.6 6.2h10.8M9.6 12h10.8M9.6 17.8h10.8"/><path d="M3.6 6.2l1.4 1.4 2.4-2.6"/><path d="M3.6 12l1.4 1.4 2.4-2.6"/><path d="M3.6 17.8l1.4 1.4 2.4-2.6"/>',
   // medição física: escala graduada
   medicao: '<rect x="2.6" y="8.2" width="18.8" height="7.6" rx="1.8"/><path d="M6.6 8.2v3.2M10.2 8.2v4.6M13.8 8.2v3.2M17.4 8.2v4.6"/>',
+  // apoio à medição: planilha contratual com item conferido
+  contrato: '<path d="M6 3.4h9.2L19.4 7.6v13H6z" /><path d="M14.8 3.6v4.2h4.4"/><path d="M8.8 12.4h7.2M8.8 16h4.6"/>',
+  // analista IA: faísca de análise sobre a leitura dos dados
+  ia: '<path d="M12 3.4l1.5 3.9 3.9 1.5-3.9 1.5-1.5 3.9-1.5-3.9-3.9-1.5 3.9-1.5z"/><path d="M18.4 14.6l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/><path d="M4.6 16.4v4M8.2 13.8v6.6"/>',
   // lançar serviço: alvo com mais
   lancar: '<circle cx="12" cy="12" r="8.3"/><path d="M12 8.1v7.8M8.1 12h7.8"/>',
   // diário de obra: prancheta

@@ -108,9 +108,104 @@ Script/JSONP com fila offline e login por usuário), há o backend pronto:
 
 Enquanto o `CONFIG.appsScript` estiver vazio, o backend fica desligado e nada muda.
 
+## RDO em PDF e turnos
+
+O RDO agora sai em **PDF de arquivo** (jsPDF vendorizado em `vendor/jspdf/`,
+não CDN — o app roda offline), além do Excel e do modelo de impressão que já
+existiam. A impressão do navegador serve no escritório; no celular do canteiro
+ela pede impressora e abre pop-up. O PDF sai pronto para anexar em e-mail ou
+WhatsApp. No **Histórico** dá para escolher o período e gerar **um PDF por
+dia** do mês inteiro, que é o que a fiscalização pede na entrega da medição.
+
+Cada linha de **efetivo**, de **equipamento** e cada **lançamento de serviço**
+tem **turno (diurno/noturno)** — obra urbana vira a noite para não fechar via
+de dia, e o RDO precisa separar o que foi feito em cada turno. O PDF traz uma
+tabela de serviços por turno (a do noturno só aparece se houver), e a faixa de
+resumo mostra o efetivo no formato `8 + 3 not.`. No Excel o turno vai junto do
+nome, para não quebrar as mesclagens do modelo.
+
+## Planejamento reverso
+
+Aba **Análise ▸ Planejamento reverso**. A curva S diz se a obra está atrasada;
+ela não diz o que fazer na segunda-feira. Esta tela parte do **fim do contrato**
+e volta no calendário: com o ritmo que cada serviço tem, **quando ele precisa
+começar** para ainda terminar no prazo.
+
+O ritmo (unid/dia útil) vem, nesta ordem: do campo `produtividade` do serviço,
+quando declarado no arquivo da obra; senão, do **observado nos lançamentos**
+(executado ÷ dias com apontamento, marcado como *obs.* na tabela); sem nenhum
+dos dois, o serviço aparece como **sem ritmo** — não se inventa número para
+serviço que nunca foi medido.
+
+Cada linha traz saldo, dias necessários, data-limite de início, folga em dias
+úteis e a situação (atrasado · crítico, folga ≤ 10 dias úteis · no prazo ·
+concluído). Para o que já passou da data, mostra o **ritmo necessário** para
+ainda fechar no prazo. Dias úteis são de segunda a sexta — feriado não entra,
+então a folga sai um pouco otimista.
+
+## Clima automático e backup (backend)
+
+No editor do Apps Script, rode **`configurarGatilhos()`** uma vez. Isso agenda:
+
+- **`backupDiario`** (02h) — cópia da planilha na pasta "Backups Gestor Obras"
+  do Drive, mantendo as 14 mais recentes.
+- **`registrarClimaAuto`** (05h) — chuva de ontem pela **Open-Meteo** (grátis,
+  sem chave) gravada na aba `Diario`, colunas `chuvaAuto` e `climaFonte`
+  (criadas sozinhas). É a contraprova objetiva do clima apontado no RDO — base
+  de pleito de prorrogação por dia improdutivo, que só se sustenta com dado de
+  fonte independente. Não havendo diário na data, a linha é criada só com data e
+  chuva, para o dia ficar documentado.
+
+Como o app é multi-obra, as coordenadas ficam na propriedade do script
+**`COORDENADAS`**, uma entrada por obra — obra sem coordenada é pulada:
+
+```json
+{"ruas-de-terra": {"lat": -23.53, "lon": -46.45}}
+```
+
+## Apoio à Medição (item contratual)
+
+Aba **Análise ▸ Apoio à Medição**. O campo aponta o serviço como ele existe na
+obra ("BGS", "binder", "guia"); a medição é paga por **item do contrato**, que
+quase nunca é 1:1 com o serviço apontado. A ponte é a **matriz de
+coeficientes**, declarada no arquivo da obra:
+
+```js
+coeficientes: [
+  { servico:'BINDER', item:'04.20.05', descricao:'Concreto asfáltico binder',
+    unItem:'T',  coef:1.0 },
+  { servico:'BINDER', item:'04.20.11', descricao:'Pintura de ligação',
+    unItem:'M2', coef:11.5 }   // 11,5 m² de pintura por tonelada de binder
+]
+```
+
+`consumo do item = quantidade executada do serviço × coef`. O nome em `servico`
+casa com o dos serviços da obra (maiúsculas/minúsculas não importam), e um mesmo
+serviço pode alimentar vários itens. Filtra-se o mês e exporta-se o **CSV de
+conferência** (separador `;`, decimal com vírgula) para confrontar com a coluna
+do mês da Planilha Geral.
+
+É **prévia de conferência, não medição oficial**. Serviço avulso fica de fora —
+não tem item contratual. Sem matriz declarada, a aba mostra o formato a usar.
+
+## Analista IA (Gemini)
+
+Aba **Análise ▸ Analista IA**. Gera resumo executivo, projeção de prazo,
+gargalos e comparativo entre frentes a partir do que já foi lançado.
+
+A chave é **do próprio usuário** (grátis em `aistudio.google.com/app/apikey`),
+fica guardada só no navegador dele e vai direto para o Google — o app não
+intermedia nem guarda no servidor. Sem chave configurada, a aba explica como
+obter uma.
+
+O que é enviado é o **resumo já calculado** da obra (percentual por frente
+contra o cronograma, saldo por serviço, produção do período, projeção de
+término), não a base inteira: contexto menor responde melhor, e nada de valores
+em R$ ou dados pessoais sai daqui. A resposta vem em HTML e é estilizada pelo
+app. Acesso: engenharia, diretoria e administrador.
+
 ## O que fica para uma próxima versão
 
-- Análise com IA (Gemini).
 - Exportação de RDO/medição em PDF no modelo oficial.
 
 ## Observações técnicas

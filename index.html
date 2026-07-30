@@ -236,6 +236,19 @@ label.fl{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppe
 .obra-foot{display:flex;justify-content:space-between;align-items:flex-end;margin-top:auto;gap:12px}
 
 .empty{text-align:center;color:var(--muted);padding:40px 20px}
+/* saída da análise por IA: o HTML vem do modelo, então o estilo é definido
+   aqui e não lá — assim o texto entra na tipografia do app. */
+.ia-txt{font-size:14px;line-height:1.65}
+.ia-txt h3{font-size:15.5px;margin:18px 0 8px;padding-bottom:6px;border-bottom:1px solid var(--border)}
+.ia-txt h3:first-child{margin-top:0}
+.ia-txt h4{font-size:14px;margin:14px 0 6px;color:var(--text-2)}
+.ia-txt p{margin:8px 0}
+.ia-txt ul,.ia-txt ol{margin:8px 0 8px 20px}
+.ia-txt li{margin:4px 0}
+.ia-txt strong{color:var(--text)}
+.ia-txt table{width:100%;border-collapse:collapse;margin:10px 0;font-size:13px;display:block;overflow-x:auto}
+.ia-txt th,.ia-txt td{border:1px solid var(--border);padding:7px 10px;text-align:left}
+.ia-txt th{background:var(--surface-2);font-weight:600}
 .empty .ic{font-size:38px;opacity:.5;margin-bottom:10px}
 
 /* ---------- ÍCONES (js/ui/icones.js) ----------
@@ -609,6 +622,8 @@ input.nf-confira,select.nf-confira,textarea.nf-confira{border-color:var(--amarel
 
 <script src="vendor/pdfjs/pdf.min.js"></script>
 <script src="vendor/xlsx/xlsx.bundle.js"></script>
+<script src="vendor/jspdf/jspdf.umd.min.js"></script>
+<script src="vendor/jspdf/jspdf.plugin.autotable.min.js"></script>
 <script src="dados/ruas-de-terra.js"></script>
 <script src="dados/teotonio-vilela.js"></script>
 <script src="dados/_index.js"></script>
@@ -635,9 +650,12 @@ const MESES = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov'
 const FUNCOES = ['Encarregado','Pedreiro','Servente','Operador de máquina','Motorista','Carpinteiro','Armador','Sinalizador','Auxiliar geral','Topógrafo','Vigia','Ajudante'];
 const EQUIPS = ['Retroescavadeira','Escavadeira hidráulica','Pá-carregadeira','Motoniveladora','Rolo compactador','Placa vibratória','Caminhão basculante','Caminhão pipa','Vibroacabadora','Betoneira','Prancha/Guincho','Mini-carregadeira'];
 const CLIMA_OPC = ['Bom','Nublado','Chuva fraca','Chuva forte','Impraticável'];
+/* Turno: obra urbana vira a noite para não fechar via de dia. O RDO tem de
+   separar o que foi feito em cada turno — é assim que a fiscalização lê. */
+const TURNOS = ['Diurno','Noturno'];
 
 const estado = { obraId:null, tela:'home', filtroRua:'Todas', mesMed:'', diarioData:'', projSel:'', painelFrente:'Todas', painelMes:'Todos', galRua:'Todas', galMes:'Todos',
-  nfTab:'notas', nfBusca:'', nfStatus:'Todos', nfMes:'Todos', nfLimite:24 };
+  nfTab:'notas', nfBusca:'', nfStatus:'Todos', nfMes:'Todos', nfLimite:24, apoioMes:'', histMes:'' };
 
 const el = id => document.getElementById(id);
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
@@ -942,6 +960,9 @@ const NAV=[
     {id:'executivo',ic:'painel',t:'Painel Executivo'},
     {id:'servicos',ic:'servicos',t:'Serviços'},
     {id:'medicao',ic:'medicao',t:'Medição Física'},
+    {id:'reverso',ic:'relogio',t:'Planejamento reverso'},
+    {id:'apoio',ic:'contrato',t:'Apoio à Medição'},
+    {id:'ia',ic:'ia',t:'Analista IA'},
   ]},
   {grupo:'Operação',itens:[
     {id:'rdo',ic:'lancar',t:'Lançar serviços'},
@@ -957,7 +978,454 @@ const NAV=[
     {id:'projetos',ic:'projetos',t:'Projetos',badge:o=>(o.projetos||[]).length},
   ]},
 ];
-const TITULOS={executivo:'Painel Executivo',servicos:'Serviços',medicao:'Medição Física',rdo:'Lançar serviços',diario:'Diário de Obra',equip:'Equipamentos',historico:'Histórico',notas:'Notas Fiscais',galeria:'Galeria de Fotos',projetos:'Projetos'};
+const TITULOS={executivo:'Painel Executivo',servicos:'Serviços',medicao:'Medição Física',reverso:'Planejamento reverso',apoio:'Apoio à Medição',ia:'Analista IA',rdo:'Lançar serviços',diario:'Diário de Obra',equip:'Equipamentos',historico:'Histórico',notas:'Notas Fiscais',galeria:'Galeria de Fotos',projetos:'Projetos'};
+
+/* ============================================================
+   PLANEJAMENTO REVERSO — quando cada saldo precisa começar
+   ------------------------------------------------------------
+   A curva S diz se a obra está atrasada. Ela não diz o que fazer
+   segunda-feira. O reverso parte do fim do contrato e volta no
+   calendário: com o ritmo que este serviço tem, quando ele precisa
+   começar para ainda terminar no prazo?
+
+   Ritmo (unid/dia útil), nesta ordem:
+     1. produtividade declarada no serviço (campo `produtividade`);
+     2. a observada nos lançamentos (executado ÷ dias com apontamento);
+     3. sem nenhuma das duas, o serviço fica como "sem ritmo" — não se
+        inventa número para um serviço que nunca foi medido.
+
+   Dias úteis = segunda a sexta. Feriado não entra na conta: a folga
+   sai um pouco otimista, e isso está dito na tela.
+   ============================================================ */
+const REV_CRITICO_DIAS=10;   // folga até aqui é sinal amarelo
+function ehDiaUtilObra(d){const s=d.getDay();return s!==0&&s!==6;}
+function diasUteisEntre(a,b){
+  if(!a||!b)return 0;
+  const i=new Date(a.getTime());i.setHours(0,0,0,0);
+  const f=new Date(b.getTime());f.setHours(0,0,0,0);
+  if(f<i)return 0;
+  let n=0;for(const d=new Date(i.getTime());d<=f;d.setDate(d.getDate()+1))if(ehDiaUtilObra(d))n++;
+  return n;
+}
+/* recua `dias` dias úteis a partir da data de término */
+function inicioReverso(fim,dias){
+  if(!fim||dias<=0)return null;
+  const d=new Date(fim.getTime());d.setHours(0,0,0,0);
+  let guarda=0;while(!ehDiaUtilObra(d)&&guarda++<60)d.setDate(d.getDate()-1);
+  let faltam=Math.ceil(dias)-1;if(faltam<0)faltam=0;
+  while(faltam>0){d.setDate(d.getDate()-1);if(ehDiaUtilObra(d))faltam--;}
+  return d;
+}
+function fimDoContrato(o){
+  const iso=addMeses(o.inicioISO,(o.prazoMeses||6)-1);
+  const [a,m]=iso.split('-').map(Number);
+  return new Date(a,m,0);   // último dia do mês final do prazo
+}
+/* ritmo observado: o que já produziu dividido pelos dias em que houve
+   apontamento deste serviço (dia parado não conta contra o ritmo) */
+function ritmoObservado(o,s){
+  const ls=getLanc(o.id).filter(l=>!l.avulso&&l.rua===s.rua&&l.capId===s.capId&&l.servico===s.servico);
+  if(!ls.length)return 0;
+  const dias=new Set(ls.map(l=>l.dataISO)).size;
+  const total=ls.reduce((a,l)=>a+(+l.qtd||0),0);
+  return dias>0?total/dias:0;
+}
+function linhasReverso(o){
+  const av=avancoServ(o),fim=fimDoContrato(o);
+  const hj=new Date();hj.setHours(0,0,0,0);
+  return (o.servicos||[]).map(s=>{
+    const feito=av[skey(s.rua,s.capId,s.servico)]||0;
+    const saldo=Math.max(0,(+s.qtdPrev||0)-feito);
+    const pct=s.qtdPrev>0?Math.min(100,feito/s.qtdPrev*100):0;
+    const prod=(+s.produtividade||0)||ritmoObservado(o,s);
+    const concluido=s.qtdPrev>0&&saldo<=0.0001;
+    let dur=0,inicio=null,folga=null,ritmoNec=null;
+    if(!concluido&&prod>0){
+      dur=saldo/prod;
+      inicio=inicioReverso(fim,dur);
+      if(inicio)folga=inicio>=hj?diasUteisEntre(hj,inicio)-1:-(diasUteisEntre(inicio,hj)-1);
+      const ate=diasUteisEntre(hj,fim);
+      ritmoNec=ate>0?saldo/ate:Infinity;
+    }
+    let status='noprazo';
+    if(concluido)status='concluido';
+    else if(!(prod>0))status='semritmo';
+    else if(inicio&&inicio<hj)status='atrasado';
+    else if(folga!=null&&folga<=REV_CRITICO_DIAS)status='critico';
+    return {s,feito,saldo,pct,prod,prodDeclarada:!!(+s.produtividade),dur,inicio,folga,ritmoNec,status};
+  }).filter(l=>l.s.qtdPrev>0);
+}
+function viewReverso(o){
+  const ls=linhasReverso(o),fim=fimDoContrato(o);
+  const cont=st=>ls.filter(l=>l.status===st).length;
+  const proximo=ls.filter(l=>l.inicio&&l.status!=='concluido'&&l.status!=='atrasado')
+    .sort((a,b)=>a.inicio-b.inicio)[0];
+  const dt=d=>d?d.toLocaleDateString('pt-BR'):'—';
+  const cor={atrasado:'var(--vermelho)',critico:'var(--amarelo)',noprazo:'var(--azul)',
+             concluido:'var(--accent)',semritmo:'var(--muted)'};
+  const rotulo={atrasado:'já era para ter começado',critico:'folga curta',noprazo:'no prazo',
+                concluido:'concluído',semritmo:'sem ritmo apurado'};
+  const kpi=(t,v,s,c)=>`<div class="card"><div class="card-b" style="padding:14px 16px">
+    <div class="kpi-s">${t}</div><div style="font-size:26px;font-weight:700;color:${c||'var(--text)'}">${v}</div>
+    <div class="kpi-s">${s}</div></div></div>`;
+
+  const ordem={atrasado:0,critico:1,noprazo:2,semritmo:3,concluido:4};
+  const linhas=ls.slice().sort((a,b)=>(ordem[a.status]-ordem[b.status])||
+    ((a.inicio?a.inicio.getTime():9e15)-(b.inicio?b.inicio.getTime():9e15)));
+
+  return `<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px">
+      ${kpi('Atrasados',cont('atrasado'),'já deveriam ter começado',cont('atrasado')?'var(--vermelho)':'var(--accent)')}
+      ${kpi('Críticos',cont('critico'),`folga ≤ ${REV_CRITICO_DIAS} dias úteis`,cont('critico')?'var(--amarelo)':'var(--muted)')}
+      ${kpi('No prazo',cont('noprazo'),'com folga confortável','var(--azul)')}
+      ${kpi('Concluídos',cont('concluido'),`de ${ls.length} serviços`,'var(--accent)')}
+      ${kpi('Próximo início',proximo?dt(proximo.inicio):'—',proximo?esc(proximo.s.servico):'nada pendente com ritmo','var(--acc)')}
+    </div>
+    <div class="card"><div class="card-h"><div>
+      <div class="card-t"><span class="ic-tx">${ic('relogio')}</span>Quando cada saldo precisa começar</div>
+      <div class="card-st">contando de trás para frente a partir do fim do contrato (${dt(fim)}), em dias úteis</div></div></div>
+      <div class="card-b" style="padding:0"><div class="tbl-wrap"><table class="t">
+        <thead><tr><th>Serviço</th><th>Rua / frente</th><th class="num">Saldo</th>
+          <th class="num">Ritmo</th><th class="num">Dias</th><th>Começar até</th><th class="num">Folga</th><th>Situação</th></tr></thead>
+        <tbody>${linhas.map(l=>`<tr>
+          <td><b>${esc(l.s.servico)}</b><div class="kpi-s">${fmtPct(l.pct)} feito</div></td>
+          <td class="kpi-s">${esc(l.s.rua)}<br>${esc(frenteNome(o,l.s.capId))}</td>
+          <td class="num">${l.status==='concluido'?'—':fmtQtd(l.saldo)+' '+esc(l.s.un)}</td>
+          <td class="num">${l.prod>0?fmtQtd(l.prod)+' /dia'+(l.prodDeclarada?'':' <span class="kpi-s">(obs.)</span>'):'—'}</td>
+          <td class="num">${l.dur?Math.ceil(l.dur):'—'}</td>
+          <td>${l.inicio?dt(l.inicio):'—'}</td>
+          <td class="num" style="color:${l.folga!=null&&l.folga<0?'var(--vermelho)':'inherit'}">${l.folga==null?'—':l.folga+' d.u.'}</td>
+          <td><span class="pill" style="color:${cor[l.status]};border-color:${cor[l.status]}">${rotulo[l.status]}</span>
+            ${l.status==='atrasado'&&l.ritmoNec&&isFinite(l.ritmoNec)
+              ? `<div class="kpi-s">precisa de ${fmtQtd(l.ritmoNec)} ${esc(l.s.un)}/dia para ainda fechar</div>`:''}</td>
+        </tr>`).join('')}</tbody></table></div></div>
+      <div class="card-b kpi-s" style="border-top:1px solid var(--border)">
+        Ritmo declarado vem do campo <code>produtividade</code> do serviço; sem ele, usa-se o observado nos lançamentos
+        (marcado como <i>obs.</i>). Dias úteis são de segunda a sexta — feriado não entra, então a folga sai um pouco otimista.</div>
+    </div>`;
+}
+
+/* ============================================================
+   APOIO À MEDIÇÃO — do serviço de campo para o item contratual
+   ------------------------------------------------------------
+   O campo aponta o serviço como ele existe na obra ("BGS", "binder",
+   "guia"). A medição é paga por ITEM do contrato, que quase nunca é
+   1:1 com o serviço apontado: um serviço pode consumir vários itens,
+   e com fator (perda, espessura, taxa).
+
+   A ponte é a matriz de coeficientes, declarada no arquivo da obra:
+
+     coeficientes: [
+       {servico:'BINDER', item:'04.20.05', descricao:'Concreto asfáltico binder',
+        unItem:'T', coef:1.0},
+       {servico:'BINDER', item:'04.20.11', descricao:'Pintura de ligação',
+        unItem:'M2', coef:11.5}   // 11,5 m² de pintura por tonelada de binder
+     ]
+
+   consumo do item = quantidade executada do serviço × coef
+
+   Isto é PRÉVIA de conferência, não medição oficial: serve para bater
+   contra a coluna do mês da Planilha Geral antes de fechar.
+   ============================================================ */
+function coeficientesDaObra(o){return (o&&o.coeficientes)||[];}
+
+/* Lançamentos do mês escolhido ('' = obra inteira). Serviço avulso fica
+   de fora: ele não tem quantidade prevista nem item contratual. */
+function lancsDoMes(o,mes){
+  return getLanc(o.id).filter(l=>!l.avulso&&(!mes||String(l.dataISO).slice(0,7)===mes));
+}
+function consumoContratual(o,mes){
+  const coefs=coeficientesDaObra(o);
+  const out={};
+  if(!coefs.length)return out;
+  // quanto foi executado de cada serviço no período (o nome do serviço é a chave)
+  const porServico={};
+  lancsDoMes(o,mes).forEach(l=>{
+    const k=String(l.servico||'').trim().toUpperCase();
+    if(!k)return;
+    porServico[k]=(porServico[k]||0)+(+l.qtd||0);
+  });
+  coefs.forEach(c=>{
+    const k=String(c.servico||'').trim().toUpperCase();
+    const qtd=porServico[k]||0;
+    if(qtd<=0)return;
+    const consumo=qtd*(+c.coef||0);
+    if(!out[c.item])out[c.item]={item:c.item,descricao:c.descricao||'',unItem:c.unItem||'',consumido:0,origens:[]};
+    out[c.item].consumido+=consumo;
+    out[c.item].origens.push(`${c.servico} × ${c.coef}`);
+  });
+  return out;
+}
+
+function viewApoioMedicao(o){
+  const coefs=coeficientesDaObra(o);
+  if(!coefs.length){
+    return `<div class="card"><div class="card-h"><div>
+      <div class="card-t"><span class="ic-tx">${ic('contrato')}</span>Apoio à Medição</div>
+      <div class="card-st">converte o serviço apontado em campo no item do contrato</div></div></div>
+      <div class="card-b">
+        <div class="empty" style="text-align:left;padding:10px 4px">
+          <b>Esta obra ainda não tem matriz de coeficientes.</b>
+          <div class="kpi-s" style="margin:10px 0 14px">A matriz liga cada serviço do campo aos itens contratuais que ele consome.
+            Declare em <code>dados/${esc(o.id)}.js</code>, junto de <code>servicos</code>:</div>
+          <pre style="background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-sm);padding:12px;overflow-x:auto;font-size:12px;line-height:1.6">coeficientes: [
+  { servico:'BINDER', item:'04.20.05', descricao:'Concreto asfáltico binder',
+    unItem:'T',  coef:1.0 },
+  { servico:'BINDER', item:'04.20.11', descricao:'Pintura de ligação',
+    unItem:'M2', coef:11.5 }
+]</pre>
+          <div class="kpi-s" style="margin-top:12px">O campo <code>servico</code> tem de bater com o nome usado nos serviços da obra
+            (maiúsculas/minúsculas não importam). Um serviço pode aparecer em vários itens.</div>
+        </div></div></div>`;
+  }
+  const mes=estado.apoioMes||'';
+  const meses=[...new Set(getLanc(o.id).filter(l=>!l.avulso).map(l=>String(l.dataISO).slice(0,7)))].filter(Boolean).sort().reverse();
+  const lista=Object.values(consumoContratual(o,mes))
+    .filter(x=>x.consumido>0)
+    .sort((a,b)=>String(a.item).localeCompare(String(b.item),'pt-BR',{numeric:true}));
+
+  const filtros=`<div class="row" style="align-items:flex-end;gap:12px;margin-bottom:16px">
+    <div class="field" style="margin:0;max-width:240px"><label class="fl" for="apoioMes">Período da medição</label>
+      <select id="apoioMes" onchange="setApoioMes(this.value)">
+        <option value="">Obra inteira</option>
+        ${meses.map(m=>`<option value="${m}" ${mes===m?'selected':''}>${mesLabel(m+'-01')}</option>`).join('')}
+      </select></div>
+    <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+      <span class="chip">${lista.length} item(ns)</span>
+      <button class="btn btn-pri" onclick="baixarApoioCSV()" ${lista.length?'':'disabled'}>${ic('baixar')} CSV p/ conferência</button>
+    </div></div>`;
+
+  if(!lista.length){
+    return filtros+`<div class="empty">${ic('vazio')}Nada consumido neste período.<br>
+      <span class="kpi-s">Lance serviços que estejam na matriz de coeficientes, ou troque o mês do filtro.</span></div>`;
+  }
+  return filtros+`<div class="card"><div class="card-h"><div>
+      <div class="card-t"><span class="ic-tx">${ic('contrato')}</span>Consumo por item contratual</div>
+      <div class="card-st">${mes?mesLabel(mes+'-01'):'obra inteira'} · lançamentos do campo × matriz de coeficientes</div></div></div>
+    <div class="card-b" style="padding:0">
+      <div class="tbl-wrap"><table class="t">
+        <thead><tr><th>Item</th><th>Descrição</th><th>Unid</th><th class="num">Consumido</th><th>Origem</th></tr></thead>
+        <tbody>${lista.map(x=>`<tr>
+          <td class="mono"><b>${esc(x.item)}</b></td>
+          <td>${esc(x.descricao)}</td>
+          <td class="mono">${esc(x.unItem)}</td>
+          <td class="num"><b>${fmtQtd(x.consumido)}</b></td>
+          <td class="kpi-s">${esc([...new Set(x.origens)].join(' + '))}</td></tr>`).join('')}</tbody>
+      </table></div></div>
+    <div class="card-b kpi-s" style="border-top:1px solid var(--border)">
+      Prévia de conferência: confronte com a coluna do mês da Planilha Geral antes de fechar a medição.
+      Serviço avulso não entra aqui.</div></div>`;
+}
+function setApoioMes(v){estado.apoioMes=v;render();}
+
+function baixarApoioCSV(){
+  const o=obra();const mes=estado.apoioMes||'';
+  const lista=Object.values(consumoContratual(o,mes)).filter(x=>x.consumido>0)
+    .sort((a,b)=>String(a.item).localeCompare(String(b.item),'pt-BR',{numeric:true}));
+  if(!lista.length){toast('Nada a exportar neste período');return;}
+  const cab=['Item','Descricao','Unid','Qtd_Consumida','Periodo','Servicos_Origem'];
+  const linhas=lista.map(x=>[x.item,x.descricao,x.unItem,
+    // decimal com vírgula e sem separador de milhar: cola direto no Excel pt-BR
+    (Math.round(x.consumido*100)/100).toFixed(2).replace('.',','),
+    mes||'obra inteira',[...new Set(x.origens)].join(' + ')
+  ].map(v=>`"${String(v).replace(/"/g,'""')}"`));
+  const csv=[cab.join(';'),...linhas.map(l=>l.join(';'))].join('\r\n');
+  // BOM na frente: sem ele o Excel abre os acentos errados
+  const blob=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);const a=document.createElement('a');
+  a.href=url;a.download='Apoio_Medicao_'+o.id+'_'+(mes||'total')+'.csv';
+  document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
+  toast('CSV de conferência baixado ✓');
+}
+
+/* ============================================================
+   ANALISTA IA (Google Gemini)
+   A chave é do próprio usuário e fica só no navegador dele — o app
+   não intermedia, não guarda no servidor e não cobra nada por isso.
+   O que vai para a IA é o resumo já calculado da obra (percentuais,
+   saldos, ritmo), não a base inteira: contexto menor responde melhor
+   e não joga dado de campo desnecessário para fora.
+   ============================================================ */
+const IA_CHAVE_LS='gestor:geminiKey';
+// se um modelo não existir para a chave (404), tenta o próximo
+const IA_MODELOS=['gemini-2.5-flash','gemini-2.0-flash','gemini-flash-latest','gemini-1.5-flash'];
+function temChaveIA(){return !!(localStorage.getItem(IA_CHAVE_LS)||'').trim();}
+
+function abrirConfigIA(){
+  const atual=(localStorage.getItem(IA_CHAVE_LS)||'').trim();
+  abrirModal('Configurar IA',`
+    <div class="kpi-s" style="margin-bottom:14px;line-height:1.6">
+      A análise usa o <b>Google Gemini</b> com a <b>sua</b> chave. Ela fica guardada
+      apenas neste navegador e vai direto para o Google — não passa pelo servidor do app.</div>
+    <div class="card" style="margin-bottom:14px;background:var(--surface-2)"><div class="card-b" style="padding:12px 14px">
+      <div class="kpi-s" style="font-weight:700;margin-bottom:6px">Como obter a chave (grátis)</div>
+      <ol style="font-size:12.5px;padding-left:18px;line-height:1.8;margin:0">
+        <li>Abra <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">aistudio.google.com/app/apikey</a></li>
+        <li>Clique em <b>Create API key</b> e entre com a conta Google</li>
+        <li>Copie a chave e cole abaixo</li>
+      </ol></div></div>
+    <div class="field"><label class="fl" for="iaKey">Chave da API Gemini</label>
+      <input type="password" id="iaKey" class="mono" placeholder="AIza..." autocomplete="off" spellcheck="false" value="${esc(atual)}"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-pri" onclick="salvarChaveIA()">Salvar</button>
+      <button class="btn" onclick="fecharModal()">Cancelar</button>
+      ${atual?`<button class="btn btn-ghost" style="margin-left:auto;color:var(--vermelho)" onclick="removerChaveIA()">Remover chave</button>`:''}
+    </div>`);
+}
+function salvarChaveIA(){
+  const v=(el('iaKey').value||'').trim();
+  if(!v){toast('Cole a chave antes de salvar');return;}
+  if(!/^AIza[0-9A-Za-z_-]{20,}$/.test(v)&&!confirm('Essa chave não parece estar no formato esperado (AIza...). Salvar mesmo assim?'))return;
+  localStorage.setItem(IA_CHAVE_LS,v);fecharModal();toast('Chave salva ✓');render();
+}
+function removerChaveIA(){localStorage.removeItem(IA_CHAVE_LS);fecharModal();toast('Chave removida');render();}
+
+async function chamarIA(prompt){
+  const chave=(localStorage.getItem(IA_CHAVE_LS)||'').trim();
+  if(!chave){const e=new Error('SEM_CHAVE_IA');e.code='SEM_CHAVE_IA';throw e;}
+  const body=JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{temperature:0.2}});
+  let indisponivel='';
+  for(const modelo of IA_MODELOS){
+    let resp;
+    try{
+      resp=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+modelo+':generateContent?key='+chave,
+        {method:'POST',headers:{'Content-Type':'application/json'},body});
+    }catch(e){
+      // fetch só rejeita por rede/CORS. Causa comum: chave com restrição de
+      // referrer no Google Cloud, que bloqueia chamada de navegador.
+      throw new Error('Falha de rede ao falar com o Gemini. Confira a conexão e se a chave não tem restrição de aplicativo/referrer no Google Cloud.');
+    }
+    if(resp.ok){
+      const d=await resp.json();
+      const c=d.candidates&&d.candidates[0];
+      const partes=c&&c.content&&c.content.parts;
+      const txt=partes?partes.map(p=>p.text||'').join(''):'';
+      if(txt.trim())return txt.replace(/```html/g,'').replace(/```/g,'').trim();
+      const motivo=(c&&c.finishReason)||(d.promptFeedback&&d.promptFeedback.blockReason)||'desconhecido';
+      throw new Error('A IA respondeu sem texto (motivo: '+motivo+').');
+    }
+    let msg='';try{const e=await resp.json();msg=(e&&e.error&&e.error.message)||'';}catch(_){}
+    if(resp.status===404||/not found|not supported|does not exist/i.test(msg)){indisponivel=modelo+(msg?' — '+msg:'');continue;}
+    if(resp.status===429)throw new Error('Cota da API Gemini excedida (429). Aguarde alguns minutos.'+(msg?' '+msg:''));
+    if([400,401,403].includes(resp.status)){
+      const e=new Error('Chave recusada ('+resp.status+'): '+(msg||'confira a chave e se a API Generative Language está ativa no projeto.'));
+      e.code='CHAVE_INVALIDA';throw e;
+    }
+    throw new Error('Erro HTTP '+resp.status+(msg?': '+msg:''));
+  }
+  throw new Error('Nenhum modelo Gemini disponível para esta chave ('+indisponivel+').');
+}
+
+/* O contexto: o que um engenheiro levaria para a reunião — avanço por
+   frente contra o previsto, o que produziu nos últimos dias, saldo e
+   projeção de término. Sem nomes de pessoas e sem valores em R$. */
+function contextoIA(o,dias){
+  const lim=new Date();lim.setDate(lim.getDate()-dias);lim.setHours(0,0,0,0);
+  const lancs=getLanc(o.id).filter(l=>!l.avulso);
+  const recentes=lancs.filter(l=>{const d=new Date(l.dataISO+'T00:00:00');return d>=lim;});
+  const av=avancoServ(o);
+  const fs=frenteStats(o);
+  const p=previsaoTermino(o);
+  const mes=iso=>iso?mesLabel(iso+'-01'):'—';
+
+  let t=`OBRA: ${o.nome} · contrato ${o.contrato} · local ${o.local||'—'}\n`;
+  t+=`Prazo contratual: ${o.prazoMeses||'?'} meses a partir de ${o.inicioISO}.\n`;
+  t+=`Lançamentos no histórico: ${lancs.length}. Nos últimos ${dias} dias: ${recentes.length}.\n`;
+  if(p){
+    t+=`Avanço físico médio: ${p.atual.toFixed(1)}% em ${p.mesesDecorridos} mês(es). Prazo até ${mes(p.fimContratoMes)}.\n`;
+    if(p.desdeInicio&&p.desdeInicio.mes)t+=`Projeção no ritmo desde o início: ${mes(p.desdeInicio.mes)} (${p.desdeInicio.atraso>0?'+':''}${p.desdeInicio.atraso} mês(es) vs. contrato).\n`;
+    if(p.recente&&p.recente.mes)t+=`Projeção no ritmo dos últimos 3 meses: ${mes(p.recente.mes)} (${p.recente.atraso>0?'+':''}${p.recente.atraso} mês(es) vs. contrato).\n`;
+    if(p.parada)t+=`Sem avanço lançado suficiente para projetar término.\n`;
+  }
+  t+=`\nFRENTES (realizado x previsto no cronograma):\n`;
+  fs.forEach(f=>{
+    t+=`- ${f.nome}: realizado ${f.real.toFixed(1)}%`+
+       (f.prev==null?'':` | previsto ${f.prev.toFixed(1)}% | desvio ${(f.desvio>=0?'+':'')}${f.desvio.toFixed(1)} p.p.`)+
+       ` | ${f.n} serviço(s), ${f.concl} concluído(s)\n`;
+  });
+
+  t+=`\nSERVIÇOS EM ANDAMENTO (saldo e produção no período):\n`;
+  const linhas=(o.servicos||[]).map(s=>{
+    const feito=av[skey(s.rua,s.capId,s.servico)]||0;
+    const pct=s.qtdPrev>0?Math.min(100,feito/s.qtdPrev*100):0;
+    const prod=recentes.filter(l=>l.rua===s.rua&&l.capId===s.capId&&l.servico===s.servico)
+      .reduce((a,l)=>a+(+l.qtd||0),0);
+    return {s,pct,saldo:Math.max(0,s.qtdPrev-feito),prod};
+  }).filter(x=>x.pct>0&&x.pct<99.95)
+    .sort((a,b)=>b.prod-a.prod).slice(0,40);
+  linhas.forEach(x=>{
+    t+=`- ${x.s.rua} | ${frenteNome(o,x.s.capId)} | ${x.s.servico}: ${x.pct.toFixed(1)}% | saldo ${x.saldo.toFixed(2)} ${x.s.un} | produzido nos ${dias} dias: ${x.prod.toFixed(2)} ${x.s.un}\n`;
+  });
+  const parados=linhas.filter(x=>x.prod<=0).length;
+  t+=`\nServiços em andamento sem nenhuma produção nos últimos ${dias} dias: ${parados}.\n`;
+  return t;
+}
+
+function viewIA(o){
+  const temChave=temChaveIA();
+  return `<div class="card" style="margin-bottom:16px">
+    <div class="card-h"><div>
+      <div class="card-t"><span class="ic-tx">${ic('ia')}</span>Analista IA</div>
+      <div class="card-st">resumo executivo, projeção de prazo e gargalos, a partir do que já foi lançado</div></div>
+      <button class="btn btn-sm" onclick="abrirConfigIA()">${temChave?'Trocar chave':'Configurar chave'}</button></div>
+    <div class="card-b" style="background:var(--surface-2);border-bottom:1px solid var(--border)">
+      <div class="row" style="align-items:flex-end;gap:12px">
+        <div class="field" style="margin:0;min-width:220px"><label class="fl" for="iaTipo">Tipo de análise</label>
+          <select id="iaTipo">
+            <option value="completa">Resumo completo (situação + projeções)</option>
+            <option value="projecoes">Só projeções e prazos</option>
+            <option value="gargalos">Gargalos e alertas</option>
+            <option value="frentes">Comparativo entre frentes</option>
+          </select></div>
+        <div class="field" style="margin:0;max-width:200px"><label class="fl" for="iaDias">Período analisado</label>
+          <select id="iaDias">
+            <option value="7">Últimos 7 dias</option>
+            <option value="15" selected>Últimos 15 dias</option>
+            <option value="30">Últimos 30 dias</option>
+          </select></div>
+        <button class="btn btn-pri" id="btnIA" onclick="rodarIA()" style="margin-left:auto">${ic('ia')} Gerar análise</button>
+      </div>
+      <div class="kpi-s" style="margin-top:8px">O que é enviado: percentuais, saldos e ritmo já calculados desta obra. Nada de valores em R$ nem de dados pessoais.</div>
+    </div>
+    <div class="card-b" id="iaSaida">
+      ${temChave
+        ? `<div class="empty">${ic('ia')}Escolha o tipo de análise e o período, depois toque em <b>Gerar análise</b>.</div>`
+        : `<div class="empty">${ic('chave')}Nenhuma chave do Gemini configurada neste navegador.<br>
+           <button class="btn btn-pri btn-sm" style="margin-top:12px" onclick="abrirConfigIA()">Configurar chave de IA</button></div>`}
+    </div></div>`;
+}
+
+async function rodarIA(){
+  const o=obra();const btn=el('btnIA');const saida=el('iaSaida');
+  if(!o||!btn||!saida)return;
+  const tipo=el('iaTipo').value,dias=parseInt(el('iaDias').value,10);
+  btn.disabled=true;const txtBtn=btn.innerHTML;btn.innerHTML='Analisando…';
+  saida.innerHTML=`<div class="empty">${ic('ampulheta')}Lendo os lançamentos, calculando ritmo e montando as conclusões…</div>`;
+  try{
+    const ctx=contextoIA(o,dias);
+    const comum=`Você é um engenheiro de planejamento de obra pública no Brasil (padrão SIURB/PMSP). `+
+      `Escreva em português do Brasil, com termos técnicos de engenharia civil e planejamento. `+
+      `Seja direto e use números dos dados. Não invente informação que não esteja nos dados.\n\nDADOS:\n${ctx}\n\n`;
+    const pedidos={
+      completa:`Faça um resumo executivo da obra: situação geral, frentes com bom ritmo nos últimos ${dias} dias, frentes atrasadas frente ao cronograma e uma leitura da projeção de término. Feche com 3 a 5 recomendações objetivas para a direção da obra.`,
+      projecoes:`Foque em prazos. Para os serviços mais críticos, calcule o ritmo médio diário (produção do período dividida por ${dias}) e estime quantos dias faltam para zerar o saldo nesse ritmo. Apresente em tabela e destaque os que não cabem no prazo contratual.`,
+      gargalos:`Foque em gargalos. Aponte os serviços em andamento parados ou com produção muito baixa nos últimos ${dias} dias, relacione com o desvio da frente correspondente, levante causas prováveis (frente de serviço, material, interferência, chuva, efetivo) e diga o que fazer nesta semana.`,
+      frentes:`Compare as frentes entre si: quais puxaram o avanço no período, quais ficaram para trás em relação ao previsto do cronograma, e onde o esforço deveria ser realocado. Justifique com os números.`
+    };
+    const prompt=comum+pedidos[tipo]+
+      `\n\nIMPORTANTE: responda EXCLUSIVAMENTE em HTML simples (<h3>, <h4>, <p>, <ul>, <li>, <table>, <strong>). `+
+      `Nada de Markdown e nada de blocos de código.`;
+    saida.innerHTML=`<div class="ia-txt">${await chamarIA(prompt)}</div>
+      <div class="kpi-s" style="margin-top:14px;padding-top:10px;border-top:1px solid var(--border)">
+        Análise gerada por IA a partir dos lançamentos — confira antes de usar em documento oficial.</div>`;
+    toast('Análise gerada ✓');
+  }catch(e){
+    const acao=(e.code==='SEM_CHAVE_IA'||e.code==='CHAVE_INVALIDA')
+      ? `<button class="btn btn-pri btn-sm" style="margin-top:12px" onclick="abrirConfigIA()">Configurar chave de IA</button>`:'';
+    const msg=e.code==='SEM_CHAVE_IA'?'Nenhuma chave do Gemini configurada neste navegador.':esc(e.message);
+    saida.innerHTML=`<div class="empty">${ic('alerta')}${msg}${acao}</div>`;
+    toast('Não deu para gerar a análise');
+  }finally{btn.disabled=false;btn.innerHTML=txtBtn;}
+}
 
 function render(){
   const app=el('app');
@@ -1014,6 +1482,9 @@ function viewTela(o){
   // esconder o item do menu não basta: alguém pode chegar aqui por outro caminho
   if(o&&estado.tela!=='home'&&!podeVer(estado.tela))return telaBloqueada(estado.tela);
   switch(estado.tela){
+    case 'ia':return viewIA(o);
+    case 'apoio':return viewApoioMedicao(o);
+    case 'reverso':return viewReverso(o);
     case 'servicos':return viewServicos(o);
     case 'medicao':return viewMedicao(o);
     case 'rdo':return viewRDO(o);
@@ -1346,8 +1817,11 @@ function viewRDO(o){
       <div id="saldoBox" class="kpi-s" style="margin:-6px 0 12px"></div>
       <div class="row"><div class="field"><label class="fl" for="fEstIni">Estaca inicial</label><input id="fEstIni" placeholder="Ex.: E0"></div>
         <div class="field"><label class="fl" for="fEstFim">Estaca final</label><input id="fEstFim" placeholder="Ex.: E12"></div></div>
-      <div class="field"><label class="fl" for="fClima">Clima</label><select id="fClima">
-        <option>Bom</option><option>Nublado</option><option>Chuva fraca</option><option>Chuva forte</option><option>Impraticável</option></select></div>
+      <div class="row">
+        <div class="field"><label class="fl" for="fTurno">Turno</label><select id="fTurno">
+          ${TURNOS.map(t=>`<option>${t}</option>`).join('')}</select></div>
+        <div class="field"><label class="fl" for="fClima">Clima</label><select id="fClima">
+          <option>Bom</option><option>Nublado</option><option>Chuva fraca</option><option>Chuva forte</option><option>Impraticável</option></select></div></div>
       <div class="field"><label class="fl" for="fObs">Observações</label><textarea id="fObs" rows="2" placeholder="Trecho, estaca, ocorrências..."></textarea></div>
       <div class="field"><label class="fl" for="fFotos"><span class="ic-tx">${ic('camera')}</span>Fotos do serviço (até ${MAX_FOTOS}) <span id="fotosCount" class="kpi-s" style="text-transform:none;letter-spacing:0"></span></label>
         <input type="file" id="fFotos" accept="image/*" capture="environment" multiple onchange="fotosSelecionadas(this)">
@@ -1518,9 +1992,17 @@ function viewMedicao(o){
 function viewHistorico(o){
   const datas=todasDatas(o).slice().reverse(); // mais recente primeiro
   if(!datas.length)return `<div class="empty">${ic('historico')}Nenhum RDO ainda. Comece em <b>Lançar serviços</b> ou <b>Diário de Obra</b>.</div>`;
-  const topo=`<div class="row" style="margin-bottom:16px;align-items:center">
+  // meses com RDO, para exportar o mês fechado da medição de uma vez
+  const meses=[...new Set(datas.map(d=>d.slice(0,7)))].sort().reverse();
+  const topo=`<div class="row" style="margin-bottom:16px;align-items:flex-end">
     <div class="chip">${datas.length} RDO(s)</div>
-    <div style="margin-left:auto"><button class="btn btn-sm" onclick="gerarExcelTudo()">${ic('planilha')} Exportar Excel (todos)</button></div></div>`;
+    <div class="field" style="margin:0;max-width:200px"><label class="fl" for="histMes">Período p/ exportar</label>
+      <select id="histMes" onchange="estado.histMes=this.value">
+        <option value="">Todos os dias</option>
+        ${meses.map(m=>`<option value="${m}" ${estado.histMes===m?'selected':''}>${mesLabel(m+'-01')}</option>`).join('')}</select></div>
+    <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-sm" onclick="baixarPDFsDoMes(el('histMes').value)">${ic('arquivo')} PDFs do período</button>
+      <button class="btn btn-sm" onclick="gerarExcelTudo()">${ic('planilha')} Exportar Excel (todos)</button></div></div>`;
   const cards=datas.map(d=>{
     const dd=montarRDO(o,d);const dv=diarioDoDia(o.id,d);
     const dataBR=new Date(d+'T00:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit',year:'numeric'});
@@ -1533,7 +2015,8 @@ function viewHistorico(o){
     const resumo=dv?`${ic('capacete')} ${totalPessoal(dv.pessoal||[])} · ${ic('equipamentos')} ${(dv.equipamentos||[]).length} equip. · ${ic('nuvem')} ${esc(dv.climaManha||'—')}/${esc(dv.climaTarde||'—')}`:'sem diário — só serviços';
     return `<div class="card" style="margin-bottom:14px"><div class="card-h">
       <div><div class="card-t">RDO ${numeroRDO(o,d)} · ${dataBR}</div><div class="card-st">${resumo}</div></div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-sm" onclick="gerarPDFdia('${d}')">${ic('arquivo')} PDF</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-sm" onclick="baixarPDFRDO('${d}')">${ic('arquivo')} PDF</button>
+        <button class="btn btn-sm btn-ghost" onclick="gerarPDFdia('${d}')" title="Abrir no modelo de impressão">${ic('imprimir')}</button>
         <button class="btn btn-sm" onclick="gerarExcelDia('${d}')">${ic('planilha')} Excel</button></div></div>
       <div class="tbl-wrap" style="border:none"><table class="t">
       <thead><tr><th>Serviço</th><th>Trecho</th><th class="num">Qtd</th><th></th></tr></thead>
@@ -1993,18 +2476,25 @@ function pdfZoom(d){_pdfZoom=Math.min(4,Math.max(0.4,+(_pdfZoom+d).toFixed(2)));
 function pdfZoomReset(){_pdfZoom=1;pdfZoomLbl();drawPdf();}
 
 /* ---------- DIÁRIO DE OBRA (RDO interno) ---------- */
-function rowPessoal(p){p=p||{funcao:'',qtd:''};
+/* O turno fica na LINHA, não em um bloco separado: obra que vira a noite
+   costuma repetir só parte do efetivo, e duplicar o formulário inteiro
+   obrigaria a redigitar tudo. Padrão diurno — o noturno é a exceção. */
+function rowPessoal(p){p=p||{funcao:'',qtd:'',turno:'Diurno'};
   return `<div class="drow pessoal-row" style="display:flex;gap:8px;margin-bottom:6px">
     <input list="dlFuncoes" class="p-func" placeholder="Função" value="${esc(p.funcao||'')}" style="flex:1">
+    <select class="p-turno" style="width:104px" title="Turno">
+      ${TURNOS.map(t=>`<option ${t===(p.turno||'Diurno')?'selected':''}>${t}</option>`).join('')}</select>
     <input type="number" min="0" class="p-qtd" placeholder="Qtd" value="${p.qtd||''}" style="width:80px">
     <button class="btn btn-sm btn-ghost" onclick="delRow(this)" title="Remover">${ic('fechar')}</button></div>`;}
-function rowEquip(e){e=e||{nome:'',qtd:''};
+function rowEquip(e){e=e||{nome:'',qtd:'',turno:'Diurno'};
   return `<div class="drow equip-row" style="display:flex;gap:8px;margin-bottom:6px">
     <input list="dlEquip" class="e-nome" placeholder="Equipamento" value="${esc(e.nome||'')}" style="flex:1">
+    <select class="e-turno" style="width:104px" title="Turno">
+      ${TURNOS.map(t=>`<option ${t===(e.turno||'Diurno')?'selected':''}>${t}</option>`).join('')}</select>
     <input type="number" min="0" class="e-qtd" placeholder="Qtd" value="${e.qtd||''}" style="width:80px">
     <button class="btn btn-sm btn-ghost" onclick="delRow(this)" title="Remover">${ic('fechar')}</button></div>`;}
-function lerPessoal(){return [...document.querySelectorAll('#pessoalBox .pessoal-row')].map(r=>({funcao:r.querySelector('.p-func').value.trim(),qtd:+r.querySelector('.p-qtd').value||0})).filter(p=>p.funcao||p.qtd);}
-function lerEquip(){return [...document.querySelectorAll('#equipBox .equip-row')].map(r=>({nome:r.querySelector('.e-nome').value.trim(),qtd:+r.querySelector('.e-qtd').value||0})).filter(e=>e.nome||e.qtd);}
+function lerPessoal(){return [...document.querySelectorAll('#pessoalBox .pessoal-row')].map(r=>({funcao:r.querySelector('.p-func').value.trim(),turno:r.querySelector('.p-turno').value,qtd:+r.querySelector('.p-qtd').value||0})).filter(p=>p.funcao||p.qtd);}
+function lerEquip(){return [...document.querySelectorAll('#equipBox .equip-row')].map(r=>({nome:r.querySelector('.e-nome').value.trim(),turno:r.querySelector('.e-turno').value,qtd:+r.querySelector('.e-qtd').value||0})).filter(e=>e.nome||e.qtd);}
 function addPessoal(){el('pessoalBox').insertAdjacentHTML('beforeend',rowPessoal());}
 function addEquip(){el('equipBox').insertAdjacentHTML('beforeend',rowEquip());}
 function delRow(btn){btn.closest('.drow').remove();}
@@ -2046,7 +2536,8 @@ function viewDiario(o){
         <div class="field" style="margin-top:14px"><label class="fl">Ocorrências / observações</label>
           <textarea id="dOcor" rows="3" placeholder="Atrasos, imprevistos, visitas, interferências, medições, etc.">${esc(sv.ocorrencias||'')}</textarea></div>
         <div class="row"><button class="btn btn-pri" style="flex:1;justify-content:center" onclick="salvarDiario()">Salvar diário</button>
-          <button class="btn" onclick="imprimirRDO()">${ic('imprimir')} Imprimir RDO</button></div>
+          <button class="btn" onclick="baixarPDFRDO(estado.diarioData)">${ic('arquivo')} PDF</button>
+          <button class="btn btn-ghost" onclick="imprimirRDO()" title="Modelo de impressão">${ic('imprimir')}</button></div>
       </div></div>
     <div style="display:flex;flex-direction:column;gap:16px">
       <div class="card"><div class="card-h"><div class="card-t">Serviços lançados neste dia</div>
@@ -2216,6 +2707,129 @@ function abrirImpressao(html){const w=window.open('','_blank');if(!w){toast('Per
 function imprimirRDO(){const o=obra();const dd=coletaDiario();dd.servicos=getLanc(o.id).filter(l=>l.dataISO===dd.dataISO);abrirImpressao(htmlRDO(o,dd,numeroRDO(o,dd.dataISO)));}
 function gerarPDFdia(dataISO){const o=obra();abrirImpressao(htmlRDO(o,montarRDO(o,dataISO),numeroRDO(o,dataISO)));}
 
+/* ============================================================
+   RDO EM PDF (arquivo, não janela de impressão)
+   ------------------------------------------------------------
+   A impressão do navegador serve no escritório. No celular do
+   canteiro ela pede impressora, abre pop-up e às vezes nem gera o
+   arquivo. Aqui o PDF sai pronto para anexar em e-mail ou WhatsApp.
+   jsPDF fica em vendor/ (não em CDN) porque o app roda offline.
+   ============================================================ */
+function pdfPronto(){return !!(window.jspdf&&window.jspdf.jsPDF);}
+
+function docRDO(o,dd,numero){
+  const {jsPDF}=window.jspdf;
+  const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
+  const PW=210,ML=12,TW=PW-ML*2;
+  const VERDE=[31,111,74],ESCURO=[26,22,18],CINZA=[120,117,112],CINZA_BG=[242,241,236];
+  const fonte=(t,e,c)=>{doc.setFontSize(t);doc.setFont('helvetica',e||'normal');doc.setTextColor(...(c||[17,17,17]));};
+  const data=new Date(dd.dataISO+'T00:00:00');
+  const diaSem=['Domingo','Segunda-feira','Terça-feira','Quarta-feira','Quinta-feira','Sexta-feira','Sábado'][data.getDay()];
+
+  // cabeçalho
+  doc.setFillColor(...ESCURO);doc.rect(0,0,PW,26,'F');
+  doc.setFillColor(...VERDE);doc.rect(0,26,PW,3,'F');
+  fonte(17,'bold',[255,255,255]);doc.text('RELATÓRIO DIÁRIO DE OBRA',ML,12);
+  fonte(9,'normal',[210,206,198]);
+  doc.text(`${o.nome} · ${o.contrato}`,ML,18);
+  doc.text(`${diaSem} · ${data.toLocaleDateString('pt-BR')}`,ML,23);
+  fonte(8,'bold',[255,255,255]);doc.text('RDO Nº',PW-ML,12,{align:'right'});
+  fonte(16,'bold',[255,255,255]);doc.text(String(numero),PW-ML,19,{align:'right'});
+
+  let y=36;
+  // faixa de resumo: clima, condição e efetivo por turno
+  const porTurno=(arr,t)=>(arr||[]).filter(x=>(x.turno||'Diurno')===t);
+  const somaQtd=arr=>(arr||[]).reduce((a,x)=>a+(+x.qtd||0),0);
+  const efD=somaQtd(porTurno(dd.pessoal,'Diurno')),efN=somaQtd(porTurno(dd.pessoal,'Noturno'));
+  const eqD=somaQtd(porTurno(dd.equipamentos,'Diurno')),eqN=somaQtd(porTurno(dd.equipamentos,'Noturno'));
+  const caixas=[
+    ['CLIMA MANHÃ',dd.climaManha||'—'],['CLIMA TARDE',dd.climaTarde||'—'],
+    ['CONDIÇÃO',dd.condicao||'Normal'],
+    ['EFETIVO',efN?`${efD} + ${efN} not.`:String(efD)],
+    ['EQUIPAMENTOS',eqN?`${eqD} + ${eqN} not.`:String(eqD)]
+  ];
+  const larg=TW/caixas.length;
+  caixas.forEach((c,i)=>{
+    const x=ML+i*larg;
+    doc.setFillColor(...CINZA_BG);doc.rect(x,y,larg-1.5,14,'F');
+    fonte(6.5,'bold',CINZA);doc.text(c[0],x+2.5,y+5);
+    fonte(9,'bold',ESCURO);doc.text(String(c[1]).slice(0,18),x+2.5,y+11);
+  });
+  y+=20;
+
+  const tabela=(titulo,cabecalho,linhas,vazio)=>{
+    if(!linhas.length&&!vazio)return;
+    fonte(9.5,'bold',VERDE);doc.text(titulo.toUpperCase(),ML,y);y+=2;
+    doc.autoTable({
+      startY:y,margin:{left:ML,right:ML},
+      head:[cabecalho],body:linhas.length?linhas:[[{content:vazio,colSpan:cabecalho.length,styles:{halign:'center',textColor:CINZA}}]],
+      theme:'grid',styles:{fontSize:8.5,cellPadding:2,lineColor:[210,208,202]},
+      headStyles:{fillColor:CINZA_BG,textColor:ESCURO,fontStyle:'bold',fontSize:8},
+      alternateRowStyles:{fillColor:[250,250,247]}
+    });
+    y=doc.lastAutoTable.finalY+7;
+  };
+
+  // serviços do dia, separados por turno
+  TURNOS.forEach(t=>{
+    const svc=(dd.servicos||[]).filter(l=>(l.turno||'Diurno')===t);
+    if(!svc.length&&t==='Noturno')return;      // sem turno noturno, não polui o relatório
+    tabela(`Serviços executados — turno ${t.toLowerCase()}`,
+      ['Serviço','Rua','Trecho','Quantidade'],
+      svc.map(l=>[l.servico+(l.avulso?' (avulso)':''),l.rua,estacaTxt(l)||'—',fmtQtd(l.qtd)+' '+l.un]),
+      'Sem serviços lançados neste turno');
+  });
+
+  const linhasEfetivo=(dd.pessoal||[]).map(p=>[p.funcao,p.turno||'Diurno',String(p.qtd||'')]);
+  const linhasEquip=(dd.equipamentos||[]).map(e=>[e.nome,e.turno||'Diurno',String(e.qtd||'')]);
+  tabela('Mão de obra',['Função','Turno','Qtd'],linhasEfetivo,'Sem efetivo apontado');
+  tabela('Equipamentos',['Equipamento','Turno','Qtd'],linhasEquip,'Sem equipamento apontado');
+
+  if(dd.ocorrencias){
+    fonte(9.5,'bold',VERDE);doc.text('OCORRÊNCIAS / OBSERVAÇÕES',ML,y);y+=5;
+    fonte(9,'normal');
+    const linhas=doc.splitTextToSize(dd.ocorrencias,TW);
+    doc.text(linhas,ML,y);y+=linhas.length*4.6+6;
+  }
+
+  // assinaturas sempre no rodapé da última página
+  const alturaPagina=doc.internal.pageSize.getHeight();
+  if(y>alturaPagina-42){doc.addPage();y=24;}
+  const yAss=Math.max(y+10,alturaPagina-34);
+  doc.setDrawColor(80,80,80);
+  [[ML,'Responsável técnico — '+(o.contratada||'Contratada')],[ML+TW/2+6,'Fiscalização']].forEach(([x,rot])=>{
+    doc.line(x,yAss,x+TW/2-6,yAss);
+    fonte(8,'normal',CINZA);doc.text(rot,x,yAss+4.5);
+  });
+  fonte(7,'normal',CINZA);
+  doc.text(`Emitido em ${new Date().toLocaleString('pt-BR')} · ${usuarioAtual()||'—'} · Gestor — Controle de Obras`,
+    ML,alturaPagina-8);
+  return doc;
+}
+
+function baixarPDFRDO(dataISO){
+  const o=obra();
+  if(!pdfPronto()){toast('O gerador de PDF não carregou — use Imprimir RDO');return;}
+  try{
+    docRDO(o,montarRDO(o,dataISO),numeroRDO(o,dataISO)).save(`RDO_${o.id}_${dataISO}.pdf`);
+    toast('PDF gerado ✓');
+  }catch(e){toast('Não foi possível gerar o PDF');}
+}
+
+/* Um arquivo por dia, em sequência: o mês inteiro de uma vez é o que a
+   fiscalização pede na entrega da medição. */
+function baixarPDFsDoMes(mes){
+  const o=obra();
+  if(!pdfPronto()){toast('O gerador de PDF não carregou');return;}
+  const datas=todasDatas(o).filter(d=>!mes||d.slice(0,7)===mes);
+  if(!datas.length){toast('Nenhum dia com RDO neste mês');return;}
+  if(!confirm(`Gerar ${datas.length} arquivo(s) de PDF, um por dia?`))return;
+  toast(`Gerando ${datas.length} PDF(s)…`);
+  datas.forEach((d,i)=>setTimeout(()=>{
+    try{docRDO(o,montarRDO(o,d),numeroRDO(o,d)).save(`RDO_${o.id}_${d}.pdf`);}catch(e){}
+  },i*700));
+}
+
 /* ---------- Excel no modelo do RDO (xlsx-js-style) ---------- */
 function _brd(){const s={style:'thin',color:{rgb:'CCCCCC'}};return {top:s,bottom:s,left:s,right:s};}
 function wsRDO(o,dd,numero){
@@ -2234,12 +2848,16 @@ function wsRDO(o,dd,numero){
   put(r,0,'MÃO DE OBRA',green);put(r,2,'EQUIPAMENTOS',green);merges.push({s:{r,c:0},e:{r,c:1}});merges.push({s:{r,c:2},e:{r,c:3}});r++;
   put(r,0,'Função',hdr);put(r,1,'Qtd',hdr);put(r,2,'Equipamento',hdr);put(r,3,'Qtd',hdr);r++;
   const nmax=Math.max(dd.pessoal.length,dd.equipamentos.length,1);
+  // o turno vai junto do nome: a planilha tem 4 colunas e abrir uma quinta
+  // quebraria as mesclagens do cabeçalho
+  const comTurno=(nome,t)=>nome+((t&&t!=='Diurno')?' ('+t.toLowerCase()+')':'');
   for(let i=0;i<nmax;i++){const p=dd.pessoal[i],e=dd.equipamentos[i];
-    put(r,0,p?p.funcao:'',cel);put(r,1,p?p.qtd:'',celR);put(r,2,e?e.nome:'',cel);put(r,3,e?e.qtd:'',celR);r++;}
+    put(r,0,p?comTurno(p.funcao,p.turno):'',cel);put(r,1,p?p.qtd:'',celR);
+    put(r,2,e?comTurno(e.nome,e.turno):'',cel);put(r,3,e?e.qtd:'',celR);r++;}
   put(r,0,'Total',hdr);put(r,1,totalPessoal(dd.pessoal),{...hdr,alignment:{horizontal:'right'}});put(r,2,'',cel);put(r,3,'',cel);r+=2;
   put(r,0,'SERVIÇOS EXECUTADOS',green);merges.push({s:{r,c:0},e:{r,c:3}});r++;
   put(r,0,'Serviço',hdr);put(r,1,'Rua',hdr);put(r,2,'Trecho (estacas)',hdr);put(r,3,'Quantidade',hdr);r++;
-  if(dd.servicos.length)dd.servicos.forEach(l=>{put(r,0,l.servico+(l.avulso?' (avulso)':''),cel);put(r,1,l.rua,cel);put(r,2,estacaTxt(l)||'—',cel);put(r,3,fmtQtd(l.qtd)+' '+l.un,celR);r++;});
+  if(dd.servicos.length)dd.servicos.forEach(l=>{put(r,0,comTurno(l.servico+(l.avulso?' (avulso)':''),l.turno),cel);put(r,1,l.rua,cel);put(r,2,estacaTxt(l)||'—',cel);put(r,3,fmtQtd(l.qtd)+' '+l.un,celR);r++;});
   else{put(r,0,'Sem serviços lançados',cel);put(r,1,'',cel);put(r,2,'',cel);put(r,3,'',cel);r++;}
   r++;
   put(r,0,'OCORRÊNCIAS / OBSERVAÇÕES',green);merges.push({s:{r,c:0},e:{r,c:3}});r++;
@@ -2334,6 +2952,7 @@ function salvar(){
   }
   const novo={id:uid(),dataISO:el('fData').value||hoje(),...lanc,
     qtd,estIni:el('fEstIni').value.trim(),estFim:el('fEstFim').value.trim(),
+    turno:(el('fTurno')&&el('fTurno').value)||'Diurno',
     clima:el('fClima').value,obs:el('fObs').value.trim(),usuario:usuarioAtual(),
     fotos:_fotosRDO.map(f=>({thumb:f.thumb,url:''})),criadoEm:Date.now()};
   const arr=getLanc(o.id);arr.push(novo);setLanc(o.id,arr);
