@@ -208,7 +208,8 @@ table.t tr:hover td{background:var(--surface-2)}
 .scene-lgd{position:absolute;top:12px;right:14px;display:flex;gap:12px;font:600 9px 'JetBrains Mono',monospace;color:rgba(255,255,255,.55);z-index:4;animation:capF .6s 1.9s both}
 .scene-lgd i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px;vertical-align:middle}
 @keyframes capF{from{opacity:0}to{opacity:1}}
-@media (prefers-reduced-motion:reduce){.scene-3d-stage,.bar3d{animation:none}.scene-3d-stage{transform:rotateX(54deg) rotateZ(-7deg)}}
+@media (prefers-reduced-motion:reduce){.scene-3d-stage,.bar3d{animation:none}.scene-3d-stage{transform:rotateX(54deg) rotateZ(-7deg)}
+  .modal{animation:none!important}.btn:active,.chip[onclick]:active,button.chip:active,.obra-card:active,.nf-card:active,table.t tr:active{transform:none}}
 @media(max-width:700px){.scene-3d{height:200px}.road-3d{width:90%;height:96px}}
 /* mapa de estacas */
 .est-cells{display:flex;gap:2px}
@@ -263,8 +264,11 @@ table.t td .ic-tx{opacity:.6}
   .side-foot{border-top:none;border-left:1px solid var(--border);flex-shrink:0}
   .content{padding:18px 15px 60px}
   .topbar{padding:13px 15px}
-  .g2,.g3,.g4{grid-template-columns:1fr}
-  .g4{grid-template-columns:repeat(2,1fr)}
+  /* !important de proposito: varias telas trazem grid-template-columns no
+     atributo style (1.3fr 1fr etc.), e estilo em linha ganha da folha. Sem
+     isso o painel, o RDO, o diario e os equipamentos rolavam de lado. */
+  .g2,.g3,.g4{grid-template-columns:1fr!important}
+  .g4{grid-template-columns:repeat(2,1fr)!important}
   .proj-wrap{flex-direction:column}
   .proj-list{width:100%!important}
 }
@@ -386,13 +390,121 @@ table.t td .ic-tx{opacity:.6}
   /* a barra não pode tapar o fim da página */
   .content { padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px)) !important }
 
+  /* --- uma barra fixa só no topo ---
+     A faixa de navegação e o cabeçalho da obra grudavam os dois em top:0 e
+     se sobrepunham: o nome da obra ficava escondido atrás da navegação, e
+     111px da tela ficavam presos. A faixa fica; o cabeçalho rola junto com
+     o conteúdo, como é o certo — ele é informação, não comando. */
+  .topbar { position: static }
+
+  /* --- toque: sem o retângulo azul do Android e sem espera de 300ms --- */
+  button, a, select, input, textarea, label, .chip, [onclick] {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+  /* o retorno visual passa a ser nosso, e imediato */
+  .btn:active, .chip[onclick]:active, button.chip:active,
+  .obra-card:active, .nf-card:active, table.t tr:active {
+    transform: scale(.975);
+    transition: transform .06s ease-out;
+  }
+  .bottom-nav-item:active { background: rgba(127,127,127,.14) }
+
+  /* --- rolagem: a página não arrasta atrás do que está aberto --- */
+  .modal, .tbl-wrap, .side { -webkit-overflow-scrolling: touch; overscroll-behavior: contain }
+
+  /* --- faixa de navegação: encaixa no item e avisa que tem mais ao lado --- */
+  .side { scroll-snap-type: x proximity; scroll-padding-left: 12px }
+  .nav-item { scroll-snap-align: center }
+  .side::-webkit-scrollbar { height: 0 }
+
+  /* --- formulário vira folha que sobe de baixo ---
+     Caixa centralizada é desenho de computador: no celular ela nasce no meio
+     da tela, longe do polegar, e o teclado cobre metade. A folha encosta na
+     borda de baixo, ocupa a largura toda e sobe — o dedo já está ali.
+     O !important existe porque abrirModal() escreve max-width no atributo
+     style, e estilo em linha ganha da folha de estilo. */
+  .modal-bg { align-items: flex-end; padding: 0 }
+  .modal {
+    /* no tablet estreito a folha não precisa varrer os 768px: fica centrada */
+    width: 100%; max-width: 560px!important;
+    max-height: 92vh; max-height: 92dvh;
+    border-radius: 20px 20px 0 0; border-bottom: none;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    animation: folhaSobe .26s cubic-bezier(.32,.72,0,1);
+  }
+  /* pegador: sinaliza que a folha é uma camada, não a página */
+  .modal-h::before {
+    content: ''; position: absolute; top: 7px; left: 50%; transform: translateX(-50%);
+    width: 38px; height: 4px; border-radius: 3px; background: var(--border-strong, var(--border));
+  }
+  .modal-h { padding-top: 19px; position: sticky }
+  @keyframes folhaSobe { from { transform: translateY(100%) } to { transform: none } }
+  /* a folha manda enquanto está aberta */
+  .modal-bg { z-index: 1001 }
+  body.modal-aberto .bottom-nav-mobile,
+  body.modal-aberto .save-bar,
+  body.modal-aberto #demoBanner { display: none }
+
+  /* --- distribuição: o que sobrava de espaço virava buraco ---
+     Botão de ação de tela ficava solto num canto (margin-left:auto empurrava
+     para a direita e sobrava metade da linha vazia). No celular ele ocupa a
+     linha inteira: é o comando principal daquela tela. */
+  .content .row > .btn { flex: 1 1 100%; margin-left: 0!important; justify-content: center }
+
+  /* grupo de abas: 4 chips soltos quebravam em 3 + 1 centralizado.
+     Em duas colunas iguais cada um fica grande e alinhado. */
+  .nf-topo > div:first-child {
+    display: grid!important; grid-template-columns: repeat(2, 1fr); gap: 8px; width: 100%;
+  }
+  .nf-topo > div:first-child > .chip { justify-content: center; width: 100% }
+
+  /* indicador: valor não quebra no meio ("R$ 103 mil" virava duas linhas) e o
+     rótulo reserva duas linhas, para os valores dos cartões vizinhos se
+     alinharem em vez de dançar. */
+  /* o valor acompanha a largura da tela e NUNCA é cortado: "R$ 103 m…" no
+     lugar de "R$ 103 mil" é pior do que um número menor. */
+  .kpi-v { font-size: clamp(17px, 5vw, 23px) }
+  /* o rótulo reserva duas linhas, para os valores dos cartões vizinhos se
+     alinharem em vez de dançar de acordo com o tamanho do título */
+  .kpi-l { min-height: 2.3em; display: flex; align-items: flex-end }
+
+  /* o aviso de demonstração nasce grudado no topo e tapava a primeira linha
+     da navegação. No celular ele desce para junto da barra de baixo. */
+  #demoBanner {
+    top: auto!important; bottom: calc(59px + env(safe-area-inset-bottom, 0px))!important;
+    border-radius: 12px!important;
+  }
+
+  /* cabeçalho da obra: o nome do perfil estourava o chip e vinha cortado */
+  .tb-perfil { display: none }
+  .topbar > .chip { max-width: 38% }
+
+  /* a marca não precisa ocupar a faixa de navegação: o nome da obra já está
+     logo abaixo, e aqui cada pixel de largura é um item de menu a mais */
+  .brand { display: none }
+
+  /* Central de Campo: é a primeira tela do apontador. A margem de 24px e o
+     título de 22px foram desenhados para monitor — no celular comem uma
+     dobra inteira antes do primeiro dado aparecer. */
+  .central-hoje-card { padding: 16px 15px }
+  .central-hoje-title { font-size: 19px; line-height: 1.25 }
+  .central-hoje-header { gap: 10px; margin-bottom: 14px }
+  .central-hoje-grid { gap: 10px; grid-template-columns: 1fr }
+  .central-kpi-box { padding: 13px 14px }
+
   /* --- alvo de toque: 44px é o mínimo que um dedo acerta --- */
   .btn { min-height: 44px; padding: 11px 16px; font-size: 14px }
-  .btn-sm { min-height: 40px; padding: 9px 14px; font-size: 13px }
+  /* 44px vale para o botão pequeno também: no celular ele não é "secundário",
+     é o mesmo dedo. Largura mínima junto, senão o botão só de ícone (o "+"
+     do zoom, o "x" de excluir) fica com 41px e escapa do toque. */
+  .btn-sm { min-height: 44px; min-width: 44px; padding: 10px 14px; font-size: 13.5px }
+  /* chip que é só rótulo continua compacto; chip que se toca cresce */
   .chip { min-height: 38px; padding: 8px 14px; font-size: 12.5px }
+  button.chip, .chip[onclick], a.chip { min-height: 44px; padding: 11px 15px }
   .nav-item { min-height: 46px; justify-content: center }
   .side-foot .btn { min-height: 44px; min-width: 44px; justify-content: center }
-  table.t td .btn-sm { min-height: 40px; min-width: 44px; justify-content: center }
+  table.t td .btn-sm { min-height: 44px; min-width: 44px; justify-content: center }
   /* 16px no campo evita o zoom automático do iPhone ao tocar */
   input, select, textarea { min-height: 46px; font-size: 16px }
   textarea { min-height: 76px }
@@ -896,7 +1008,7 @@ function topbar(o){
   const u=usuarioAtual();
   return `<header class="topbar"><div style="flex:1;min-width:0"><h1>${esc(TITULOS[estado.tela]||'')}</h1>
     <div class="sub">${esc(o.nome)} · ${esc(o.contrato)}</div></div>
-    ${u?`<div class="chip" title="Você está como ${esc(u)}, acesso de ${esc(perfilNome())}">${esc(u)} · ${esc(perfilNome())}</div>`:''}</header>`;
+    ${u?`<div class="chip tb-eu" title="Você está como ${esc(u)}, acesso de ${esc(perfilNome())}">${esc(u)}<span class="tb-perfil"> · ${esc(perfilNome())}</span></div>`:''}</header>`;
 }
 function viewTela(o){
   // esconder o item do menu não basta: alguém pode chegar aqui por outro caminho
@@ -1114,9 +1226,13 @@ function abrirModal(titulo,html,larg){
     <button class="btn btn-sm btn-ghost" onclick="fecharModal()" aria-label="Fechar">${ic('fechar')}</button></div>
     <div style="padding:14px 20px 20px">${html}</div></div>`;
   document.body.appendChild(bg);
+  // no celular a folha sobe até a borda de baixo, onde ficam a barra de
+  // navegação e o aviso de sincronização. Sem isso eles cobrem os botões
+  // de Salvar/Cancelar — e ainda dá para tocar neles com a folha aberta.
+  document.body.classList.add('modal-aberto');
   if(typeof rotularTabelas==='function')rotularTabelas();
 }
-function fecharModal(){const m=el('modalBg');if(m)m.remove();}
+function fecharModal(){const m=el('modalBg');if(m)m.remove();document.body.classList.remove('modal-aberto');}
 /* mapa de avanço por estaca e rua (heatmap do RDO) + filtros */
 function parseEst(s){const m=String(s||'').match(/\d+/);return m?parseInt(m[0],10):null;}
 function lancPainel(o){

@@ -129,6 +129,11 @@ Enquanto o `CONFIG.appsScript` estiver vazio, o backend fica desligado e nada mu
   com scroll ao ampliar) e botões de abrir em nova aba e baixar. Os arquivos ficam em
   `projetos/<rua>/` e são registrados em `projetos` no arquivo da obra (o gerador copia e
   cataloga automaticamente; Memória de cálculo e Orçamento ficam de fora).
+- **No celular.** É onde o apontador usa o app, de pé, no sol, com uma mão. Barra
+  inferior com as quatro telas do dia ao alcance do polegar, tabela vira cartão (não
+  se rola de lado em nenhuma tela), alvo de toque de 44px, campo com 16px (evita o
+  zoom automático do iPhone) e **formulário que sobe de baixo**, como folha, em vez
+  de caixa no meio da tela. Medido em 360, 390 e 430px de largura.
 - **Diário de Obra (RDO interno).** Tela própria, um diário por data, com **mão de obra**
   (função × quantidade), **equipamentos**, clima por período (manhã/tarde), condição do dia,
   ocorrências e a lista de **serviços lançados no dia** (puxada automaticamente do Campo/RDO).

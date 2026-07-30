@@ -4,7 +4,7 @@
 > contexto do projeto sem precisar reler o histórico de conversa. Descreve o app, as
 > decisões tomadas, o que está pendente e como trabalhar no repositório.
 >
-> **Última atualização:** Notas Fiscais — PDF, consulta pela chave e formulário enxuto · Service Worker `v30`
+> **Última atualização:** celular (2ª rodada: fim da rolagem lateral, folha de baixo, alvos de 44px) · Service Worker `v40`
 
 ---
 
@@ -392,6 +392,51 @@ Dois defeitos apareceram ao escrever os testes e foram corrigidos junto:
    no avanço nem na medição", e o `avancoServ` respeita isso — a curva não. Na
    prática quase nunca batia (avulso tem `capId` nulo), mas o fim da curva podia
    não fechar com o número grande do painel. Agora as duas usam a mesma regra.
+
+### Celular — segunda rodada (jul/26)
+Auditoria medida com Playwright em 360, 390 e 430px, tela por tela. O estado
+anterior tinha **rolagem lateral em 4 telas** (RDO 151px, Diário 154px,
+Equipamentos 96px, Painel 22px) — exatamente o que a regra do próprio código
+proíbe.
+
+**A causa raiz:** `.g2,.g3,.g4{grid-template-columns:1fr}` no `@media` **perdia**
+para o `style="grid-template-columns:1.3fr 1fr"` escrito no atributo das telas.
+Estilo em linha ganha da folha de estilo. Resolvido com `!important` — proposital,
+e comentado no código. Mesmo motivo do `max-width` da folha de baixo.
+
+**Duas barras grudadas em `top:0`.** A faixa de navegação e o cabeçalho da obra
+disputavam o topo e se sobrepunham: o nome da obra ficava escondido atrás da
+navegação e 111px da tela ficavam presos. Agora só a faixa gruda; o cabeçalho
+rola com o conteúdo.
+
+**Formulário virou folha que sobe de baixo** (bottom sheet): largura cheia,
+pegador, cantos de cima arredondados, `92dvh`, animação de 0,26s. Junto veio um
+defeito que só aparece nessa forma — a barra inferior (`z-index:999`) tapava os
+botões de Salvar/Cancelar da folha (`z-index:200`) e ainda aceitava toque. O
+`abrirModal` passou a marcar `body.modal-aberto`, que esconde a barra, o aviso
+de sincronização e o banner de demonstração enquanto a folha está aberta.
+
+Outros pontos medidos e corrigidos: botão de ação de tela ocupava meia linha
+(`margin-left:auto`) e agora ocupa a linha; as 4 abas das Notas quebravam em
+3 + 1 e agora são 2×2; valor de indicador vinha cortado ("R$ 103 m…") e agora
+usa `clamp()`; o nome do perfil estourava o chip do cabeçalho (ganhou
+`<span class="tb-perfil">`, escondido no celular); `.btn-sm` subiu de 40 para
+44px (com `min-width`, senão o botão só de ícone ficava com 41px); o banner de
+demonstração tapava a primeira linha da navegação e desceu para o rodapé.
+
+Fluidez: `touch-action: manipulation`, `-webkit-tap-highlight-color: transparent`
+com `:active` próprio no lugar do retângulo azul do Android,
+`overscroll-behavior: contain` e `scroll-snap` na faixa de navegação. Tudo
+desligado em `prefers-reduced-motion`.
+
+Resultado medido: **14 telas/abas × 3 tamanhos, zero rolagem lateral e zero alvo
+abaixo de 44px**. Computador e tablet conferidos sem regressão (2 colunas,
+cabeçalho grudado, modal de 540px centrado).
+
+> Para testar no navegador é preciso `?intro=off` (a abertura cinematográfica
+> embrulha o `render()` e zera o `#app`) **e** uma sessão simulada
+> (`setToken` + `GestorAuth.setSession`), senão a tela que aparece é o login.
+> A propriedade da tela é `estado.tela`, não `estado.view`.
 
 ### Previsão de término, saída de estoque e preços (jul/26)
 Três funcionalidades pedidas depois da remoção do pedido de compra.
