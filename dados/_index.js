@@ -5,5 +5,6 @@
    adicione o id nesta lista. */
 window.OBRAS_ORDEM = [
   'ruas-de-terra',
+  'ranario',
   'teotonio',
 ];

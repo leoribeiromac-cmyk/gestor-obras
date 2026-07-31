@@ -17,7 +17,7 @@ desenvolvedor de formação — a comunicação deve evitar jargão de dev).
 - **Sem valores em R$** no acompanhamento: cada serviço tem quantidade prevista e unidade;
   o campo lança a quantidade executada e o sistema calcula **% de avanço** por serviço,
   frente e rua. O valor global do contrato aparece só como informação no painel de obras.
-- **Multi-obra.** Hoje: `ruas-de-terra` (gerida no app) e `teotonio` (externa — o card só
+- **Multi-obra.** Hoje: `ruas-de-terra` e `ranario` (geridas no app) e `teotonio` (externa — o card só
   encaminha para outro sistema).
 - Publicado em **GitHub Pages** a partir do branch `main`:
   `https://leoribeiromac-cmyk.github.io/gestor-obras/`
@@ -45,6 +45,7 @@ gestor-obras/
 ├── dados/
 │   ├── _index.js           window.OBRAS_ORDEM — ordem dos cards
 │   ├── ruas-de-terra.js    Obra 119 (56 serviços, 6 frentes, 2 ruas)
+│   ├── ranario.js          Obra Ranário / DER 22.926-0 (59 serviços, 6 frentes, 1 via)
 │   └── teotonio-vilela.js  Obra externa (só encaminha)
 ├── js/                     Módulos complementares, todos realmente usados
 │   ├── auth/session.js     GestorAuth.setSession (chamado no login)
@@ -85,6 +86,26 @@ Fiscais é o único grande, e ficou separado de propósito para o `index.html` n
 }
 ```
 Obra externa: `{id, externo:true, url, nome, contrato, local, valorGlobal}`.
+
+#### De onde saiu a obra `ranario` (jul/26)
+Contrato **22.926-0 do DER-SP** (Novas Vicinais Fase 9, Estrada Vicinal SQE-479 — Estrada
+do Ranário, São Roque/SP, Lote 26). Cadastrada **já com o aditivo aplicado**:
+
+- **Quantidades:** coluna **PROPOSTO** do `ANEXO 1 - QDR - 19_02 (2) FINAL.xlsx` (o quadro
+  comparativo das alterações contratuais). Item com quantidade proposta zerada saiu do
+  contrato e **não** está no app — é o caso das cercas de arame, dos ensaios, do CBUQ
+  sem DOP (substituído pelo com DOP) e de vários tubos trocados de diâmetro.
+- **Valor global:** R$ 6.471.909,89 (o "valor final do contrato" do próprio QDR).
+- **Cronograma:** `III.3 Cron` da **Rev.7**, a revisão assinada pelo engenheiro fiscal, que
+  fecha nos mesmos R$ 6.471.909,89. São 8 períodos de medição para 7 meses de prazo (o 1º
+  tem 20 dias e o 8º tem 10); como o app trabalha com um ponto por mês, **os dois últimos
+  períodos entram somados** no `pctMes`.
+- **Frentes = fases do DER**, e o `id` da frente é o próprio número da fase (21, 22, 23,
+  24, 28, 30). Assim o filtro do painel fala a mesma língua da medição.
+- **Fora do acompanhamento físico:** transportes (m³*km), placa institucional e sua
+  manutenção, canteiro de obras (Global), equipe de projeto e serviços terceirizados.
+- O gerador que leu a planilha e escreveu o `dados/ranario.js` não está no repositório;
+  o arquivo é editável à mão, como o das outras obras.
 
 ### Lançamento (RDO)
 ```js
@@ -338,7 +359,7 @@ Fotos tiradas antes do commit `b21f7bf` não têm a imagem cheia no aparelho. Sa
 
 ### Sempre que mudar arquivos servidos
 **Suba a versão do cache** em `sw.js` (`gestor-obras-vNN`), senão o usuário continua vendo
-a versão antiga. Hoje: **v30**. E oriente o **Ctrl/Cmd+Shift+R**.
+a versão antiga. Hoje: **v42**. E oriente o **Ctrl/Cmd+Shift+R**.
 
 ### Testar (o ambiente tem Playwright + Chromium)
 ```bash

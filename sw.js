@@ -1,8 +1,8 @@
 /* Service worker do Gestor Obras — cache do app; dados sempre de localStorage. */
-const CACHE = 'gestor-obras-v41';
+const CACHE = 'gestor-obras-v42';
 const ASSETS = [
   './', './index.html', './manifest.json',
-  './dados/_index.js', './dados/ruas-de-terra.js', './dados/teotonio-vilela.js',
+  './dados/_index.js', './dados/ruas-de-terra.js', './dados/ranario.js', './dados/teotonio-vilela.js',
   './js/ui/icones.js', './js/auth/session.js', './js/auth/perfis.js', './js/auth/usuarios.js', './js/ui/saveBar.js', './js/ui/centralHoje.js', './js/nf/notas.js',
   './vendor/pdfjs/pdf.min.js', './vendor/pdfjs/pdf.worker.min.js', './vendor/xlsx/xlsx.bundle.js',
   './vendor/jspdf/jspdf.umd.min.js', './vendor/jspdf/jspdf.plugin.autotable.min.js',

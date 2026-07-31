@@ -11,8 +11,9 @@ projeto, locações etc. ficam de fora).
 banco de dados nem build. Os lançamentos de campo (RDO) ficam salvos no **`localStorage` do
 navegador** — ou seja, **por dispositivo** (não sincroniza entre celulares).
 
-Primeira obra cadastrada: **119 — Ruas de Terra** (Agrimensor Sugaya + Astrogildo Pereira,
-Ata 079/SMSUB/COGEL).
+Obras cadastradas: **119 — Ruas de Terra** (Agrimensor Sugaya + Astrogildo Pereira,
+Ata 079/SMSUB/COGEL) e **Ranário — Estrada Vicinal SQE-479** (contrato 22.926-0, DER-SP),
+esta última já com as quantidades do aditivo/supressão.
 
 ---
 
@@ -25,6 +26,7 @@ gestor-obras/
   dados/
     _index.js           Lista/ordem das obras exibidas
     ruas-de-terra.js    Dados da obra 119 (identidade + frentes + serviços + cronograma)
+    ranario.js          Dados da obra Ranário / DER 22.926-0 (pós aditivo)
   assets/               Logo, favicon e ícones
   projetos/             PDFs de projeto por rua (pavimentação, drenagem, terraplenagem)
   vendor/pdfjs/         PDF.js (Mozilla) vendorizado — renderiza os projetos offline
