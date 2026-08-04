@@ -1,5 +1,5 @@
 /* Service worker do Gestor Obras — cache do app; dados sempre de localStorage. */
-const CACHE = 'gestor-obras-v42';
+const CACHE = 'gestor-obras-v43';
 const ASSETS = [
   './', './index.html', './manifest.json',
   './dados/_index.js', './dados/ruas-de-terra.js', './dados/ranario.js', './dados/teotonio-vilela.js',
@@ -23,6 +23,11 @@ self.addEventListener('install', e => {
       return Promise.allSettled(ASSETS.map(url => c.add(url)));
     }).then(() => self.skipWaiting())
   );
+});
+self.addEventListener('message', e => {
+  if (e.data && e.data.action === 'skipWaiting') {
+    self.skipWaiting();
+  }
 });
 self.addEventListener('activate', e => {
   e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim()));

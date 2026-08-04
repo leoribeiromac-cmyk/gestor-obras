@@ -55,6 +55,7 @@
               ${!rdoHoje.length ? '<span>Nenhum lançamento de produção registrado hoje nesta obra.</span> ' : ''}
               ${!diarioHoje.length ? '<span>Diário de obra de hoje pendente.</span>' : ''}
             </div>
+            </div>
           ` : ''}
         </section>
       `;

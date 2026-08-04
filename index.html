@@ -637,6 +637,13 @@ input.nf-confira,select.nf-confira,textarea.nf-confira{border-color:var(--amarel
 <script src="js/ui/saveBar.js"></script>
 <script src="js/ui/centralHoje.js"></script>
 <script src="js/nf/notas.js"></script>
+<script src="js/ui/approvalFlow.js"></script>
+<script src="js/ui/pendenciasScreen.js"></script>
+<script src="js/ui/photoWatermark.js"></script>
+<script src="js/ui/photoGalleryScreen.js"></script>
+<script src="js/ui/iaScreen.js"></script>
+<script src="js/domain/geminiAI.js"></script>
+<script src="js/components/designSystem.js"></script>
 <script>
 /* ============================================================
    Gestor — Controle de Obras (estático, multi-obra, localStorage)
@@ -1488,6 +1495,8 @@ function viewTela(o){
     case 'reverso':return viewReverso(o);
     case 'servicos':return viewServicos(o);
     case 'medicao':return viewMedicao(o);
+    case 'galeria':return window.GestorPhotoGallery ? window.GestorPhotoGallery.render(o) : '';
+    case 'ia':return window.GestorIA ? window.GestorIA.render(o) : '';
     case 'rdo':return viewRDO(o);
     case 'diario':return viewDiario(o);
     case 'equip':return viewEquip(o);
@@ -1575,6 +1584,38 @@ function viewHome(){
       <div class="bar"><i style="width:${clamp(avgFisico).toFixed(1)}%"></i></div></div>
     <div class="kpi"><div class="kpi-l">Serviços monitorados</div><div class="kpi-v">${totServ}</div><div class="kpi-s">itens físicos acompanhados</div></div>
   </div>`;
+  const tabelaConsolidada=`<div class="card" style="margin-bottom:22px">
+    <div class="card-h">
+      <div><div class="card-t"><span class="ic-tx">${ic('executivo')}</span>Painel Consolidado do Portfólio</div>
+      <div class="card-st">Acompanhamento executivo multi-obra em tempo real (Visão Diretoria)</div></div></div>
+    <div class="tbl-wrap"><table class="t">
+      <thead><tr><th>Obra / Contrato</th><th>Avanço Físico Médio</th><th>Prazo Decorrido</th><th>Situação vs Cronograma</th><th class="num">RDOs/Mês</th><th class="num">Valor Total</th><th></th></tr></thead>
+      <tbody>${todas.map(o=>{
+        if(o.externo){
+          return `<tr><td><b>${esc(o.nome)}</b><div class="kpi-s">${esc(o.contrato)} · Sistema Externo</div></td>
+            <td colspan="3" class="kpi-s">Gerida em sistema próprio</td><td class="num">—</td>
+            <td class="num mono">${o.valorGlobal?fmtBRL(o.valorGlobal):'—'}</td>
+            <td><button class="btn btn-sm" onclick="abrirExterno('${esc(o.url)}')">Abrir ↗</button></td></tr>`;
+        }
+        const serv=o.servicos||[]; const av=avancoServ(o); const pf=mediaPct(serv,av);
+        const fimISO=addMeses(o.inicioISO,o.prazoMeses); const tot=new Date(fimISO)-new Date(o.inicioISO);
+        const pctPrazo=clamp(tot?(new Date()-new Date(o.inicioISO))/tot*100:0);
+        const rdosMes=getLanc(o.id).filter(l=>l.dataISO&&l.dataISO.startsWith(hoje().slice(0,7))).length;
+        const pts=pontos(o); const prev=curvaPrev(o,pts); const real=curvaReal(o,pts);
+        const idx=mesIdxHoje(o); const desvio=(idx>=0&&prev[idx]!=null)?real[idx]-prev[idx]:0;
+        const nv=nivelDesvio(desvio);
+        const labelSit=nv==='crit'?'<span class="chip" style="background:var(--acc-l);color:var(--vermelho);border-color:transparent">Atrasada</span>':
+                         nv==='aten'?'<span class="chip" style="background:#fff8e6;color:var(--amarelo);border-color:transparent">Atenção</span>':
+                         '<span class="chip" style="background:var(--accent-soft);color:var(--accent);border-color:transparent">No prazo</span>';
+        return `<tr>
+          <td><b>${esc(o.nome)}</b><div class="kpi-s">${esc(o.contrato)} · ${serv.length} serviços</div></td>
+          <td><div style="display:flex;align-items:center;gap:8px"><div class="mono" style="font-weight:700;min-width:45px">${fmtPct(pf)}</div><div class="bar" style="flex:1"><i style="width:${clamp(pf)}%"></i></div></div></td>
+          <td><div style="display:flex;align-items:center;gap:8px"><div class="mono" style="min-width:45px">${Math.round(pctPrazo)}%</div><div class="bar" style="flex:1"><i style="width:${clamp(pctPrazo)}%;background:var(--azul)"></i></div></div></td>
+          <td>${labelSit} <span class="kpi-s">${desvio>=0?'+':''}${fmtPct(desvio)} desvio</span></td>
+          <td class="num mono">${rdosMes}</td>
+          <td class="num mono">${o.valorGlobal?fmtBRL(o.valorGlobal):'—'}</td>
+          <td><button class="btn btn-sm btn-pri" onclick="abrirObra('${o.id}')">Acessar</button></td></tr>`;
+      }).join('')}</tbody></table></div></div>`;
   return `<div class="app"><div class="main" style="width:100%">
     <header class="topbar">
       <img src="assets/logo_gestor.png" style="width:40px;height:40px;border-radius:9px;background:#fff;object-fit:contain" alt="Gestor">
@@ -1583,7 +1624,7 @@ function viewHome(){
       ${ehAdmin()&&BACKEND&&getToken()?`<button class="btn btn-sm" onclick="usuariosAbrir()" title="Usuários e permissões">${ic('capacete')} Usuários</button>`:''}
       ${isDemo()?`<button class="btn btn-sm" style="border-color:var(--amarelo);color:var(--amarelo)" onclick="sairDemo()" title="Sair da demonstração">● Demo ativo</button>`:`<button class="btn btn-sm btn-ghost" onclick="carregarDemo()" title="Preencher com dados de demonstração (local)">${ic('apresentar')} Demo</button>`}
       <button class="btn btn-sm btn-ghost" onclick="toggleTema()" title="Tema">${ic('tema')}</button></header>
-    <div class="content">${resumo}<div class="obras-grid">${cards}
+    <div class="content">${resumo}${tabelaConsolidada}<div class="obras-grid">${cards}
       <div class="obra-card add"><div style="font-size:30px;margin-bottom:8px">＋</div>
         <div style="font-weight:600;color:var(--text-2)">Adicionar nova obra</div>
         <div class="obra-meta" style="margin-top:6px">Crie um arquivo em <b>dados/</b> e registre em <b>_index.js</b>.<br>Passo a passo no README.</div></div>
@@ -1704,7 +1745,13 @@ function abrirModal(titulo,html,larg){
   document.body.classList.add('modal-aberto');
   if(typeof rotularTabelas==='function')rotularTabelas();
 }
-function fecharModal(){const m=el('modalBg');if(m)m.remove();document.body.classList.remove('modal-aberto');}
+function fecharModal(){
+  const m1=el('modalBg');if(m1)m1.remove();
+  const m2=el('modalContainer');if(m2)m2.remove();
+  document.querySelectorAll('.modal-bg').forEach(b=>b.remove());
+  document.body.classList.remove('modal-aberto');
+}
+window.fecharModal=fecharModal;
 /* mapa de avanço por estaca e rua (heatmap do RDO) + filtros */
 function parseEst(s){const m=String(s||'').match(/\d+/);return m?parseInt(m[0],10):null;}
 function lancPainel(o){
@@ -1951,11 +1998,60 @@ async function garantirFotos(obraId){
     if(estado.obraId===obraId)render();
   }finally{_buscandoFotos=false;}
 }
-function galeriaFotos(fotos,tam){
+function galeriaFotos(fotos,tam,lancId){
   tam=tam||58;
-  return (fotos||[]).filter(f=>fotoSrc(f)).map(f=>`<img src="${esc(fotoSrc(f))}" alt="foto do serviço" loading="lazy" onclick="ampliarFoto('${esc(fotoSrc(f))}')" style="width:${tam}px;height:${tam}px;object-fit:cover;border-radius:6px;border:1px solid var(--border);cursor:zoom-in;margin:3px 3px 0 0">`).join('');
+  return (fotos||[]).filter(f=>fotoSrc(f)).map((f,i)=>`<img src="${esc(fotoSrc(f))}" alt="foto do serviço" loading="lazy" onclick="ampliarFotoComMetadados('${esc(fotoSrcAlta(f))}', '${esc(lancId||'')}', ${i})" style="width:${tam}px;height:${tam}px;object-fit:cover;border-radius:6px;border:1px solid var(--border);cursor:zoom-in;margin:3px 3px 0 0">`).join('');
 }
-function ampliarFoto(src){abrirModal('Foto do serviço',`<img src="${esc(src)}" alt="foto do serviço" style="width:100%;border-radius:8px">`);}
+function ampliarFotoComMetadados(src,lancId,fotoIdx){
+  const o=obra(); const lancs=o?getLanc(o.id):[]; const l=lancs.find(x=>x.id===lancId);
+  let headerTxt='Evidência Fotográfica de Campo'; let subTxt=''; let btnDownload='';
+  if(l){
+    const est=typeof estacaTxt==='function'?estacaTxt(l):'';
+    headerTxt=`📍 ${esc(l.rua)} ${est?'• '+esc(est):''} — ${esc(l.servico)}`;
+    subTxt=`📅 Data: ${new Date((l.dataISO||hoje())+'T00:00:00').toLocaleDateString('pt-BR')} ${l.clima?'• Clima: '+esc(l.clima):''}`;
+    btnDownload=`<button class="btn btn-sm btn-pri" onclick="baixarFotoLancamento('${esc(lancId)}', ${fotoIdx})">⬇️ Baixar Foto com Marca d'Água Oficial</button>`;
+  }else{
+    btnDownload=`<button class="btn btn-sm btn-pri" onclick="baixarFotoDireta('${esc(src)}')">⬇️ Baixar Foto</button>`;
+  }
+  const html=`<div style="display:flex;flex-direction:column;gap:12px;">
+    <div style="font-size:12.5px;color:var(--muted);">${subTxt}</div>
+    <div style="text-align:center;background:#000;border-radius:8px;padding:8px;max-height:70vh;overflow:hidden;">
+      <img src="${esc(src)}" alt="foto do serviço" style="max-width:100%;max-height:65vh;border-radius:6px;object-fit:contain;">
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:4px;">
+      ${btnDownload}
+      <button class="btn btn-sm btn-ghost" onclick="fecharModal()">✕ Fechar</button>
+    </div>
+  </div>`;
+  abrirModal(headerTxt,html);
+}
+async function baixarFotoLancamento(lancId,fotoIdx){
+  const o=obra();if(!o)return;
+  const lancs=getLanc(o.id); const l=lancs.find(x=>x.id===lancId);
+  if(!l||!l.fotos||!l.fotos[fotoIdx]){toast('Foto não encontrada.');return;}
+  toast('⏳ Gerando marca d\'água técnica oficial...');
+  const f=l.fotos[fotoIdx]; const src=fotoSrcAlta(f)||fotoSrc(f);
+  const est=typeof estacaTxt==='function'?estacaTxt(l):'';
+  const metadata={
+    obraNome:o.nome,
+    rua:l.rua||'Geral',
+    estaca:est||'',
+    servico:l.servico||'Execução Físico-Operacional',
+    dataHora:new Date((l.dataISO||hoje())+'T00:00:00').toLocaleDateString('pt-BR'),
+    operador:l.usuario||usuarioAtual()||'Engenheiro de Campo'
+  };
+  try{
+    const finalUrl=await window.PhotoWatermark.applyWatermark(src,metadata);
+    const a=document.createElement('a');a.href=finalUrl;
+    a.download=`evidencia_${(l.rua||'obra').replace(/\s+/g,'_')}_${(est||'').replace(/\s+/g,'_')}_${Date.now()}.jpg`;
+    document.body.appendChild(a);a.click();document.body.removeChild(a);
+    toast('Foto com marca d\'água oficial baixada com sucesso! ✓');
+  }catch(e){
+    console.error('Erro ao gerar marca d\'água:', e);
+    alert('Erro ao gerar marca d\'água: ' + e.message);
+  }
+}
+function baixarFotoDireta(src){const a=document.createElement('a');a.href=src;a.download=`foto_${Date.now()}.jpg`;a.click();}
 
 function listaUltimos(o){
   const arr=getLanc(o.id).slice().sort((a,b)=>b.criadoEm-a.criadoEm).slice(0,8);
@@ -1963,7 +2059,7 @@ function listaUltimos(o){
   return arr.map(l=>`<div style="padding:10px 0;border-bottom:1px solid var(--border);display:flex;gap:12px;align-items:flex-start">
     <div style="flex:1"><div style="font-weight:600;font-size:13.5px">${esc(l.servico)} ${l.avulso?'<span class="chip" style="padding:1px 7px;font-size:10px;background:var(--surface-2)">avulso</span>':''}</div>
     <div class="kpi-s">${new Date(l.dataISO+'T00:00:00').toLocaleDateString('pt-BR')} · ${esc(l.rua)}${estacaTxt(l)?' · '+esc(estacaTxt(l)):''} · ${esc(l.clima||'')}${l.usuario?' · '+esc(l.usuario):''}</div>
-    ${(l.fotos&&l.fotos.length)?`<div style="display:flex;flex-wrap:wrap">${galeriaFotos(l.fotos,44)}</div>`:''}</div>
+    ${(l.fotos&&l.fotos.length)?`<div style="display:flex;flex-wrap:wrap">${galeriaFotos(l.fotos,44,l.id)}</div>`:''}</div>
     <div class="num" style="font-weight:700">${fmtQtd(l.qtd)} ${esc(l.un)}</div></div>`).join('');
 }
 
@@ -1996,39 +2092,93 @@ function viewMedicao(o){
 
 /* ---------- HISTÓRICO ---------- */
 function viewHistorico(o){
-  const datas=todasDatas(o).slice().reverse(); // mais recente primeiro
-  if(!datas.length)return `<div class="empty">${ic('historico')}Nenhum RDO ainda. Comece em <b>Lançar serviços</b> ou <b>Diário de Obra</b>.</div>`;
-  // meses com RDO, para exportar o mês fechado da medição de uma vez
-  const meses=[...new Set(datas.map(d=>d.slice(0,7)))].sort().reverse();
-  const topo=`<div class="row" style="margin-bottom:16px;align-items:flex-end">
-    <div class="chip">${datas.length} RDO(s)</div>
-    <div class="field" style="margin:0;max-width:200px"><label class="fl" for="histMes">Período p/ exportar</label>
-      <select id="histMes" onchange="estado.histMes=this.value">
-        <option value="">Todos os dias</option>
-        ${meses.map(m=>`<option value="${m}" ${estado.histMes===m?'selected':''}>${mesLabel(m+'-01')}</option>`).join('')}</select></div>
-    <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn btn-sm" onclick="baixarPDFsDoMes(el('histMes').value)">${ic('arquivo')} PDFs do período</button>
-      <button class="btn btn-sm" onclick="gerarExcelTudo()">${ic('planilha')} Exportar Excel (todos)</button></div></div>`;
-  const cards=datas.map(d=>{
-    const dd=montarRDO(o,d);const dv=diarioDoDia(o.id,d);
+  const todasD=todasDatas(o).slice().reverse(); // mais recente primeiro
+  if(!todasD.length)return `<div class="empty">${ic('historico')}Nenhum RDO ainda. Comece em <b>Lançar serviços</b> ou <b>Diário de Obra</b>.</div>`;
+  
+  const meses=[...new Set(todasD.map(d=>d.slice(0,7)))].sort().reverse();
+  const frentes=o.frentes||[];
+  const ruas=o.ruas||[];
+  const todosLanc=getLanc(o.id);
+  const usuarios=[...new Set(todosLanc.map(l=>l.usuario).filter(Boolean))].sort();
+
+  const qBusca=(estado.histBusca||'').toLowerCase().trim();
+  const qFrente=estado.histFrente||'';
+  const qRua=estado.histRua||'';
+  const qUsuario=estado.histUsuario||'';
+  const qMes=estado.histMes||'';
+
+  // Filtra dias
+  let datas=todasD;
+  if(qMes) datas=datas.filter(d=>d.startsWith(qMes));
+
+  const cardsHtml=[];
+  let totalApontFiltrados=0;
+
+  datas.forEach(d=>{
+    const dd=montarRDO(o,d); const dv=diarioDoDia(o.id,d);
+    const servsFiltrados=dd.servicos.filter(l=>{
+      if(qFrente && String(l.capId)!==String(qFrente)) return false;
+      if(qRua && l.rua!==qRua) return false;
+      if(qUsuario && l.usuario!==qUsuario) return false;
+      if(qBusca){
+        const txt=`${l.servico} ${l.rua} ${frenteNome(o,l.capId)} ${l.usuario||''} ${l.obs||''}`.toLowerCase();
+        if(!txt.includes(qBusca)) return false;
+      }
+      return true;
+    });
+
+    if((qBusca||qFrente||qRua||qUsuario) && !servsFiltrados.length) return;
+    totalApontFiltrados += servsFiltrados.length;
+
     const dataBR=new Date(d+'T00:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit',year:'numeric'});
-    const linhas=dd.servicos.length?dd.servicos.map(l=>`<tr>
+    const linhas=servsFiltrados.length?servsFiltrados.map(l=>`<tr>
       <td>${esc(l.servico)} ${l.avulso?'<span class="chip" style="padding:0 6px;font-size:10px">avulso</span>':''}<div class="kpi-s">${esc(l.rua)} · ${esc(frenteNome(o,l.capId))}${l.usuario?' · por <b>'+esc(l.usuario)+'</b>':''}</div>
-      ${(l.fotos&&l.fotos.length)?`<div style="display:flex;flex-wrap:wrap">${galeriaFotos(l.fotos,52)}</div>`:''}</td>
+      ${(l.fotos&&l.fotos.length)?`<div style="display:flex;flex-wrap:wrap">${galeriaFotos(l.fotos,52,l.id)}</div>`:''}</td>
       <td class="mono">${esc(estacaTxt(l))||'—'}</td><td class="num">${fmtQtd(l.qtd)} ${esc(l.un)}</td>
       <td class="num" style="white-space:nowrap">${podeEditar(l)?`<button class="btn btn-sm btn-ghost" onclick="editarServ('${l.id}')" title="Editar">${ic('editar')}</button>`:''}${podeExcluir(l)?`<button class="btn btn-sm btn-ghost" onclick="excluir('${l.id}')" title="Excluir">${ic('fechar')}</button>`:''}</td></tr>`).join('')
       :`<tr><td colspan="4" class="kpi-s">Nenhum serviço lançado neste dia.</td></tr>`;
     const resumo=dv?`${ic('capacete')} ${totalPessoal(dv.pessoal||[])} · ${ic('equipamentos')} ${(dv.equipamentos||[]).length} equip. · ${ic('nuvem')} ${esc(dv.climaManha||'—')}/${esc(dv.climaTarde||'—')}`:'sem diário — só serviços';
-    return `<div class="card" style="margin-bottom:14px"><div class="card-h">
+
+    cardsHtml.push(`<div class="card" style="margin-bottom:14px"><div class="card-h">
       <div><div class="card-t">RDO ${numeroRDO(o,d)} · ${dataBR}</div><div class="card-st">${resumo}</div></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-sm" onclick="baixarPDFRDO('${d}')">${ic('arquivo')} PDF</button>
         <button class="btn btn-sm btn-ghost" onclick="gerarPDFdia('${d}')" title="Abrir no modelo de impressão">${ic('imprimir')}</button>
         <button class="btn btn-sm" onclick="gerarExcelDia('${d}')">${ic('planilha')} Excel</button></div></div>
       <div class="tbl-wrap" style="border:none"><table class="t">
       <thead><tr><th>Serviço</th><th>Trecho</th><th class="num">Qtd</th><th></th></tr></thead>
-      <tbody>${linhas}</tbody></table></div></div>`;
-  }).join('');
-  return topo+cards;
+      <tbody>${linhas}</tbody></table></div></div>`);
+  });
+
+  const temFiltroAtivo = qBusca || qFrente || qRua || qUsuario || qMes;
+
+  const painelFiltros=`<div class="card" style="margin-bottom:16px"><div class="card-b" style="padding:12px 14px">
+    <div class="row" style="gap:10px;flex-wrap:wrap;align-items:flex-end">
+      <div class="field" style="margin:0;flex:1;min-width:180px"><label class="fl">Pesquisar termo</label>
+        <input type="text" placeholder="Serviço, observação, rua..." value="${esc(estado.histBusca||'')}" oninput="estado.histBusca=this.value;render()"></div>
+      <div class="field" style="margin:0;width:150px"><label class="fl">Frente</label>
+        <select onchange="estado.histFrente=this.value;render()"><option value="">Todas</option>
+          ${frentes.map(f=>`<option value="${f.id}" ${String(estado.histFrente)===String(f.id)?'selected':''}>${esc(f.nome)}</option>`).join('')}</select></div>
+      <div class="field" style="margin:0;width:140px"><label class="fl">Rua / Trecho</label>
+        <select onchange="estado.histRua=this.value;render()"><option value="">Todas</option>
+          ${ruas.map(r=>`<option value="${esc(r)}" ${estado.histRua===r?'selected':''}>${esc(r)}</option>`).join('')}</select></div>
+      ${usuarios.length?`<div class="field" style="margin:0;width:140px"><label class="fl">Lançado por</label>
+        <select onchange="estado.histUsuario=this.value;render()"><option value="">Todos</option>
+          ${usuarios.map(u=>`<option value="${esc(u)}" ${estado.histUsuario===u?'selected':''}>${esc(u)}</option>`).join('')}</select></div>`:''}
+      <div class="field" style="margin:0;width:150px"><label class="fl">Mês do RDO</label>
+        <select id="histMes" onchange="estado.histMes=this.value;render()"><option value="">Todos os meses</option>
+          ${meses.map(m=>`<option value="${m}" ${estado.histMes===m?'selected':''}>${mesLabel(m+'-01')}</option>`).join('')}</select></div>
+      ${temFiltroAtivo?`<button class="btn btn-sm btn-ghost" onclick="estado.histBusca='';estado.histFrente='';estado.histRua='';estado.histUsuario='';estado.histMes='';render()" style="height:38px">Limpar filtros</button>`:''}
+    </div>
+  </div></div>`;
+
+  const topo=`<div class="row" style="margin-bottom:14px;align-items:center;gap:8px;flex-wrap:wrap">
+    <div class="chip">${cardsHtml.length} dia(s) ${temFiltroAtivo?'encontrado(s)':''} · ${totalApontFiltrados} serviço(s)</div>
+    <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-sm" onclick="imprimirRelatorioMensalEfetivoClima(el('histMes')?el('histMes').value:'')">${ic('relatorio')} Relatório Efetivo/Clima (PDF)</button>
+      <button class="btn btn-sm" onclick="baixarPDFsDoMes(el('histMes')?el('histMes').value:'')">${ic('arquivo')} PDFs do período</button>
+      <button class="btn btn-sm" onclick="gerarExcelTudo()">${ic('planilha')} Excel (todos)</button></div></div>`;
+
+  return topo+painelFiltros+(cardsHtml.length?cardsHtml.join(''):`<div class="empty">${ic('historico')}Nenhum RDO encontrado com os filtros selecionados.</div>`);
 }
 
 /* ============================================================ EQUIPAMENTOS */
@@ -2541,9 +2691,10 @@ function viewDiario(o){
         <div id="equipBox">${equip.map(rowEquip).join('')}</div>
         <div class="field" style="margin-top:14px"><label class="fl">Ocorrências / observações</label>
           <textarea id="dOcor" rows="3" placeholder="Atrasos, imprevistos, visitas, interferências, medições, etc.">${esc(sv.ocorrencias||'')}</textarea></div>
-        <div class="row"><button class="btn btn-pri" style="flex:1;justify-content:center" onclick="salvarDiario()">Salvar diário</button>
+        <div class="row" style="flex-wrap:wrap;gap:8px"><button class="btn btn-pri" style="flex:1;min-width:140px;justify-content:center" onclick="salvarDiario()">Salvar diário</button>
           <button class="btn" onclick="baixarPDFRDO(estado.diarioData)">${ic('arquivo')} PDF</button>
-          <button class="btn btn-ghost" onclick="imprimirRDO()" title="Modelo de impressão">${ic('imprimir')}</button></div>
+          <button class="btn btn-ghost" onclick="imprimirRDO()" title="Modelo de impressão">${ic('imprimir')}</button>
+          <button class="btn" onclick="imprimirRelatorioMensalEfetivoClima(estado.diarioData.slice(0,7))" title="Relatório Mensal de Efetivo e Clima">${ic('relatorio')} Relatório Mensal</button></div>
       </div></div>
     <div style="display:flex;flex-direction:column;gap:16px">
       <div class="card"><div class="card-h"><div class="card-t">Serviços lançados neste dia</div>
@@ -2591,6 +2742,104 @@ function montarRDO(o,dataISO){
   return {dataISO,climaManha:d.climaManha||'—',climaTarde:d.climaTarde||'—',condicao:d.condicao||'Normal',
     pessoal:d.pessoal||[],equipamentos:d.equipamentos||[],ocorrencias:d.ocorrencias||'',
     servicos:getLanc(o.id).filter(l=>l.dataISO===dataISO)};
+}
+/* ---------- RELATÓRIO MENSAL DE EFETIVO E CLIMA (PDF/A4) ---------- */
+function htmlRelatorioMensalEfetivoClima(o,mesISO){
+  if(!mesISO)mesISO=hoje().slice(0,7);
+  const ano=parseInt(mesISO.slice(0,4),10);
+  const mes=parseInt(mesISO.slice(5,7),10);
+  const totalDiasNoMes=new Date(ano,mes,0).getDate();
+  const diariosDoMes={};
+  getDiarios(o.id).forEach(d=>{if(d.dataISO&&d.dataISO.startsWith(mesISO))diariosDoMes[d.dataISO]=d;});
+
+  let totalDiasComDiario=0; let diasImpraticaveis=0; let diasParciais=0; let somaEfetivoTotal=0;
+  const linhasDias=[];
+
+  for(let dia=1;dia<=totalDiasNoMes;dia++){
+    const dataISO=`${mesISO}-${String(dia).padStart(2,'0')}`;
+    const dt=new Date(dataISO+'T00:00:00');
+    const diaSemana=dt.toLocaleDateString('pt-BR',{weekday:'short'});
+    const isFimDeSemana=dt.getDay()===0||dt.getDay()===6;
+    const dv=diariosDoMes[dataISO];
+    let efTotal=0; let cond='—'; let clima='—'; let ocorrencias='—';
+
+    if(dv){
+      totalDiasComDiario++;
+      efTotal=totalPessoal(dv.pessoal||[]);
+      somaEfetivoTotal+=efTotal;
+      cond=dv.condicao||'Normal';
+      if(cond.includes('Paralisado'))diasImpraticaveis++;
+      else if(cond.includes('Parcial'))diasParciais++;
+      clima=`${dv.climaManha||'—'} / ${dv.climaTarde||'—'}`;
+      ocorrencias=dv.ocorrencias||'—';
+    }
+
+    linhasDias.push(`<tr ${isFimDeSemana?'style="background:#faf8f5"':''}>
+      <td style="text-align:center">${String(dia).padStart(2,'0')}/${String(mes).padStart(2,'0')} (${diaSemana})</td>
+      <td>${clima}</td>
+      <td>${cond!=='—'?`<b>${esc(cond)}</b>`:'—'}</td>
+      <td style="text-align:right"><b>${efTotal||'—'}</b></td>
+      <td style="font-size:10px;white-space:pre-wrap">${esc(ocorrencias)}</td>
+    </tr>`);
+  }
+
+  const mediaEfetivo=totalDiasComDiario?Math.round(somaEfetivoTotal/totalDiasComDiario):0;
+  const mesNome=new Date(ano,mes-1,1).toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
+
+  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Relatório Mensal de Efetivo e Clima — ${mesISO}</title>
+  <style>@page{size:A4 portrait;margin:14mm} *{font-family:Arial,Helvetica,sans-serif;box-sizing:border-box}
+  body{color:#111;font-size:11px;margin:0}@media screen{body{padding:16px 20px}} h1{font-size:16px;margin:0}
+  .hd{display:flex;align-items:center;gap:14px;border-bottom:2px solid #1f6f4a;padding-bottom:10px;margin-bottom:14px}
+  .hd img{height:46px} .meta{font-size:11px;color:#444} .num{margin-left:auto;text-align:right}
+  .num b{font-size:20px;color:#1f6f4a} h2{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:#1f6f4a;border-bottom:1px solid #ccc;padding-bottom:3px;margin:16px 0 8px}
+  table{width:100%;border-collapse:collapse;margin-bottom:6px} td,th{border:1px solid #ccc;padding:4px 6px;text-align:left;font-size:10.5px}
+  th{background:#f0efe9} .grid3{display:flex;gap:12px;margin-bottom:14px} .grid3>div{flex:1;border:1px solid #ccc;padding:8px 10px;border-radius:6px;background:#fafaf7}
+  .kpi-title{font-size:10px;color:#666;text-transform:uppercase} .kpi-val{font-size:18px;font-weight:bold;color:#1f6f4a;margin-top:2px}
+  .sign{display:flex;gap:40px;margin-top:35px} .sign>div{flex:1;border-top:1px solid #333;padding-top:5px;text-align:center;font-size:10px}
+  </style>${scriptImprimir()}</head>
+  <body onload="aoCarregar()">
+    <div class="hd">
+      <img src="assets/logo_gestor.png" alt="Gestor">
+      <div>
+        <h1>Relatório Mensal de Efetivo e Clima</h1>
+        <div class="meta">${esc(o.contratada||'Gestor Engenharia')} · Contrato: ${esc(o.contrato||'')}</div>
+        <div class="meta">Obra: <b>${esc(o.nome)}</b> — ${esc(o.local||'')}</div>
+      </div>
+      <div class="num"><div class="meta">Mês de Referência</div><b>${mesNome}</b></div>
+    </div>
+
+    <div class="grid3">
+      <div><div class="kpi-title">Diários Registrados</div><div class="kpi-val">${totalDiasComDiario} / ${totalDiasNoMes} dias</div></div>
+      <div><div class="kpi-title">Dias Paralisados / Impraticáveis</div><div class="kpi-val" style="color:${diasImpraticaveis?'#a8342a':'#1f6f4a'}">${diasImpraticaveis} dia(s)</div></div>
+      <div><div class="kpi-title">Média de Efetivo Diário</div><div class="kpi-val">${mediaEfetivo} traba./dia</div></div>
+    </div>
+
+    <h2>Acompanhamento Diário (Clima, Condição e Efetivo)</h2>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:110px;text-align:center">Data</th>
+          <th style="width:130px">Clima (Manhã/Tarde)</th>
+          <th style="width:140px">Condição do Dia</th>
+          <th style="width:70px;text-align:right">Efetivo</th>
+          <th>Ocorrências / Registro de Campo</th>
+        </tr>
+      </thead>
+      <tbody>${linhasDias.join('')}</tbody>
+    </table>
+
+    <div class="sign">
+      <div>Responsável Técnico (Gestor Engenharia)</div>
+      <div>Fiscalização (SIURB / DER)</div>
+    </div>
+  </body></html>`;
+}
+function imprimirRelatorioMensalEfetivoClima(mesISO){
+  const o=obra();if(!o)return;
+  if(!mesISO)mesISO=(el('histMes')&&el('histMes').value)||hoje().slice(0,7);
+  const win=window.open('','_blank');
+  win.document.write(htmlRelatorioMensalEfetivoClima(o,mesISO));
+  win.document.close();
 }
 // HTML do RDO no modelo A4 (compartilhado por impressão e PDF)
 function htmlRDO(o,dd,numero){
@@ -3464,7 +3713,53 @@ render();
 if(BACKEND){atualizaOutboxUI();outboxFlush();
   window.addEventListener('online',()=>{atualizaOutboxUI();outboxFlush();});
   window.addEventListener('offline',atualizaOutboxUI);}
-if('serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(()=>{});}
+let _swReg = null;
+function initSWUpdateBanner() {
+  if (!('serviceWorker' in navigator)) return;
+  navigator.serviceWorker.register('sw.js').then(reg => {
+    _swReg = reg;
+    function aoDetectarNovoSW(worker) {
+      worker.addEventListener('statechange', () => {
+        if (worker.state === 'installed' && navigator.serviceWorker.controller) {
+          exibirBannerSWUpdate();
+        }
+      });
+    }
+    if (reg.waiting) exibirBannerSWUpdate();
+    reg.addEventListener('updatefound', () => {
+      if (reg.installing) aoDetectarNovoSW(reg.installing);
+    });
+  }).catch(() => {});
+
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!refreshing) {
+      refreshing = true;
+      window.location.reload();
+    }
+  });
+}
+
+function exibirBannerSWUpdate() {
+  let b = document.getElementById('swUpdateBanner');
+  if (b) return;
+  b = document.createElement('div');
+  b.id = 'swUpdateBanner';
+  b.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:10000;background:var(--accent);color:#fff;padding:12px 18px;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,0.3);display:flex;align-items:center;gap:12px;font-size:13.5px;font-weight:500;animation:pageEnter 0.3s ease;';
+  b.innerHTML = `<span>⚡ Nova versão do <b>Gestor Obras</b> disponível!</span>
+    <button onclick="swAplicarAtualizacao()" style="background:#fff;color:var(--accent);border:none;padding:6px 12px;border-radius:6px;font-weight:700;cursor:pointer">Atualizar agora</button>
+    <button onclick="document.getElementById('swUpdateBanner').remove()" style="background:transparent;color:rgba(255,255,255,0.7);border:none;font-size:16px;cursor:pointer">✕</button>`;
+  document.body.appendChild(b);
+}
+
+function swAplicarAtualizacao() {
+  if (_swReg && _swReg.waiting) {
+    _swReg.waiting.postMessage({ action: 'skipWaiting' });
+  } else {
+    window.location.reload();
+  }
+}
+initSWUpdateBanner();
 </script>
 <!-- Abertura cinematográfica (camada anterior ao login; sem assets em intro/frames/, o app segue como sempre) -->
 <script src="vendor/gsap/gsap.min.js"></script>
