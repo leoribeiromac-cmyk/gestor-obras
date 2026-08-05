@@ -17,6 +17,26 @@
    Este arquivo depende de funcoes do index.html (esc, toast, obra,
    postAcao, comprimirImg, abrirModal...). Ele so as chama em tempo
    de execucao, por isso pode ser carregado antes.
+
+   ------------------------------------------------------------
+   ARQUIVO COMPARTILHADO — mantenha os dois repositorios IGUAIS
+   ------------------------------------------------------------
+   O mesmo arquivo roda em `teotonio-vilela` e em `gestor-obras`.
+   No teotonio quem faz a ponte de vocabulario e `js/nf/adaptador.js`;
+   nao ha logica de negocio la dentro, entao o arquivo continua sendo
+   copia literal dos dois lados.
+
+   Ele ja divergiu: cada repo recebeu correcoes que o outro nao teve
+   (parse de itens vindos como texto, limite de itens da nota, campos
+   escondidos no modo simples). Todas foram reunidas aqui.
+
+   Regra: alterou aqui, copie o arquivo INTEIRO para o outro repo no
+   mesmo dia. Nada especifico de um app entra neste arquivo — se
+   precisar, o lugar e o adaptador.
+
+   Multi-obra: `ORDEM` e `OBRAS` so existem no gestor-obras. Onde forem
+   usados, e obrigatorio checar `typeof` antes — no teotonio, que e de
+   obra unica, o acesso direto lanca ReferenceError.
    ============================================================ */
 'use strict';
 
@@ -292,15 +312,19 @@ function nfMesclarLeitura(base, daChave, daIA) {
     por('vTotal', nfNum(d.vTotal), c('vTotal'));
     por('vBaseICMS', nfNum(d.vBaseICMS), c('vBaseICMS'));
     por('vICMS', nfNum(d.vICMS), c('vICMS'));
-    if (Array.isArray(d.itens) && d.itens.length) {
-      n.itens = d.itens.slice(0, 60).map(it => ({
+    let rawItens = d.itens;
+    if (typeof rawItens === 'string') {
+      try { rawItens = JSON.parse(rawItens); } catch (e) { rawItens = []; }
+    }
+    if (Array.isArray(rawItens) && rawItens.length) {
+      n.itens = rawItens.slice(0, 200).map(it => ({
         codigo: String(it.codigo || '').trim(),
         descricao: String(it.descricao || '').trim(),
         qtd: nfNum(it.qtd),
         un: String(it.un || 'UN').trim().toUpperCase().slice(0, 6),
         vUnit: nfNum(it.vUnit),
         vTotal: nfNum(it.vTotal) || (nfNum(it.qtd) * nfNum(it.vUnit)),
-        materialId: ''
+        materialId: String(it.materialId || '').trim()
       })).filter(it => it.descricao);
       conf.itens = c('itens');
     }
@@ -1661,7 +1685,8 @@ function nfViewPainel(o) {
   const forn = nfFornecedores(o.id);
 
   // notas por obra (todas as obras geridas)
-  const porObra = ORDEM.map(id => OBRAS[id]).filter(x => x && !x.externo)
+  const listaObras = (typeof ORDEM !== 'undefined' && typeof OBRAS !== 'undefined') ? ORDEM.map(id => OBRAS[id]) : [o];
+  const porObra = listaObras.filter(x => x && !x.externo)
     .map(x => ({ nome: x.nome, n: nfGet(x.id).filter(n => n.status !== 'Cancelada').length, v: nfGet(x.id).filter(n => n.status !== 'Cancelada').reduce((a, n) => a + nfNum(n.vTotal), 0) }))
     .filter(x => x.n).sort((a, b) => b.v - a.v);
 
@@ -1759,9 +1784,24 @@ async function nfCarregar(obraId) {
 }
 function nfDoServidor(s, obraId, locais) {
   const local = locais.find(l => (l.clientId || l.id) === (s.clientId || s.id));
-  let itens = []; try { itens = JSON.parse(s.itens || '[]'); } catch (e) { itens = []; }
-  let hist = []; try { hist = JSON.parse(s.historico || '[]'); } catch (e) { hist = []; }
-  let leitura = {}; try { leitura = JSON.parse(s.leitura || '{}'); } catch (e) { leitura = {}; }
+  let itens = [];
+  try {
+    if (Array.isArray(s.itens)) itens = s.itens;
+    else if (typeof s.itens === 'string' && s.itens.trim()) itens = JSON.parse(s.itens);
+    else if (Array.isArray(s.Itens)) itens = s.Itens;
+    else if (typeof s.Itens === 'string' && s.Itens.trim()) itens = JSON.parse(s.Itens);
+  } catch (e) { itens = []; }
+  if (!Array.isArray(itens)) itens = [];
+  let hist = [];
+  try {
+    if (Array.isArray(s.historico)) hist = s.historico;
+    else if (typeof s.historico === 'string' && s.historico.trim()) hist = JSON.parse(s.historico);
+  } catch (e) { hist = []; }
+  let leitura = {};
+  try {
+    if (typeof s.leitura === 'object' && s.leitura) leitura = s.leitura;
+    else if (typeof s.leitura === 'string' && s.leitura.trim()) leitura = JSON.parse(s.leitura);
+  } catch (e) { leitura = {}; }
   return {
     id: s.id, clientId: s.clientId || s.id, obraId: obraId,
     numero: String(s.numero || ''), serie: String(s.serie || ''), chave: nfChaveNorm(s.chave),
