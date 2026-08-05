@@ -27,6 +27,13 @@ var ABA_AUDITORIA  = 'Auditoria';
 var ABA_NF         = 'NotasFiscais';
 var ABA_SAIDA      = 'EstoqueSaidas';
 
+// Pasta privada do Drive onde ficam os arquivos das notas. É o ÚNICO ponto em
+// que o bloco de Notas Fiscais difere do app "Teotônio Vilela" — por isso
+// virou constante, e o resto do bloco pôde ficar idêntico. NÃO altere o texto:
+// o nome é a chave de busca da pasta, e mudar aqui faz o app criar uma pasta
+// nova e perder de vista tudo o que já foi enviado.
+var NF_PASTA_RAIZ  = 'Notas Fiscais Gestor Obras (Privado)';
+
 var HEADERS = {
   'Equipamentos': ['nome','tipo','vinculo','locadora','obra','ativo'],
   'Locadoras':    ['nome','observacoes','obra'],
@@ -754,9 +761,8 @@ function climaDeUmaObra(obraId, coord, iso) {
 var NF_MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 
 function nfPastaRaiz() {
-  var nome = 'Notas Fiscais Gestor Obras (Privado)';
-  var it = DriveApp.getFoldersByName(nome);
-  return it.hasNext() ? it.next() : DriveApp.createFolder(nome);
+  var it = DriveApp.getFoldersByName(NF_PASTA_RAIZ);
+  return it.hasNext() ? it.next() : DriveApp.createFolder(NF_PASTA_RAIZ);
 }
 
 function nfSubpasta(pai, nome) {
@@ -817,14 +823,17 @@ function nfSalvar(p) {
     vtotal: Number(p.vtotal || 0),
     vbaseicms: Number(p.vbaseicms || 0),
     vicms: Number(p.vicms || 0),
-    itens: p.itens || '[]',
+    // o app manda `itens` ora como texto JSON, ora como array — depende do
+    // caminho de leitura da nota (XML oficial, IA, digitação). Assumindo texto,
+    // o array virava "[object Object]" e a nota era gravada sem nenhum item.
+    itens: typeof p.itens === 'string' ? p.itens : JSON.stringify(p.itens || []),
     obs: p.obs || '',
     responsavel: p.responsavel || '',
     status: p.status || 'Recebida',
     driveid: p.driveid || '',
     drivelink: p.drivelink || '',
-    leitura: p.leitura || '{}',
-    historico: p.historico || '[]',
+    leitura: typeof p.leitura === 'string' ? p.leitura : JSON.stringify(p.leitura || {}),
+    historico: typeof p.historico === 'string' ? p.historico : JSON.stringify(p.historico || []),
     usuario: p.usuario || usuarioDoToken(p.token) || '',
     criadoem: p.criadoem || Date.now(),
     atualizadoem: Date.now()
@@ -1369,17 +1378,22 @@ function nfeAcharXML(txt) {
 }
 
 // ---- leitura do XML da NF-e (layout da Receita, sem depender do namespace) ----
+/* Busca de tag SEM diferenciar maiúscula de minúscula: o XML da NF-e é
+   case-sensitive na norma, mas emissor que devolve `NFe` onde a norma pede
+   `nfe` existe, e a leitura falhava inteira por causa disso. */
 function nfeFilho(el, nome) {
   if (!el) return null;
   var fs = el.getChildren();
-  for (var i = 0; i < fs.length; i++) if (fs[i].getName() === nome) return fs[i];
+  var n = String(nome).toLowerCase();
+  for (var i = 0; i < fs.length; i++) if (fs[i].getName().toLowerCase() === n) return fs[i];
   return null;
 }
 function nfeFilhos(el, nome) {
   var out = [];
   if (!el) return out;
   var fs = el.getChildren();
-  for (var i = 0; i < fs.length; i++) if (fs[i].getName() === nome) out.push(fs[i]);
+  var n = String(nome).toLowerCase();
+  for (var i = 0; i < fs.length; i++) if (fs[i].getName().toLowerCase() === n) out.push(fs[i]);
   return out;
 }
 function nfeTxt(el, nome) {
@@ -1388,7 +1402,19 @@ function nfeTxt(el, nome) {
 }
 function nfeNum(el, nome) {
   var v = nfeTxt(el, nome);
-  var n = parseFloat(v);
+  if (!v) return 0;
+  // O XML da NF-e vem com ponto decimal, mas o mesmo parser atende valores
+  // lidos por IA/OCR do DANFE, onde chega "R$ 1.234,56". Com parseFloat cru,
+  // "1.234,56" virava 1.234 — a nota entrava com o valor mil vezes menor.
+  var s = String(v).trim().replace(/R\$\s*/gi, '').replace(/\s+/g, '');
+  if (s.indexOf(',') > -1 && s.indexOf('.') > -1) {
+    // quem vier por último é o separador decimal
+    if (s.lastIndexOf(',') > s.lastIndexOf('.')) s = s.replace(/\./g, '').replace(',', '.');
+    else s = s.replace(/,/g, '');
+  } else if (s.indexOf(',') > -1) {
+    s = s.replace(',', '.');
+  }
+  var n = parseFloat(s);
   return isNaN(n) ? 0 : n;
 }
 // procura infNFe em qualquer profundidade (nfeProc > NFe > infNFe, ou direto)
