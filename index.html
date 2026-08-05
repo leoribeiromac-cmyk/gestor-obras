@@ -1586,7 +1586,7 @@ function viewHome(){
   </div>`;
   const tabelaConsolidada=`<div class="card" style="margin-bottom:22px">
     <div class="card-h">
-      <div><div class="card-t"><span class="ic-tx">${ic('executivo')}</span>Painel Consolidado do Portfólio</div>
+      <div><div class="card-t"><span class="ic-tx">${ic('painel')}</span>Painel Consolidado do Portfólio</div>
       <div class="card-st">Acompanhamento executivo multi-obra em tempo real (Visão Diretoria)</div></div></div>
     <div class="tbl-wrap"><table class="t">
       <thead><tr><th>Obra / Contrato</th><th>Avanço Físico Médio</th><th>Prazo Decorrido</th><th>Situação vs Cronograma</th><th class="num">RDOs/Mês</th><th class="num">Valor Total</th><th></th></tr></thead>
@@ -2174,7 +2174,7 @@ function viewHistorico(o){
   const topo=`<div class="row" style="margin-bottom:14px;align-items:center;gap:8px;flex-wrap:wrap">
     <div class="chip">${cardsHtml.length} dia(s) ${temFiltroAtivo?'encontrado(s)':''} · ${totalApontFiltrados} serviço(s)</div>
     <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn btn-sm" onclick="imprimirRelatorioMensalEfetivoClima(el('histMes')?el('histMes').value:'')">${ic('relatorio')} Relatório Efetivo/Clima (PDF)</button>
+      <button class="btn btn-sm" onclick="imprimirRelatorioMensalEfetivoClima(el('histMes')?el('histMes').value:'')">${ic('pdf')} Relatório Efetivo/Clima (PDF)</button>
       <button class="btn btn-sm" onclick="baixarPDFsDoMes(el('histMes')?el('histMes').value:'')">${ic('arquivo')} PDFs do período</button>
       <button class="btn btn-sm" onclick="gerarExcelTudo()">${ic('planilha')} Excel (todos)</button></div></div>`;
 
@@ -2694,7 +2694,7 @@ function viewDiario(o){
         <div class="row" style="flex-wrap:wrap;gap:8px"><button class="btn btn-pri" style="flex:1;min-width:140px;justify-content:center" onclick="salvarDiario()">Salvar diário</button>
           <button class="btn" onclick="baixarPDFRDO(estado.diarioData)">${ic('arquivo')} PDF</button>
           <button class="btn btn-ghost" onclick="imprimirRDO()" title="Modelo de impressão">${ic('imprimir')}</button>
-          <button class="btn" onclick="imprimirRelatorioMensalEfetivoClima(estado.diarioData.slice(0,7))" title="Relatório Mensal de Efetivo e Clima">${ic('relatorio')} Relatório Mensal</button></div>
+          <button class="btn" onclick="imprimirRelatorioMensalEfetivoClima(estado.diarioData.slice(0,7))" title="Relatório Mensal de Efetivo e Clima">${ic('pdf')} Relatório Mensal</button></div>
       </div></div>
     <div style="display:flex;flex-direction:column;gap:16px">
       <div class="card"><div class="card-h"><div class="card-t">Serviços lançados neste dia</div>
